@@ -1,0 +1,887 @@
+#!/usr/bin/env bash
+
+if [ -n "${HAVE_ENVE_ENVELIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_ENVELIB=1
+
+
+. "$ENVE_HOME/enve/findutils"
+. "$ENVE_HOME/enve/pathutils"
+
+# ENVE_HOME="$(canonicalize_symlinks "$0/..")"
+
+
+
+tab="$(printf '\tx')"
+tab="${tab%x}"
+feed="$(printf '\fx')"
+feed="${feed%x}"
+vtab="$(printf '\vx')"
+vtab="${vtab%x}"
+newl="$(printf '\nx')"
+newl="${newl%x}"
+
+
+# All function in this definition are design to compatible with posix shell.
+# External Dependencies are awk(1), tr(1), pwd(1), ls(1), basename(1), dirname(1).
+#
+# The newline character in VALUE will be replaced to '\f' before store in table.
+# Therefore VALUE can store any ascii character except '\f'
+#
+# table syntax:
+#   TABLE   = (ENTRY '\n')*
+#   ENTRY   = VTYPE '\t' KEY '\t' VALUE
+#   KEY     = KEYCOMP ('.' KEYCOMP)*
+#   VTYPE   = 'VAR' | 'RVAR' | 'FUNC' | 'ALIAS' | 'LIST' | 'JOIN' | 'SRC'
+#   KEYCOMP = [^\n.]+
+#   VALUE   = [^\n]*
+
+
+
+
+table_tail() {
+    vtype="${2:-VAR}"
+    echo "$TABLE" | grep -E "^${vtype}${tab}${1}${tab}" | tail -n 1 | cut -d"${tab}" -f3-
+}
+
+table_subset() {
+    vtype="${2:-VAR}"
+    echo "$TABLE" | grep -E "^${vtype}${tab}${1}${tab}" | cut -d"${tab}" -f2-
+}
+
+table_exclude() {
+    vtype="${2:-VAR}"
+    echo "$TABLE" | grep -E -v "^${vtype}${tab}${1}${tab}" | cut -d"${tab}" -f2-
+}
+
+
+as_postfix() {
+    while IFS="${tab}" read -r name value; do
+        echo "${name#$1}${tab}${value}"
+    done
+}
+
+as_rootkey() {
+    while IFS="${tab}" read -r name value; do
+        echo "${name%.*}${tab}${value}"
+    done
+}
+
+as_value() {
+    while IFS="${tab}" read -r name value; do
+        if [ -n "$value" ]; then
+            echo "$value"
+        fi
+    done
+}
+
+as_uniquekey() {
+    keys=
+    while IFS="${tab}" read -r name value; do
+        if [ -n "$name" ] && [ "${keys/$name$newl/}" = "${keys}" ]; then
+            keys="${keys}${name}${newl}"
+        fi
+    done 
+    echo "${keys%$newl}"
+    keys=   
+}
+
+as_concat() {
+    concat="${1:-}"
+    as_value | (c="$(cat)"; printf "${c%%$newl}") | {
+        if [ -n "$concat" ]; then
+            tr "$newl" "$concat"
+        else
+            tr -d "$newl"
+        fi
+    }
+}
+
+
+
+resolve_path() {
+    # path in config file should relative to project root (layout.root)
+    if [ -z "$1" ]; then
+        return
+    fi
+    if [ "${1%${1#?}}" = '/' ]; then
+        echo $1
+        return
+    fi
+    if [ -z "${root:-}" ]; then
+        root=$(table_tail layout.root)
+    fi
+    if [ -z "${root:-}" ]; then
+        root="${PRJROOT:-}"
+    fi
+    if [ -z "$root" ]; then
+        root="${CONFIGROOT:-}"
+    fi
+    if [ -z "$root" ]; then
+        root="$(pwd)"
+    fi
+    echo "${root%/}/$1"
+    unset root
+}
+
+out_var() {
+    echo "VAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+}
+out_var_fast() {
+    printf %s\\n "VAR${tab}$1${tab}$2"
+}
+out_rawvar() {
+    echo "RVAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+}
+out_func() {
+    # TODO: types $2
+    funcbody="${2##*()}"
+    echo "FUNC${tab}$1${tab}$(printf "%s" "$funcbody" | tr '\n' '\f')"
+    unset funcbody
+}
+out_alias() {
+    echo "ALIAS${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+}
+out_list() {
+    echo "LIST${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+}
+out_join() {
+    echo "JOIN${tab}$1${tab}$2"
+}
+out_source() {
+    echo "SRC${tab}$1${tab}$2"
+}
+
+
+
+system_roles() {
+    out=
+    if [ -n "${MSYSTEM:-}" ]; then
+        out="$out${out:+,}msystem,nt"
+        case $MSYSTEM in
+            MINGW32) out="$out${out:+,}mingw32"; ;;
+            MINGW64) out="$out${out:+,}mingw64"; ;;
+            MSYS2) out="$out${out:+,}msys2"; ;;
+            CYGWIN) out="$out${out:+,}cygwin,posix"; ;;
+        esac
+    fi
+    case $(uname) in
+        FreeBSD) out="$out${out:+,}freebsd,bsd,unix,posix"; ;;
+        Darwin) out="$out${out:+,}darwin,bsd,unix,posix"; ;;
+        Linux) out="$out${out:+,}linux,unix,posix"; ;;
+    esac
+    echo "$out"
+    out=
+}
+
+
+_parse_keyvalue() {
+    line="$1"
+
+    key=
+    if [ "${line##*^=}" = "${line}" ]; then
+        value="${line##*=}"
+        if [ "$value" != "$line" ]; then
+            key="${line%%=*}"
+        fi
+    else
+        value="${line//^=/=}"
+    fi
+    key="${key##+([[:space:]])}"
+    key="${key%%+([[:space:]])}"
+    # echo "P:'$line' $key='$value'" >&2
+}
+
+parse_config_recursive() {
+    #
+    # this function must run in bash
+    #
+
+    # TODO: put roles to table
+    # TODO: maybe also put profiles to table?
+
+    set -euo pipefail
+    shopt -s extglob
+    config_path="$(canonicalize_symlinks "$1")" || {
+        echo "WARNING: no a resolvable path '$config_path'" >&2
+        return
+    }
+    
+    # root_path="$(canonicalize_symlinks "$(dirname "$config_path")")"
+    # root_path="$(dirname "$config_path")"
+    root_path="$(canonicalize_symlinks "$(dirname "$1")")"
+
+
+    # echo "loading $config_path" >&2
+    [ -f "$config_path" ] || {
+        echo "WARNING: no such config file $config_path" >&2
+        return
+    }
+    if cat "$LOADED_RECORD" | grep "$config_path"; then
+        # echo "LOADED $config_path" >&2
+        return
+    fi
+
+    # trace "parsing [roles: ${roles}] ${config_path}"
+
+
+    filter_roles() {
+        key="$1${newl}"
+        key="${key//,/@}"
+        IFS=','
+        for role in $roles; do
+                key="${key//@$role@/@}"
+                key="${key//@$role./.}"
+                key="${key//@$role$newl/$newl}"
+        done
+        key="${key%$newl}"
+        key="${key%\.}"
+        echo "$key"
+        # echo "key: '$key'" >&2
+    }
+    is_roles_pass() {
+        [ "$1" = "${1//[@,]/}" ]
+    }
+    emit() {
+        key="$(filter_roles "$1")"
+        value="$2"
+        if is_roles_pass "$key"; then
+            echo "VAR${tab}"${key}"${tab}"${value}            
+        fi
+    }
+
+    
+    stab=
+    stabkey=
+    while IFS="${newl}" read -r line; do
+        line="${line##+([[:space:]])}"
+        line="${line%%+([[:space:]])}"
+        [ -z "$line" ] || [ "${line:0:1}" = ";" ] || [ "${line:0:1}" = "#" ] && continue
+        # [ -z "$line" -o "${line%${line#?}}" = ";" -o "${line%${line#?}}" = "#" ] && continue
+
+        if [ -n "$stab$stabkey" ]; then
+            # if [ "${line: -1}" = '\' ] && [ "${line: -2}" != '\\' ]; then
+            #     stab="${stab}${line:0: -1}"
+            # else
+            if [ "${line#${line%?}}" = '\' ] && [ "${line#${line%??}}" != '\\' ]; then
+                stab="${stab}${line%?}"
+            else
+                # [ "${line: -2}" = '\\' ] && line="${line%\\}"
+                [ "${line#${line%??}}" = '\\' ] && line="${line%\\}"
+
+                stab="${stab}${line}"
+                # echo "VAR${tab}"${stabkey}"${tab}"${stab}
+                emit "$stabkey" "$stab"
+                stabkey=
+                stab=
+            fi
+        else
+            # if [ "${line:0:1}" = '[' ] && [ "${line: -1}" = ']' ]; then
+            #     new_area="${line:1:-1}"
+            if [ "${line%${line#?}}" = '[' ] && [ "${line#${line%?}}" = ']' ]; then
+                new_area="${line#[}"
+                new_area="${new_area%]}"
+
+                # Note: original key should not contain character '@' or ',', otherwise role test failed
+                new_area="${new_area##+([[:space:]])}"
+                new_area="${new_area%%+([[:space:]])}"
+                area="$new_area"
+                # if [ -n "${new_area}" ]; then
+                #     new_area="$(filter_roles "${new_area}")"
+                #     # Note: area should not contain character '-', otherwise role test failed
+                #     if [ "${new_area}" != "${new_area//-/}" ]; then
+                #         new_area=
+                #     fi
+                #     if [ -n "${new_area}" ]; then
+                #         area="$new_area"
+                #     fi
+                # fi
+            else
+                if [ "${area}" = "import" ]; then
+                    # TODO: not resolve, only normalize path
+                    parse_config_recursive "$(root="$root_path" resolve_path "$line")"
+                elif [ "${area}" = "comment" ]; then
+                    :;
+                elif [ -n "${area}" ]; then
+                    # key=
+                    # if [ "${line##*^=}" = "${line}" ]; then
+                    #     value="${line##*=}"
+                    #     if [ "$value" != "$line" ]; then
+                    #         key="${line%%=*}"
+                    #     fi
+                    # else
+                    #     value="${line/^=/=}"
+                    # fi
+                    # key="${key##+([[:space:]])}"
+                    # key="${key%%+([[:space:]])}"
+                    _parse_keyvalue "$line"
+
+
+                    # if [ "${value: -1}" = '\' ] && [ "${value: -2}" != '\\' ]; then
+                    #     stabkey="${area}${key:+.}${key}"
+                    #     stab="${stab}${value:0: -1}"
+                    # else                
+                    if [ "${value#${value%?}}" = '\' ] && [ "${value#${value%??}}" != '\\' ]; then
+                        stabkey="${area}${key:+.}${key}"
+                        stab="${stab}${value%?}"
+                    else
+                        # [ "${value: -2}" = '\\' ] && value="${value%\\}"
+                        [ "${value#${value%??}}" = '\\' ] && value="${value%\\}"
+                        emit "${area}${key:+.}${key}" "$value"
+                        # echo "VAR${tab}"${area}${key:+.}${key}"${tab}"${value}
+                    fi
+                fi
+            fi
+        fi
+    done < "$config_path"
+
+    out_var enve.bound "${config_path}"
+    out_var layout.root "$root_path"
+    echo "$config_path" >> "$LOADED_RECORD"
+}
+
+parse_config() {
+    LOADED_RECORD="$(mktemp)"
+    for cfg in "$@"; do
+        roles="$(system_roles)" parse_config_recursive "$cfg"
+    done
+    rm $LOADED_RECORD >/dev/null
+}
+
+enve_parse_config() {
+    LOADED_RECORD="$(mktemp)"
+    for cfile in $(IFS=','; echo $ENVE_PROFILE); do
+        roles="${ENVE_ROLES}${ENVE_ROLES:+,}$(system_roles)" parse_config_recursive "$cfile" || return 1
+    done
+    if [ -n "$ENVE_CONFIG" ]; then
+        echo "$ENVE_CONFIG"
+    fi
+    rm $LOADED_RECORD >/dev/null
+}
+
+
+
+DEVON_DEBUG=1
+
+eval_line() {
+    if [ "$DEVON_DEBUG" -eq 1 ]; then
+        echo "EVAL: $1" >&2
+    fi
+    echo "$1"
+}
+
+variable_action() {
+    case $name in
+        PRJ_NAME)
+                if [ "$target" = "shell" ] && [ "$($UNAMEEXEC)" = "Darwin" ]; then
+                    eval_line 'OLD_PRJ_NAME="$PRJ_NAME"'
+                    eval_line 'echo -n -e "\033]0;'$r_value'\007"'
+                    exithook="${exithook}${exithook:+$newl}  echo -n -e "'"\033]0;$OLD_PRJ_NAME\007"'
+                fi
+            ;;
+        TERMSIZE)
+                if [ "$target" = "shell" ] && [ -x "/usr/bin/tput" ]; then
+                    # echo -e -n "\033[8;10;140t"
+                    width="${r_value%%x*}"
+                    height="${r_value##*x}"
+                    eval_line "OLD_COLUMNS=\$(/usr/bin/tput cols)"
+                    eval_line "OLD_LINES=\$(/usr/bin/tput lines)"
+                    eval_line "echo -e -n \"\\033[8;${height};${width}t\""
+                    exithook="${exithook}${exithook:+$newl}  echo -e -n \"\\033[8;\${OLD_LINES};\${OLD_COLUMNS}t\""
+                fi
+            ;;
+        TERMTHEME)
+            if [ "$target" = "shell" ] && [ "$($UNAMEEXEC)" = "Darwin" ]; then
+                eval_line 'OLD_TERMTHEME="$TERMTHEME"'
+                eval_line "${ENVE_HOME}/script/term_theme.applescript \"$r_value\""
+                exithook="${exithook}${exithook:+$newl}  ${ENVE_HOME}/script/term_theme.applescript \"\$OLD_TERMTHEME\""
+            fi
+        ;;
+    esac
+    eval_line "$name='$(eval echo "$r_value")'; export $name"
+}
+
+
+execute_envdef() {
+    # TODO: compatiable reason
+    # if [ $# -eq 2 ]; then
+        TABLE="$1"
+        target=$2
+        shift 2
+    # else
+    #     TABLE="$(cat)"
+    #     target=$1
+    #     shift
+    # fi
+
+    exithook=
+    while IFS="$tab" read -r vtype name value; do
+        r_value="$(echo "$value" | "$TREXEC" '\f' '\n')"
+        case $vtype in
+            VAR)
+                    variable_action
+                    # eval_line "$name='$(eval echo "$r_value")'; export $name"
+                    # if [ "$name" = "PRJ_NAME" ] && [ "$(uname)" = "Darwin" ]; then
+                    #     eval_line 'echo -n -e "\033]0;$PRJ_NAME\007"'
+                    # fi
+                ;;
+            RVAR)
+                    eval_line "$name='$(echo "$r_value")'; export $name"
+                ;;
+            LIST)
+                    eval "_LIST_$name='$(eval echo \$_LIST_$name)$(eval echo \${_LIST_$name:+\$_JOIN_$name})$value'"
+                    eval_line "eval $name='$(eval echo "\$_LIST_$name")'; export $name"
+                ;;
+            JOIN)
+                    eval "_JOIN_$name='$value'; _LIST_$name="
+                    eval_line "export $name=''"
+                    # eval_line "export $name"
+                ;;
+            FUNC)
+                    eval_line "$name() $r_value"
+                ;;
+            ALIAS)
+                    eval_line "alias $name='$r_value'"
+                ;;
+            SRC)
+                    eval_line ". $r_value"
+                ;;
+            EXEC)
+                    set -- "$@" "$r_value"
+                ;;
+        esac
+    done <<EOF
+$TABLE
+EOF
+    
+    if [ "$target" = "shell" ]; then
+        eval_line 'OLDIFS="$IFS"; IFS=":";'
+        eval_line 'for opt in $ENVE_SHELLOPTS; do set -o $opt; done'
+        eval_line 'for opt in $ENVE_BASHOPTS; do shopt -s $opt; done'
+        eval_line 'IFS="$OLDIFS"'
+        eval_line 'export -n ENVE_SHELLOPTS'
+        eval_line 'export -n ENVE_BASHOPTS'
+        eval_line 'onexit() { '
+        eval_line '  '"${exithook:-true}"
+        eval_line '}'
+        eval_line 'trap onexit INT TERM EXIT'
+    else
+        # TODO: test this
+        if [ $# -gt 0 ]; then
+            eval_line 'case ${ENVE_CHAINEXEC_STAGE:-1} in '
+            stage=1
+            for execstmt in "$@"; do
+                if [ "$stage" -eq $# ]; then
+                    eval_line "  $stage) exec ${execstmt} \"\$@\";;"
+                else
+                    eval_line "  $stage) ENVE_CHAINEXEC_STAGE=$(($stage + 1)) exec ${execstmt%__chain__*} sh \$0 \"\$@\" ${execstmt#*__chain__} ;;"
+                fi
+                stage=$(($stage + 1))
+            done
+            eval_line 'esac'
+        else
+            eval_line 'exec "$@"'
+        fi
+    fi
+    # eval_line
+    # case ${ENVE_CHAINEXEC_STAGE:-1} in
+    #     1) ENVE_CHAINEXEC_STAGE=2 exec aaa $0 ;;
+    #     2) ENVE_CHAINEXEC_STAGE=3 exec bbb $0 ;;
+    #     3) exec ccc ;;
+    # esac
+}
+
+
+____resolve2() {
+    # apply modules execution to TABLE
+    # input:
+    #   TABLE
+    #   module_paths
+    #
+    fire_function="${2:-fire2}"
+
+
+    if [ "$(table_subset "core.no_load_core" | as_value)" = "yes" ]; then
+        return 0
+    fi
+
+    # if [ -z "$module_paths" ]; then
+    #     module_paths="$(exec_loaders)" || return 1
+    # fi
+
+    # echo "module_paths $module_paths" >&2
+    while read -r module_path; do
+        if [ -x "$module_path/enve.module" ]; then
+            if ! NEW_TABLE="$(echo "$TABLE" | \
+                        ENVE_PROFILE="$module_path/enve.ini" \
+                        ENVE_ROLES="module" \
+                        $fire_function module "$module_path/enve.module" "$0")"; then
+                error "module error at $module_path" >&2
+                false
+                return 1
+            fi
+            TABLE="$NEW_TABLE"
+        fi
+    done <<< "$(echo "$module_paths" | tac)"
+    echo "$TABLE"
+}
+
+
+_resolve3() {
+    TABLE="$(cat)"
+
+    while read -r module_path; do
+        if ! TABLE="$(echo "$TABLE" | $firechain_function "$module_path!module")"; then
+            error "resolve error: module error at $module_path" >&2
+            return 1
+        fi
+    done <<EOF
+$(echo "$module_paths" | tac)
+EOF
+    echo "$TABLE"
+}
+
+
+# _simple_builtin_loader() {
+#     # TODO:
+
+#     # table_subset "module\.[[:alnum:]]*" | as_postfix "module\." | \
+#     # while IFS="${tab}" read -r name value; do
+#     # echo "$root"
+
+#     TABLE="$(cat)"
+#     if [ -n "$(table_subset "python\..*")" ]; then
+#         echo "$root/core/pyvenv"
+#     fi
+#     if [ -n "$(table_subset "nodejs\..*")" ]; then
+#         echo "$root/core/nodejs"
+#     fi
+#     if [ -n "$(table_subset "ruby\..*")" ]; then
+#         echo "$root/core/ruby"
+#     fi
+    
+#     { table_subset "module" | as_value || true; } | \
+#     while read -r value; do
+#         # echo o${value}o >&2
+#         if [ -d "$root/core/$value" ]; then
+#             echo "$root/core/$value"
+#         elif [ -d "$root/contrib/$value" ]; then
+#             echo "$root/contrib/$value"
+#         elif [ -d "$(resolve_path "$value")" ]; then
+#             echo "$value"
+#         fi
+#     done
+# }
+
+
+
+_simple_fire() {
+    target=$1
+    shift
+    
+    if ! CONF_TABLE="$(
+            ENVE_PROFILE="$ENVE_PROFILE" \
+            ENVE_ROLES="${target},$ENVE_ROLES" \
+            ENVE_CONFIG="$ENVE_CONFIG" \
+            enve_parse_config
+            out_var core.target $target)"; then
+        echo "fire error: parse_config error" >&2
+        return 1
+    fi
+    if ! module_paths="$(echo "$CONF_TABLE" | _simple_builtin_loader)"; then
+        echo "fire error: loader error" >&2
+        return 1
+    fi
+    if ! TABLE="$(echo "$CONF_TABLE" | module_paths="$module_paths" _resolve3)"; then
+        echo "fire error: resolve error" >&2
+        return 1
+    fi
+    if ! rccontent="$(
+                TREXEC="$(which tr)" \
+                UNAMEEXEC="$(which uname)" \
+                execute_envdef "$TABLE" "$target")"; then
+        echo "fire error: make rcfile error" >&2
+        return 1
+    fi
+
+    RCFILE_PATH=$(mktemp)
+    echo "$rccontent" >> "$RCFILE_PATH"
+    chmod 755 $RCFILE_PATH
+    echo "rcfile: $RCFILE_PATH" >&2
+
+
+    bypass_setup=
+    case $target in
+        run)
+                exec env - $bypass_setup bash "$RCFILE_PATH" "$@"
+            ;;
+        loader|module)
+                exec bash "$RCFILE_PATH" "$@"
+            ;;
+        shell)
+            ;;
+        build)
+            ;;
+        install)
+            ;;
+        deploy)
+            ;;
+    esac
+}
+
+
+
+# fire_chain() {
+#     # this function is posix compatiable
+
+
+#     input="$1"
+#     shift
+#     if [ -n "${1:-}" ]; then
+#         fire_function="$1"
+#         shift
+#         if [ -n "${1:-}" ]; then
+#             locate_function="$1"
+#             shift
+#         fi
+#     fi
+#     echo $locate_function >&2
+#     fire_function="${fire_function:-fire2}"
+#     locate_function="${locate_function:-locate_project}"
+
+#     # save stdin
+#     exec 6<&0 0<&-
+
+#     input="$(echo "$input" | sed -e 's/\([^\\]\)!/\1'"$vtab"'/g' \
+#                                  -e 's/\([^\\]\)@/\1'"$feed"'/g' \
+#                                  -e 's/\\\\/\\/g')"
+
+#     url=
+#     while [ -n "$input" ]; do
+#     #     pos="${input%%[!\\]\!*}"
+#     #     spec="${input:0:$((${#pos}+1))}"
+#     #     input="${input:$((${#pos}+2))}"
+
+#         spec="${input%%${vtab}*}"
+#         input="${input#*${vtab}}"
+#         if [ "$input" = "$spec" ]; then input=; fi
+
+#         if [ -z "$url" ]; then
+#             word="${spec%%${feed}*}"
+#             url="$word"
+#             if [ -z "$url" ]; then
+#                 error "url not given"
+#                 return 1
+#             fi
+#         else
+#             target=
+#             roles=
+#             configs=
+#             while [ -n "$spec" ]; do
+#                 # pos="${spec%%[!\\]\@*}"
+#                 # word="${spec:0:$((${#pos}+1))}"
+#                 # spec="${spec:$((${#pos}+2))}"
+
+#                 word="${spec%%${feed}*}"
+#                 spec="${spec#*${feed}}"
+#                 if [ "$spec" = "$word" ]; then spec=; fi
+
+#                 if [ -z "$target" ]; then
+#                     target="$word"
+#                 elif [ "${word/=/}" != "$word" ]; then
+#                     _parse_keyvalue "$word"
+#                     configs="${configs}$(out_var "$key" "$value")"
+#                 else
+#                     roles="${roles}${roles:+,}$word"
+#                 fi
+#             done
+#             project_root="$($locate_function "$url")" || {
+#                 error "$url can not resolved"
+#                 return 1
+#             }
+#             if [ -f "$project_root/enve.ini" ]; then
+#                 case $target in
+#                     shell|run|loader|module)
+#                             # restore stdin
+#                             exec 0<&6 6<&-
+
+#                             ENVE_PROFILE="$project_root/enve.ini" \
+#                             ENVE_ROLES="$roles" \
+#                             ENVE_CONFIG="$configs" $fire_function "$target" "$@"
+#                         ;;
+#                     build|install|deploy)
+#                             url="$(
+#                                 ENVE_PROFILE="$project_root/enve.ini" \
+#                                 ENVE_ROLES="$roles" \
+#                                 ENVE_CONFIG="$configs" $fire_function "$target"
+#                             )"
+#                         ;;
+#                 esac
+#             else
+#                 error "'$project_root/enve.ini' not found"
+#                 return 1
+#             fi
+#         fi
+#     done
+# }
+
+
+
+
+parse_fire_chain() {
+    # this function is posix compatiable
+    #
+    # $url@X!target1@Y!target2@Z
+    #
+
+    input="$1"
+    input="$(echo "$input" | sed -e 's/\([^\\]\)!/\1'"$vtab"'/g' \
+                                 -e 's/\([^\\]\)@/\1'"$feed"'/g' \
+                                 -e 's/\\\\/\\/g')"
+
+    stage=0
+    url=
+    while [ -n "$input" ]; do
+        spec="${input%%$vtab*}"
+        input="${input#*$vtab}"
+        if [ "$input" = "$spec" ]; then input=; fi
+
+        stage=$(($stage + 1))
+        target=
+        roles=
+        configs=
+        while [ -n "$spec" ]; do
+
+            word="${spec%%${feed}*}"
+            spec="${spec#*${feed}}"
+            if [ "$spec" = "$word" ]; then spec=; fi
+
+            if [ -z "$url" ]; then
+                url="$word"
+                out_var "url" "$url"
+                if [ -z "$url" ]; then
+                    _error "url cannot empty"
+                    return 1
+                fi
+            elif [ -z "$target" ]; then
+                target="$word"
+                out_var "stage$stage.target" "$target"
+                if [ -z "$target" ]; then
+                    _error "target cannot empty"
+                    return 1
+                fi
+            elif [ "${word/=/}" != "$word" ]; then
+                _parse_keyvalue "$word"
+                if [ -n "$target" ]; then
+                    out_var "stage$stage.$key" "$value"
+                else
+                    out_var "global.$key" "$value"
+                fi
+            else
+                out_var "stage$stage.roles" "$word"
+            fi
+        done
+
+        # project_root="$($locate_function "$url")" || {
+        #     error "$url can not resolved"
+        #     return 1
+        # }
+        # if [ -f "$project_root/enve.ini" ]; then
+        #     case $target in
+        #         shell|run|loader|module)
+        #                 # restore stdin
+        #                 exec 0<&6 6<&-
+        #                 ENVE_PROFILE="$project_root/enve.ini" \
+        #                 ENVE_ROLES="$roles" \
+        #                 ENVE_CONFIG="$configs" $fire_function "$target" "$@"
+        #             ;;
+        #         build|install|deploy)
+        #                 url="$(
+        #                     ENVE_PROFILE="$project_root/enve.ini" \
+        #                     ENVE_ROLES="$roles" \
+        #                     ENVE_CONFIG="$configs" $fire_function "$target"
+        #                 )"
+        #             ;;
+        #     esac
+        # else
+        #     error "'$project_root/enve.ini' not found"
+        #     return 1
+        # fi
+    done
+}
+
+exec_fire_chain_table() {
+    (
+
+    fire_function="${1:-fire2}"
+    locate_function="${2:-locate_project}"
+
+    # save stdin
+    exec 6<&0 0<&-
+
+    url=
+    stage=0
+    global_config=
+    finally=
+    while [ -n "$target" ] || [ $stage -eq 0 ]; do
+        if [ -z "$target" ]; then
+            url="$(table_tail url)"
+        fi
+        if [ -n "$finally" ]; then
+            _error "extra target $target at stage $stage"
+            return 1
+        fi
+        project_dir="$($locate_function "$url")" || {
+            _error "$url can not resolved at stage $stage"
+            return 1
+        }
+        if [ $stage -gt 0 ]; then
+            # TODO: table_subset must really subset
+            ENVE_ROLES="$(table_subset "stage$stage\.roles" | as_concat ",")"
+            ENVE_CONFIG="$global_config$newl"
+            ENVE_CONFIG="$ENVE_CONFIG$(table_subset "stage$stage\..*" | as_postfix "stage$stage\.")"
+            if [ -f "$project_dir/enve.ini" ]; then
+                case $target in
+                    shell|run|loader|module)
+                            # restore stdin
+                            exec 0<&6 6<&-
+                            ENVE_PROFILE="$project_dir/enve.ini" \
+                            ENVE_ROLES="$ENVE_ROLES" \
+                            ENVE_CONFIG="$ENVE_CONFIG" \
+                            $fire_function "$target" "$@"
+                            if [ $? -ne 0 ]; then
+                                _error "fire failed at stage $stage"
+                                return 1
+                            fi
+                            finally=true
+                        ;;
+                    build|install|deploy)
+                            url="$(
+                                ENVE_PROFILE="$project_dir/enve.ini" \
+                                ENVE_ROLES="$ENVE_ROLES" \
+                                ENVE_CONFIG="$ENVE_CONFIG" \
+                                $fire_function "$target"
+                            )"
+                            if [ $? -ne 0 ]; then
+                                _error "fire failed at stage $stage"
+                                return 1
+                            fi
+                        ;;
+                    *)
+                            _error "target '$target' unavailable at stage $stage"
+                            return 1
+                        ;;
+                esac
+            else
+                _error "'$project_dir/enve.ini' not found at stage $stage"
+                return 1
+            fi
+        else
+            global_config="$(table_subset "global\..*" | as_postfix "global\.")"
+        fi
+        stage=$(($stage + 1))
+        target="$(table_tail stage$stage.target || true)"
+    done
+    )
+}

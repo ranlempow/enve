@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+
+makepkg() {
+    # TODO: add enve dependency: fakeroot
+    # fakeroot cannot used with macos /bin/* /usr/bin/*
+
+    TZ=UTC0 touch -t 197001010000.01 --no-dereference *
+    # fakeroot -- \
+    #     env LANG=C \
+    #     tar -cf .MTREE --format=mtree \
+    #     --options='!all,use-set,type,uid,gid,mode,time,size,md5,link' *
+
+    package="x$pkgname-$pkgver-$pkgrel-$arch.tar.xz"
+    # fakeroot -- \
+    #     env LANG=C tar -cf - * | \
+    #     xz -c -z - > "$package"
+
+    fakeroot -- \
+        env LANG=C tar jcf "$package" *
+
+    mv "$package" "../"
+}
+
+
+listpkg() {
+    tar -tvf "$1"
+}
+
+inspkg() {
+    package="$1"
+    dest="$2"
+    tar jxf "$package" "$2"
+}
+
+# makepkg
+
+_checkperm() {
+    targetuser=$1
+    targetperm=$2
+    targetdir=$3
+    read ck_perm ck_group ck_owner <<EOF
+$(stat -L -c "%a %G %U" $targetdir || stat -L -f "%p %g %u" $targetdir)
+EOF
+    case ${#ck_perm} in
+        3) : ;;
+        4) ck_perm=${ck_perm#.} ;;
+        5) ck_perm=${ck_perm#..} ;;
+        *) _error "ck_perm format inconsist"; return 1 ;;
+    esac
+    if [ $(( $ck_perm & 00${targetperm} )) -ne 0 ]; then
+        # Everyone has write access
+        return 0
+    elif [ $(( $ck_perm & 0${targetperm}0 )) -ne 0 ]; then
+        # Some group has write access.
+        # Is user in that group?
+        for g in $(groups $targetuser); do
+            if [ $ck_group = $g ]; then
+                return 0
+            fi
+        done
+    elif [ $(( $ck_perm & ${targetperm}00 )) -ne 0 ]; then
+        # The owner has write access.
+        # Does the user own the file?
+        [ $targetuser = $ck_owner ] && return 0
+    fi
+    return 1 
+}
+
+_subfolder() {
+    # user catalog targetuser
+    targetuser=${cacheuser:-$USER}
+
+    _make_subfolder() {
+        if [ -n "${cache_private:-}" ]; then
+            ( umask 077; mkdir "$folder" )
+        else
+            ( umask 066; mkdir "$folder" )
+        fi
+    }
+
+    for i in "" 1 2 3 4; do
+        folder="$targetuser-${catalog:-any}${cache_private:+-private}${i:+-}$i"
+        if [ -e "$folder" ]; then
+            if [ -d "$folder" ] && [ -r "$folder" ] && [ -w "$folder" ] && [ -x "$folder" ]; then
+                echo "$folder"
+                return 0
+            fi
+        elif _make_subfolder; then
+            echo "$folder"
+            return 0
+        fi
+    done
+    _error "unable create cache folder at $(pwd) by $USER"
+    return 1
+}
+
+cache_add() {
+    # add file or directory
+    # return cached path
+    (
+        t=$1
+        p_text() { files_stats_contents $t; }
+        p_make() { 
+            if [ -d "$t" ]; then
+                cp -a "$t/*" "$CACHED"
+            else
+                cp -a $t "$CACHED"
+            fi
+        }
+        cache_rebuild p_text p_make
+        echo "$CACHED"
+    )
+}
+
+cache_fetch() {
+    # fetch url content to cache
+    # return 
+    :
+}
+
+cache_install() {
+    # add files from extracted tar file
+    # return cached path
+    (
+        tarfile=$1
+        p_text() { cat $tarfile; }
+        p_make() { extttttttttt $tarfile; }
+        cache_rebuild p_text p_make
+        echo "$CACHED"
+    )
+}
+
+cache_rebuild() {
+    # TODO: check {targetuser, catalog, title} must
+    #       contain only ascii code and vaild character.
+
+    f_text=$1
+    f_make=${2:-}
+    f_vaild=${3:-}
+
+    do_make() {
+        if [ -n "$f_make" ]; then
+            CACHED_MAKING=$(mkdtemp "${CACHED}-making-XXXXXX")
+            if ( CACHED="$CACHED_MAKING" $f_make ); then
+                if [ -d "$CACHED_MAKING" ] && [ -z "$(ls -A "$CACHED_MAKING")" ]; then
+                    _error "f_make output nothing, maybe build failed"
+                    rm -rf "$CACHED_MAKING"
+                fi
+                if ! mv "$CACHED_MAKING" "$CACHED"; then
+                    _warning "build success, but $CACHED exist. abandon $CACHED_MAKING"
+                    rm -rf "$CACHED_MAKING"
+                fi
+            else
+                _error "f_make failed"
+                rm -rf "$CACHED_MAKING"
+                return 1
+            fi
+        else
+            _debug "cache entry ${CACHED} not found"
+            return 1
+        fi
+    }
+
+    if ! hashid=$($f_text | hashstr); then
+        _error "f_text failed"
+        return 1
+    fi
+    cachedir=$(get_cachedir)
+    [ -e "$cachedir" ] || mkdir -p $cachedir
+
+    # root user always use root/ or root-private/
+    # shared cached has rwx--x--x
+    # private cached has rwx------
+
+    founds=$(ls -ld "$cachedir/"*-${catalog:-any}{,-private}{,-1,-2,-3,-4}/$hashid-${title:none} || echo "") 
+    if [ $targetuser = "root" ]; then
+        # founds=$(echo "$founds" | awk '$3=="root"{ print $0 }')
+        founds=$(while read -r x1 x2 fileuser x4 x5 x6 x7 x8 path; do
+            if [ "$fileuser" = "root" ]; then
+                printf "%s %s %s %s %s %s %s %s %s\n" \
+                    "$x1" "$x2" "$fileuser" "$x4" "$x5" "$x6" "$x7" "$x8" "$path"
+            fi
+        done <<EOF
+$founds
+EOF
+)
+    fi
+
+
+    CACHED="$cachedir/$(cd "$cachedir"; _subfolder)/$hashid-${title:none}"
+    if [ -n "$f_vaild" ]; then
+        if [ ! -e "$CACHED" ]; then
+            do_make
+        elif ! ( $f_vaild ); then
+            mv "$CACHED" "$CACHED-removing"
+            rm -rf "$CACHED-removing"
+            do_make
+        fi
+    else
+        if [ -z "$founds" ]; then
+            do_make
+        else
+            while read -r x1 x2 x3 x4 x5 x6 x7 x8 path; do
+                CACHED=${path# -> *}
+                return 0
+            done <<EOF
+$founds
+EOF 
+        fi
+    fi
+
+    # if [ ! -e "$CACHED" ]; then
+    #     do_make
+    # elif [ -n "$f_vaild" ]; then
+    #     if ! ( $f_vaild ); then
+    #         mv "$CACHED" "$CACHED-removing"
+    #         rm -rf "$CACHED-removing"
+    #         do_make
+    #     fi
+    # fi
+}
+
+cache_cat() {
+    target=$1
+    shift
+    cache_rebuild "$@"
+    cat "$CACHED/$target"
+    unset CACHED target
+}

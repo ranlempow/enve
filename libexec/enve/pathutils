@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+
+
+if [ -n "${HAVE_ENVE_PATHUTILS:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_PATHUTILS=1
+
+
+readlink_posix() {
+    # readlink '.' or '..' always return 1
+    (
+        if ! links="$(ls -ld "$@" | grep " -> ")"; then
+            return 1
+        else
+            printf %s\\n "$links" | sed 's|.* -> ||'
+        fi
+    )
+}
+
+ensure_readlink_command() {
+    if [ -n "${ENVE_READLINK:-}" ]; then
+        return 0
+    elif command -v 'greadlink' >/dev/null; then
+        ENVE_READLINK='greadlink'
+    elif command -v 'readlink' >/dev/null; then
+        ENVE_READLINK='readlink'
+    else
+        ENVE_READLINK="readlink_posix"
+    fi    
+}
+
+split_path() {
+    # "$dirpath/$basepath" is same mean as "$1"
+
+    [ -n "$1" ] || return 1
+    dirpath="${1%/*}"
+    if [ "$dirpath" = "" ]; then
+        # "$1" = "/" (filesystem root)
+        basepath="."
+        dirpath=""
+    # elif [ "$dirpath" = "." ] || [ "$dirpath" = ".." ]; then
+    #     # basepath="."
+    #     basepath="${1##*/}"
+    elif [ "$dirpath" = "$1" ]; then
+        basepath="$dirpath"
+        dirpath="."
+    else
+        basepath="${1##*/}"
+    fi
+}
+
+rsplit_path() {
+    # "$headpath/$tailpath" is same mean as "$1"
+
+    [ -n "$1" ] || return 1
+    tailpath="${1#*/}"
+    # if [ "$tailpath" = "." ] || [ "$tailpath" = ".." ]; then
+    #     headpath="."
+    if [ "$tailpath" = "$1" ]; then
+        headpath="."
+    else
+        headpath="${1%%/*}"
+    fi
+}
+
+
+resolve_symlinks() {
+    # If $1 is a symlink, follow it as many times as possible, return absolute path
+
+    ensure_readlink_command
+
+    cd_target() {
+        split_path "$TARGET" || return 1
+        NAME="$basepath"
+        # cd "${dirpath:-/}" 2>/dev/null || return 1
+        cd "${dirpath:-/}" || return 1
+    }
+
+    (
+        TARGET="$1"
+        cd_target || return 1
+        # Iterate down a (possible) chain of symlinks
+        while [ -L "$NAME" ]
+        do
+            TARGET="$($ENVE_READLINK "$NAME")" || return 1
+            cd_target || return 1
+        done
+
+        if [ "$NAME" = ".." ]; then
+            echo "$(cd "$(pwd -P)/.."; echo "$(pwd)")"
+        elif [ "$NAME" = "." ]; then
+            echo "$(pwd -P)"
+        else
+            parent="$(pwd -P)"
+            if [ "$parent" = "/" ]; then
+                echo "$parent$NAME"
+            else
+                echo "$parent/$NAME"
+            fi
+        fi
+    )
+}
+
+normalize() {
+    (
+        path="${1:-}"
+        tailslash=
+        if [ -n "$path" ] && [ -z "${path##*/}" ]; then
+            tailslash=/
+        fi
+        set --
+        IFS=/
+        for c in $path; do
+            case $c in
+                '')
+                        if [ $# -eq 0 ]; then
+                            # leading empty componment on absolute path
+                            set -- "$c" "$@"
+                        fi
+                    ;;
+                .)
+                        if [ $# -eq 0 ]; then
+                            # leading '.' componment on explicit relative path
+                            set -- "$c" "$@"
+                        fi
+                    ;;
+                ..)
+                        if [ $# -eq 0 ]; then
+                            # leading '..' componment on relative path
+                            set -- "$c" "$@"
+                        else
+                            prev="$1"
+                            if [ "$prev" = ".." ]; then
+                                set -- "$c" "$@"
+                            elif [ "$prev" = "." ]; then
+                                shift
+                                set -- "$c" "$@"
+                            elif [ "$prev" = "" ]; then
+                                # should not back on root
+                                :
+                            else
+                                shift
+                                if [ $# -eq 0 ]; then
+                                    # back to current directory at relative path
+                                    set -- "." "$@"
+                                fi
+                            fi
+                        fi
+                    ;;
+                *)
+                        set -- "$c" "$@"
+                    ;;
+            esac
+        done
+
+        if [ -n "$tailslash" ]; then
+            set -- "" "$@"
+        fi
+
+        if [ $# -eq 0 ]; then
+            echo ""
+        elif [ -z "$1" ] && [ $# -eq 1 ]; then
+            echo "/"
+        else
+            output="$1"
+            shift
+            for c; do
+                output="$c/$output"
+            done
+            echo "$output"
+        fi
+
+    )
+}
+
+follow_one() {
+    # "$1" must be a absolute path,
+    # and not contain any symlink componment except last componment
+
+    if [ -L "$1" ]; then
+        resolve_parts "$(normalize "$1/..")" "$($ENVE_READLINK "$1")"
+    else
+        normalize "$1"
+    fi
+}
+
+follow_directory() {
+    ret="$(follow_one "$1")"
+    # respect 'realpath' and 'readlink -f' behavier
+    if [ ! -d "$ret" ]; then
+        return 1
+    fi
+    echo "$ret"
+}
+
+resolve_parts() {
+    # resolve $2 (unknown) to $1 (known)
+    # if the known part is absolute path, then known part must not contain any symlink componment
+    #
+    # example:
+    # (resolve_parts "1/2/3" "4/5")
+    #  -> (resolve_parts "1/2/3/4" "5")
+    #  -> "1/2/3/4/5"
+    
+    if [ $infcnt -gt 100 ]; then
+        echo "too many chain of symlinks" >&2
+        return 1
+    fi
+    infcnt=$(($infcnt + 1))
+
+    known="$1"
+    unknown="$2"
+    rsplit_path "$unknown" || return 1
+    
+
+    if [ "$headpath" = "" ] && [ "$tailpath" = "" ]; then
+        # unknown is root
+        echo "/"
+        return
+    elif [ "$headpath" = "" ]; then
+        # unknown is abspath
+        resolve_parts "/" "$tailpath"
+        return
+    fi
+
+    # resolve known part if that is not absolute path
+    if [ "${known%${known#?}}" != "/" ]; then
+        split_path "$known"
+        abs="$(cd "$dirpath"; pwd)"
+        known=$(resolve_parts "/" "$abs/$basepath")
+    elif [ "$known" = "/" ]; then
+        known=
+    fi
+
+    if [ "$tailpath" = "" ]; then
+        # unknown is the only last componment and user indicate that last componment is a directory
+        # example: this/must/be_dir/
+        follow_directory "$known/$headpath"
+    elif [ "$headpath" = "." ]; then
+        # unknown is the only last componment
+        follow_one "$known/$tailpath"
+    else
+        # unknown is a relative path contain more then two componments
+        new_known="$(follow_directory "$known/$headpath")" || return 1
+        resolve_parts "$new_known" "$tailpath"
+    fi
+}
+
+canonicalize_symlinks() {
+    # example: /a/b/../c
+    #
+    # 1. resolve as $(readlink /a/c)   
+    # 2. cd to /a/b/.. == /a;  resolve $(readlink c)
+    #
+    # but, if /a/b is a symlink to /e/f
+    # must to resolve as /e/c
+    # therefore solution 2 is correct.
+    #
+    # there is how it work
+    # /a/b/../c should resolve as r(r(r(r(/a)/b)/..)/c)
+
+    ensure_readlink_command
+    infcnt=0
+    resolve_parts "." "$1"
+}

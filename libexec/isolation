@@ -1,0 +1,783 @@
+#!/bin/sh
+#!/usr/bin/env dash
+
+set -euo pipefail
+
+# https://reverse.put.as/wp-content/uploads/2011/09/Apple-Sandbox-Guide-v1.0.pdf
+# https://github.com/pansen/macos-sandbox-profiles
+#
+# macos sandbox-exec child cannot fork setuid program
+# try to copy setuid program to another place
+#
+
+
+# sandbox-exec -p ' 
+# (version 1)
+# (allow default) 
+# (deny file-read-data
+#     (regex #"^/private/tmp/dump\.c$"))
+# ' /bin/sh
+
+# jail    -c path=/data/jail/testjail mount.devfs \
+#            host.hostname=testhostname ip4.addr=192.0.2.100 \
+#            command=/bin/sh
+
+timestamp() {
+    date +%s%N | cut -b5-13
+}
+
+
+# echo "$(timestamp) start"
+
+ENVE_HOME="$(dirname $0)"
+
+. "$ENVE_HOME/enve/base"
+. "$ENVE_HOME/enve/envelib"
+
+
+true "
+# invoke 協定
+
+(O)path - chroot path
+(O)system.template - copy file to chroot path
+(O)system.bin - ',' split list, add program at host to chroot path
+
+(O)jail - use advance isolation technology
+daemon - detach form currnet shell, fork twice and new session
+       - default to true if invoke by pm, default to false if invoke by enve
+
+(F)interface - add interface at host to jail
+(O)mount - given as a single fstab(5) line, mount to chroot path
+         - there are nixdir, cachedir, tmpdir mounts by default
+
+(O)exec.start
+(O)exec.clean
+exec.passenv
+exec.unsetenv - 'env -u XXX'
+(O)exec.user
+(F)exec.invoke_user
+(O)exec.cwd
+(O)exec.stdin
+(O)exec.stdout
+(O)exec.stderr
+(O)exec.umask
+ulimit.XXX
+env.XXX
+fork.pidfile - assume exec.start should do the fork stuff
+pm.socket - communicate path of sub-pm
+
+
+成功之後回傳pid
+
+
+# 步驟
+
+1. 建立system資料夾
+2. invoke
+3. 回傳pid
+
+
+# pm invoke假設
+
+    # 創建 Daemon 程式
+    fork() 後終止父行程，和呼叫的終端機(TTY)脫離關係
+    setsid(), 成為會話組長(session leader)
+    忽略 SIGHUP 信號
+    再一次 fork() 並終止父行程
+    變更工作目錄(working directory)設定為根目錄(/)
+    將 umask 權限設置為 0
+    關閉所有檔案(file description)，包含標準輸入，輸出與錯誤輸出(std in, std out and std err)。
+    將訊息記錄於log
+
+
+pm 假設他所呼叫的程式知道 invoke方法
+invoke協定要回傳pid
+
+
+pm invoke流程
+1.(O)fork一次並終止父行程, 脫離parent
+2.(linux)脫離session(在bash不容易辦到)setsid
+3.(sh not need)忽略SIGHUP信號
+4.(O)再一次fork並終止父行程
+5.(O)重定向stdio
+6.(O)建立pid檔案
+7.(option)exec unshare namespace
+8.exec rootinit
+9-1.mount
+9-2.interface
+9-3.newuidmap,newgidmap
+10.(option)變更工作目錄為根目錄(/)
+11.(option)將 umask 權限設置為 0
+12-1.(rootpm)exec chroot來進行隔離
+12-2.(rootpm)exec chroot更換使用者
+13.ulimit
+14.(option)exec env, 清空env
+15.exec最終程式
+
+
+pm invoke可以與各種應用結合
+1.nofork類型, 這是最單純的, pm invoke處理所有事情
+2.daemon-pidfile, 由於pidfile可能會被寫入chroot之中, pm必須把他找出並移到chroot之外
+
+隔離的目標
+process(ps -o args)
+signal(kill)
+setuid
+filesystem(lsof?)
+tty/dev
+network
+sysfs
+
+
+
+    busybox chpst -u [:]{user}[:{group}] -/ {root} -0 -1 -2 prog
+
+    chpd -u {user}[:{group}] -/ {root} -i {pidfile} -0 -1 -2 -s prog
+        -s new session
+
+    sudo /bin/sh -c '(exec chroot --userspec=nobody:nobody / /bin/sleep 10 >/dev/null 2>/dev/null & echo \$! > pid ) &'
+
+    su - root -c '(exec chroot --userspec=nobody:nobody / /bin/sleep 10 & echo \$! > pid ) &'
+
+    su - root -c '(exec setsid chroot --userspec=nobody:nobody / /bin/sleep 10 & echo \$! > pid ) &'
+
+
+pm 只是單純的 event trigger
+
+"
+
+plain() {
+    local mesg=$1; shift
+    printf "    $mesg\n" "$@" >&1
+}
+
+quiet() {
+    _optquiet=0
+    (( _optquiet )) || plain "$@"
+}
+
+error() {
+    local mesg=$1; shift
+    printf "$==> ERROR: $mesg\n" "$@" >&2
+    return 1
+}
+
+
+
+add_file() {
+    # Add a plain file to the initcpio image. No parsing is performed and only
+    # the singular file is added.
+    #   $1: path to file
+    #   $2: destination on initcpio (optional, defaults to same as source)
+    #   $3: mode
+
+    (( $# )) || return 1
+
+    # determine source and destination
+    local src=$1 dest=${2:-$1} mode=
+
+    if [[ ! -f $src ]]; then
+        error "file not found: \`%s'" "$src"
+        return 1
+    fi
+
+    mode=${3:-$(stat -c %a "$src")}
+    if [[ -z $mode ]]; then
+        error "failed to stat file: \`%s'." "$src"
+        return 1
+    fi
+
+    if [[ -e $CHROOT/$dest ]]; then
+        quiet "overwriting file: %s" "$dest"
+    else
+        quiet "adding file: %s" "$dest"
+    fi
+    command install -Dm$mode "$src" "$CHROOT/$dest"
+}
+
+add_binary() {
+    # Add a binary file to the initcpio image. library dependencies will
+    # be discovered and added.
+    #   $1: path to binary
+    #   $2: destination on initcpio (optional, defaults to same as source)
+
+    local -a sodeps
+    local line= regex= binary= dest= mode= sodep= resolved=
+
+    if [[ ${1:0:1} != '/' ]]; then
+        binary=$(type -P "$1")
+    else
+        binary=$1
+    fi
+
+    if [[ ! -f $binary ]]; then
+        error "file not found: \`%s'" "$1"
+        return 1
+    fi
+
+    dest=${2:-$binary}
+    mode=$(stat -c %a "$binary")
+
+    # always add the binary itself
+    add_file "$binary" "$dest" "$mode"
+
+    # resolve sodeps
+    case $(uname) in
+        Linux)
+                # negate this so that the RETURN trap is not fired on non-binaries
+                ! lddout=$(ldd "$binary" 2>/dev/null) && return 0
+                regex='^(|.+ )(/.+) \(0x[a-fA-F0-9]+\)'
+            ;;
+        Darwin)
+                # negate this so that the RETURN trap is not fired on non-binaries
+                ! lddout=$(otool -L "$binary" 2>/dev/null) && return 0
+                regex='^([^/]*)(/.+) \(.+\)'
+            ;;
+        *)
+                error "unsupported system $(uname)."
+            ;;
+    esac
+    while read -r line; do
+        if [[ $line =~ $regex ]]; then
+            sodep=${BASH_REMATCH[2]}
+        elif [[ $line = *'not found' ]]; then
+            error "binary dependency \`%s' not found for \`%s'" "${line%% *}" "$1"
+            # (( ++_builderrors ))
+            continue
+        fi
+        if [[ -f $sodep && ! -e $CHROOT/$sodep ]]; then
+            case $(uname) in
+                Linux)
+                        add_file "$sodep" "$sodep" "$(stat -Lc %a "$sodep")"
+                    ;;
+                Darwin)
+                        add_binary "$sodep"
+                    ;;
+            esac
+        fi
+    done <<< "$lddout"
+
+    return 0
+}
+
+
+
+simple_root_mac() {
+    cd "$CHROOT"
+
+    # setup root filesystem
+    for d in bin boot dev etc home lib share usr var opt run; do
+        install -d -m755 $d
+    done
+    install -d -m0750 root
+    install -d -m1777 tmp
+
+    # setup /var
+    for d in cache local opt log/old lib/misc empty; do
+        install -d -m755 var/$d
+    done
+    install -d -m1777 var/tmp
+
+    ln -s ../run var/run
+    ln -s ../run/lock var/lock
+
+    # setup /usr hierarchy
+    for d in bin include lib share/misc src; do
+        install -d -m755 usr/$d
+    done
+    for d in {1..8}; do
+        install -d -m755 usr/share/man/man$d
+    done
+
+    cd -
+
+    for name in null zero random urandom tty ptmx; do
+        cp -a "/dev/$name" "$CHROOT/dev"
+    done
+    for name in fd/1 fd/2 stdin stdout stderr; do
+        cp -a "/dev/$name" "$CHROOT/dev"
+    done
+    for name in tty ttyp{1,2,3,4,5,6}; do
+        cp -a /dev/${name} "$CHROOT/dev"
+    done
+
+    # certs
+    cp -a /etc/ssl $CHROOT/etc/ssl
+    
+    add_binary /bin/bash
+    add_binary /bin/sh
+    add_binary /bin/ls
+    add_binary /bin/sleep
+    add_binary /usr/bin/id
+    add_binary /usr/bin/env
+    add_binary /usr/lib/dyld
+
+}
+
+
+simple_root() {
+    MOUNT_CMD=${MOUNT_CMD:-mount}
+
+    cd "$CHROOT"
+
+    # setup root filesystem
+    for d in bin boot dev etc home lib share usr var opt run; do
+        install -d -m755 $d
+    done
+    install -d -m555 proc
+    install -d -m555 sys
+    install -d -m0750 root
+    install -d -m1777 tmp
+
+    # setup /etc and /usr/share/factory/etc
+    for file in group host.conf hosts issue motd nsswitch.conf \
+           passwd resolv.conf securetty shells profile; do
+        echo "$(eval echo "\"\$$(normalize ${file})_source\"")" > etc/$file
+        chmod 644 etc/$f
+    done
+    for file in gshadow shadow; do
+        echo "$(eval echo "\"\$$(normalize ${file})_source\"")" > etc/$file
+        chmod 600 etc/$file
+    done
+    ln -s ../proc/self/mounts etc/mtab
+
+    # setup /var
+    for d in cache local opt log/old lib/misc empty; do
+        install -d -m755 var/$d
+    done
+    install -d -m1777 var/tmp
+
+    ln -s ../run var/run
+    ln -s ../run/lock var/lock
+
+    # setup /usr hierarchy
+    for d in bin include lib share/misc src; do
+        install -d -m755 usr/$d
+    done
+    for d in {1..8}; do
+        install -d -m755 usr/share/man/man$d
+    done
+
+    cd -
+
+
+    for name in null zero full random urandom kmsg tty ptmx fuse; do
+        cp -a /dev/$name "$CHROOT/dev"
+    done
+    for name in fd stdin stdout stderr; do
+        cp -a /dev/$name "$CHROOT/dev"
+    done
+    for name in tty vcs vcsa; do
+        cp -a /dev/${name}{1,2,3,4,5,6} "$CHROOT/dev"
+    done
+
+    mkdir "$CHROOT/etc/pam.d"
+    for file in /etc/pam.d/*; do
+        cp -a $file "$CHROOT/$file"
+    done
+
+    # chroot_add_mount proc "$CHROOT/proc" -t proc -o nosuid,noexec,nodev
+    # chroot_add_mount sys "$CHROOT/sys" -t sysfs -o nosuid,noexec,nodev
+    # chroot_add_mount none "$CHROOT/sys/fs/cgroup" -t cgroup2
+    # mkdir -p $CHROOT/dev/{pts,shm,mqueue,hugepages}
+    # chroot_add_mount devpts "$CHROOT/dev/pts" -t devpts -o mode=0620,gid=5,nosuid,noexec
+    # chroot_add_mount shm "$CHROOT/dev/shm" -t tmpfs -o mode=1777,nosuid,nodev
+    # chroot_add_mount mqueue "$CHROOT/dev/mqueue" -t mqueue
+    # chroot_add_mount hugetlbfs "$CHROOT/dev/hugepages" -t hugetlbfs
+    chroot_add_mount run "$CHROOT/run" -t tmpfs -o nosuid,nodev,mode=0755
+    chroot_add_mount tmp "$CHROOT/tmp" -t tmpfs -o mode=1777,strictatime,nodev,nosuid
+
+    add_binary /bin/bash
+    add_binary /bin/mount
+    add_binary /bin/umount
+    add_binary /bin/env
+
+    # TODO: nix
+    # certs
+    cp -a /etc/ssl $CHROOT/etc/ssl
+
+    # chroot_add_mount /bin "$1/bin" --bind -o ro
+    # chroot_add_mount /lib "$1/lib" --bind -o ro
+    # chroot_add_mount /lib64 "$1/lib64" --bind -o ro
+    # chroot_add_mount /usr/lib "$1/usr/lib" --bind -o ro
+    # chroot_add_mount /usr/lib64 "$1/usr/lib64" --bind -o ro
+    # chroot_add_mount /usr/share "$1/usr/share" --bind -o ro
+    # mkdir "$1/etc/pam.d"
+    # chroot_add_mount /etc/pam.d "$1/etc/pam.d" --bind -o ro
+}
+
+
+
+x="
+upgrade
+1. setup basic root with outer root
+2. create namespace with tini and a suspend stab service
+3. setup user mapping
+4. setup and mount root with inner root
+5. (?) setup with /bin/pm setup
+6. resume and replace stab service with /bin/pm init
+
+degrade
+1. stop /bin/pm and all it's children
+2. leave /bin/pm
+3. leave /bin/tini, this will umount inner root
+4. stop root.service, this will umount outer root, and delete root
+"
+
+
+_exitrootdir() {
+    if [ -n "${sleeppid:-}" ]; then
+        kill -SIGTERM $sleeppid
+        if mount | cut -f3 -d" " | grep $CHROOT; then
+            mount | cut -f3 -d" " | grep $CHROOT | sort -r | xargs umount || true
+        fi
+        if ! mount | cut -f3 -d" " | grep $CHROOT; then
+            rm -rf $CHROOT
+        else
+            error "umount recursive fail, $CHROOT is not removed."
+        fi
+    fi
+    # if umount -R $CHROOT; then
+    #     rm -rf $CHROOT
+    # fi
+}
+
+mkchroot() {
+    mkdir -p $CHROOT
+    if [ -n "${CHROOT_TEMPLATE:-}" ]; then
+        cp -a $CHROOT_TEMPLATE/* $CHROOT
+    fi
+    case $(uname) in
+        Linux)      simple_root;;
+        Darwin)     simple_root_mac;;
+    esac
+    for bin in ${CHROOT_BINS:-}; do
+        add_binary $bin
+    done
+}
+
+serverootdir() {
+    # contname="$(basename $1)"
+    # CHROOT=/var/cont/$contname/root
+    mkchroot
+    trap _exitrootdir EXIT
+    sleep 2147483647 &
+    sleeppid=$!
+    wait "$sleeppid"
+    sleeppid=
+}
+
+# enter() {
+#     pid=$1
+#     shift
+#     nsenter --ipc --uts --cgroup --net --user --pid --mount --target $pid "$@"
+# }
+
+
+delayinit() {
+
+    # echo delayinit
+    pid="$1"
+    while read pmpid; do
+        pipepid=$pmpid
+    done < "$OUTER_PIPE"
+    if [ "$pid" != "$pipepid" ]; then
+        _error "pid from pipe $pipepid != $pid"
+        return 1
+    fi
+    # echo delayinit $pid
+
+    MOUNT_CMD=mount
+    case $uname_cached in
+        Linux)
+            if [ -n "${JAIL:-}" ]; then
+                printf "0:0:10000\n" > /etc/subuid
+                printf "0:0:10000\n" > /etc/subgid
+                newuidmap $pid 0 0 1  1 3001 3000 || echo "newuidmap $pid faild"
+                newgidmap $pid 0 0 1  1 3001 3000 || echo "newgidmap $pid faild"
+                # MOUNT_CMD="enter $pid mount"
+            fi
+            ;;
+    esac
+
+    # mount
+    while read -r src mount_point fstype option; do
+        $MOUNT_CMD -o $option -t $fstype $src $mount_point
+    done < /dev/null
+
+    # rm "$OUTER_PIPE"
+    # if [ -n "$WRITE_PIDFILE" ]; then
+    #     echo "$pid" > $PIDFILE
+    # fi
+}
+
+
+
+dosuspend() {
+    PIPE_PATH=$1
+    shift
+    timeout_sec=20
+
+    if [ ! -e "$PIPE_PATH" ]; then
+        echo "cannot suspend without $PIPE_PATH" >&2
+        return 1
+    fi
+    echo $$ > "$PIPE_PATH"
+    count=0
+    while [ -e "$PIPE_PATH" ]; do
+        count=$(($count + 1))
+        if [ $count -gt $timeout_sec ]; then
+            return 1
+        fi
+        sleep 1
+    done
+}
+
+
+install_launcher() {
+    if [ -n "${CHROOT:-}" ]; then
+        LAUNCHER_ROOT="$CHROOT"
+        OUTER_PIPE=$CHROOT/pm.suspend.pipe
+        INNER_PIPE=/pm.suspend.pipe
+        OUTER_SCRIPT=$CHROOT/bin/launcher
+        INNER_SCRIPT=/bin/launcher
+    else
+        # LAUNCHER_ROOT="$(mkdtemp $TMPDIR/pm-launcher.XXXXXX)"
+        LAUNCHER_ROOT="${PIDFILE%/*}"
+        OUTER_PIPE=$LAUNCHER_ROOT/pm.suspend.pipe
+        INNER_PIPE=$LAUNCHER_ROOT/pm.suspend.pipe
+        OUTER_SCRIPT=$LAUNCHER_ROOT/launcher
+        INNER_SCRIPT=$LAUNCHER_ROOT/launcher
+    fi
+    mkfifo -m 600 "$OUTER_PIPE"
+    chown ${EXEC_USER:-$USER}  "$OUTER_PIPE"
+
+    # exec.cwd
+    # exec.umask
+    # exec.clean
+    #  HOME, SHELL, TERM and USER
+    # ulimit.XXX
+    # cat > "$OUTER_SCRIPT" << EOF
+
+    echo "
+#!/bin/sh
+
+# $(type dosuspend)
+dosuspend \"$INNER_PIPE\"
+umask ${EXEC_UMASK:-0022}
+cd ${EXEC_CWD:-.}
+# ulimit
+exec env ${EXEC_CLEAN:+-i} \
+    HOME=/ USER=${EXEC_USER:-$USER} SHELL=/bin/sh TERM=$TERM \"\$@\"
+" > "$OUTER_SCRIPT"
+
+}
+
+
+_redirect_stdio() {
+    if [ "${EXEC_STDIN:-}" = "close" ]; then
+        exec 0<&-
+    elif [ -n "${EXEC_STDIN:-}" ]; then
+        exec 0<"$EXEC_STDIN"
+    fi
+
+    if [ "${EXEC_STDOUT:-}" = "close" ]; then
+        exec 1>&-
+    elif [ -n "${EXEC_STDOUT:-}" ]; then
+        exec 1>"$EXEC_STDOUT"
+    fi
+
+    if [ "${EXEC_STDERR:-}" = "close" ]; then
+        exec 2>&-
+    elif [ -n "${EXEC_STDERR:-}" ]; then
+        exec 2>"$EXEC_STDERR"
+    fi
+}
+
+# 1.(O)fork一次並終止父行程, 脫離parent
+# 2.(linux)脫離session(在bash不容易辦到)setsid
+# 3.(sh not need)忽略SIGHUP信號
+# 4.(O)再一次fork並終止父行程
+# 5.(O)重定向stdio
+# 6.(?)建立pid檔案
+# 7.(option)exec unshare namespace
+# 8.exec rootinit
+# 9-1.mount
+# 9-2.interface
+# 9-3.newuidmap,newgidmap
+# 12-1.(rootpm)exec chroot來進行隔離
+# 12-2.(rootpm)exec chroot更換使用者
+# 10.(option)變更工作目錄為根目錄(/)
+# 11.(option)將 umask 權限設置為 0
+# 13.(option)exec env, 清空env
+# 14.exec最終程式
+
+
+start_with_namespace() {
+    user=${EXEC_USER:-nobody}
+
+    # exec unshare --ipc --uts --cgroup --net --user --pid --mount \
+    #     chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START $(_stdio_txt)
+    # (
+        hascmd setsid && setsid
+        _redirect_stdio
+        exec unshare --ipc --uts --cgroup --net --user --pid --mount \
+            chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+        # [ -n "${WRITE_PIDFILE:-}" ] && echo $! > $PIDFILE
+        PID=$!
+    # ) &
+}
+
+start_with_chroot() {
+    user=${EXEC_USER:-nobody}
+    
+    # sh -c '(exec chroot --userspec='$user:$user' "'"$CHROOT"'" \
+    #         /bin/sh "'"$INNER_SCRIPT"'" '"$EXEC_START $(_stdio_txt)"' &
+    #         ) &'
+    # (
+        hascmd setsid && setsid
+        _redirect_stdio
+        exec chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+        # [ -n "${WRITE_PIDFILE:-}" ] && echo $! > $PIDFILE
+        PID=$!
+    # ) &
+
+}
+
+start_switch_user() {
+    user=${EXEC_USER:-nobody}
+
+    # (
+        hascmd setsid && setsid
+        _redirect_stdio
+        # echo su - -m $user "$INNER_SCRIPT" $EXEC_START 
+        # exec su - -m $user "$INNER_SCRIPT" $EXEC_START &
+        # exec sudo -u $user /bin/sh "$INNER_SCRIPT" $EXEC_START &
+        exec chroot --userspec=$user:$user "/" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+        # [ -n "${WRITE_PIDFILE:-}" ] && echo $! > $PIDFILE
+        PID=$!
+    # ) &
+}
+
+start_normal() {
+    hascmd setsid && setsid
+    _redirect_stdio
+    exec /bin/sh "$INNER_SCRIPT" $EXEC_START
+}
+
+start_common() {
+    case $uname_cached in
+        Linux)
+                if [ -n "${JAIL:-}" ]; then
+                    # exec unshare --ipc --uts --cgroup --net --user --pid --mount --fork --kill-child \
+                    #     chroot "$CHROOT" /bin/tini /bin/bash $INNER_SCRIPT sleep 20000
+                    :
+                fi
+                # elif [ -n "${CHROOT:-}" ]; then
+
+                # else
+
+                # fi
+            ;;
+        Darwin)
+                # exec chroot --userspec=20500:20500 "$CHROOT" /bin/bash /bin/launcher \
+                #         id
+                # sh -c '(exec chroot --userspec=nobody:nobody "'"$CHROOT"'" \
+                #         /bin/bash "'"$INNER_SCRIPT"'" /bin/sh -c "echo xxxx" >/xxx.log &
+                #         echo $!) &'
+                # echo "$(timestamp) install_launcher"
+
+                if [ -n "${CHROOT:-}" ]; then
+                    start_with_chroot
+                elif [ -n "${EXEC_USER:-}" ]; then
+                    start_switch_user
+                else
+                    start_normal
+                fi
+
+            ;;
+        FreeBSD)
+                :
+            ;;
+    esac
+}
+
+launch_subprocess() {
+    ( start_common ) &
+    PID=$!
+    if delayinit "$PID"; then
+        rm -rf "${PIDFILE%/*}"
+    else
+        kill -9 $pipepid
+        rm -rf "${PIDFILE%/*}"
+        return 1
+    fi
+}
+
+startns() {
+
+    PIDFILE="${PIDFILE:-$(mkdtemp "$TMPDIR/pm-launch.XXXXXX")}/pid"
+    install_launcher
+
+    uname_cached=$(uname)
+
+    WAITER=1
+    if [ -n "${WAITER:-}" ]; then
+        (
+            if launch_subprocess; then
+                echo $PID
+                set +e
+                wait $PID
+                echo $?
+                set -e
+            else
+                return 1
+            fi
+        ) &
+    else
+        if launch_subprocess; then
+            echo "$PID"
+        else
+            return 1
+        fi
+    fi
+
+    # while [ ! -s "$PIDFILE" ]; do
+    #     # echo xxx
+    #     sleep 0.005
+    # done
+    # echo "$(timestamp) pidok"
+    # pid=$(cat $PIDFILE)
+    # read pid < $PIDFILE
+
+    
+    # echo "$(timestamp) delayinit ok"
+}
+
+selfhost() {
+    contname="$(basename $1)"
+    CHROOT=/var/cont/$contname/root
+
+    serverootdir &
+    servepid=$!
+    trap "kill -SIGTERM $servepid" EXIT
+    sleep 5
+    startns
+}
+
+more_simple() {
+    # contname="$(basename $1)"
+    # CHROOT=/var/cont/$contname/root
+
+    if [ -n "${CHROOT:-}" ] && [ ! -e "$CHROOT" ]; then
+        mkchroot
+    fi
+    startns
+}
+
+
+# echo "$(timestamp) prog"
+TMPDIR=${TMPDIR:-/tmp}
+more_simple
+
+

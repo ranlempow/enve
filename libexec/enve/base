@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+
+
+if [ -n "${HAVE_ENVE_BASE:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_BASE=1
+
+ENVE_PROGRAM_NAME="${0##*/}"
+
+hascmd() {
+    command -v $1 >/dev/null
+}
+
+
+if ! hascmd md5sum; then
+    # BSD
+    md5sum() {
+        md5 -r "$@"
+    }
+fi
+if ! hascmd tac; then
+    # BSD
+    tac() {
+        tail -r
+    }
+fi
+
+in_busybox_shell() {
+    [ "$(ps -o pid,comm | awk '$1=='"$$"'{ print $2 }' | tail -n 1)" = "busybox" ]
+}
+
+if in_busybox_shell; then
+    # busybox shell
+    :
+fi
+
+hashstr() {
+    data="$(cat)"
+    echo "$data" | md5sum | while read -r sha __file; do
+        echo "$sha"
+    done
+}
+
+combine_umask() {
+    eval "mask=$((0$(umask) & 0$1))"
+    printf %o\\n $mask
+}
+
+create_file_mutex() {
+    (
+        umask $(combine_umask "${2:-7077}")
+        set -o noclobber
+        { > "$1" ; } &> /dev/null
+    )
+}
+
+create_dir_mutex() {
+    (
+        umask $(combine_umask "${2:-7077}")
+        mkdir "$1" &> /dev/null
+    )
+}
+
+_sixrand50() {
+    awk 'BEGIN {  srand(); for (i = 1; i <= 50; i++)
+                        printf("%c%c%c%c%c%c\n", rand() * 26 + 97, rand() * 26 + 97 \
+                                               , rand() * 26 + 97, rand() * 26 + 97 \
+                                               , rand() * 26 + 97, rand() * 26 + 97) }'
+}
+
+_mkstemp() {
+    mutex_function=$1
+    shift
+
+    rands="$(_sixrand50)"
+    prefix="${1%XXXXXX}"
+    if [ "$prefix" = "$1" ]; then
+        return 1
+    fi
+    shift
+
+    for rand in $rands; do
+        if $mutex_function "$prefix$rand" "$@"; then
+            echo "$prefix$rand"
+            return 0
+        fi
+    done
+    return 1
+}
+
+mkstemp() {
+    _mkstemp create_file_mutex "$@"
+}
+mkdtemp() {
+    _mkstemp create_dir_mutex "$@"
+}
+
+
+
+# enve is a stateless program, that is unnecessary to use '/var'
+
+get_cachedir() {
+    if [ -n "$ENVE_CACHE_DIR" ]; then
+        echo "$ENVE_CACHE_DIR"
+    fi
+    kernal_name="$(uname -s)"
+    case "$kernal_name" in
+        Linux|FreeBSD|Darwin)
+                # macos $HOME do not have issus as in windows
+                # $HOME always contain only alphanum without space and all lowercase.
+                
+                # echo ~/Library/Caches/enve
+                read -r fileperm x2 fileuser x4 x5 x6 x7 x8 path <<EOF
+$(ls -ld /var/cache/enve)
+EOF
+                if [ "$fileperm" = "drwxrwxrwt" ] && [ "$fileuser" = "root" ]; then
+                    echo /var/cache/enve
+                else
+                    echo ~/.cache/enve    
+                fi
+                
+            ;;
+        # Linux|FreeBSD)
+        #         if [ "$(id -u)" -eq 0 ]; then
+        #             echo /var/cache/enve
+        #         else
+        #             echo ~/.cache/enve
+        #         fi
+        #     ;;
+        MINGW32*|MSYS*|CYGWIN*)
+                # $LOCALAPPDATA is the temporary files of Applications.
+                # but $HOME may contain non-acsii character or space.
+                # so, we use $ProgramData
+                # The file system directory that contains application data for all users.
+                echo "$(cygpath -u "$ProgramData/enve")"
+            ;;
+        *)
+                echo /var/cache/enve
+            ;;
+    esac
+}
+
+get_tempdir() {
+    if [ -n "${TMP:-}" ]; then
+        echo "$TMP"
+    elif [ -n "${TMPDIR:-}" ]; then
+        echo "$TMPDIR"
+    elif [ -n "${TEMP:-}" ]; then
+        echo "$TEMP"
+    elif [ -n "${TEMPDIR:-}" ]; then
+        echo "$TEMPDIR"
+    else
+        echo "/tmp"
+    fi
+}
+
+quote () { printf %s\\n "$1" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" ; }
+
+save () {
+    for i do quote "$i"; done
+    echo " "
+}
+
+
+
+# syslog: emerg, alert, crit, err, warning, notice, info, debug
+# python: CRITICAL ERROR WARNING INFO DEBUG
+
+
+_loglevel_form_symbol() {
+    case ${ENVE_VERBOSE:-NOTICE} in
+        CRIT|CRITICAL)  echo "6" ;;
+        ERROR)          echo "5" ;;
+        WARN|WARNING)   echo "4" ;;
+        NOTICE)         echo "3" ;;
+        INFO)           echo "2" ;;
+        DEBUG)          echo "1" ;;
+        TRACE)          echo "0" ;;
+
+        *)              echo "3" ;;
+    esac
+}
+
+timestamp() {
+  date +%s%N | cut -b5-13
+}
+
+
+_format_head() {
+    fmts=
+    if [ -t 2 ] && [ -z "${ENVE_NOCOLOR:-}" ]; then
+        C0='\033[0m'
+        C1='\033[36m'
+        C2='\033[35m'
+        Cr='\033[31m'
+        case $1 in
+            critical|error) C2="$Cr" ;;
+        esac
+        case ${ENVE_VERBOSE:-TRACE} in
+            CRIT|CRITICAL)  fmts="$C1%4s$C0 $C2%8s$C0" ;;
+            ERROR)          fmts="$C1%4s$C0 $C2%8s$C0" ;;
+            WARN|WARNING)   fmts="$C1%4s$C0 $C2%8s$C0" ;;
+            NOTICE)         fmts="$C1%4s$C0 $C2%8s$C0" ;;
+            INFO)           fmts="$C1%4s$C0 $C2%8s$C0" ;;
+            DEBUG)          fmts="[$(date -u +"%D %T")] $C1%4s$C0 $C2%8s$C0" ;;
+            TRACE)          fmts="[$(timestamp)] $C1%4s$C0 $C2%8s$C0" ;;
+        esac
+    else
+        case ${ENVE_VERBOSE:-NOTICE} in
+            CRIT|CRITICAL)  fmts="%4s %s:" ;;
+            ERROR)          fmts="%4s %s:" ;;
+            WARN|WARNING)   fmts="%4s %s:" ;;
+            NOTICE)         fmts="%4s %s:" ;;
+            INFO)           fmts="%4s %8s:" ;;
+            DEBUG)          fmts="[$(date -u +"%D %T")] %4s %8s:" ;;
+            TRACE)          fmts="[$(timestamp)] %4s %8s:" ;;
+        esac
+    fi
+    printf "$fmts" "$ENVE_PROGRAM_NAME" "$1"
+}
+
+critical() {
+    if [ $(_loglevel_form_symbol) -ge 6 ]; then
+        echo "$(_format_head ${LOGTYPE:-critical}) $@" >&2
+    fi
+}
+error() {
+    if [ $(_loglevel_form_symbol) -ge 5 ]; then
+        echo "$(_format_head ${LOGTYPE:-error}) $@" >&2
+    fi
+}
+
+warning() {
+    if [ $(_loglevel_form_symbol) -ge 4 ]; then
+        echo "$(_format_head ${LOGTYPE:-warning}) $@" >&2
+    fi
+}
+
+notice() {
+    if [ $(_loglevel_form_symbol) -ge 3 ]; then
+        echo "$(_format_head ${LOGTYPE:-notice}) $@" >&2
+    fi
+}
+
+# log() {
+#     if [ $(_loglevel_form_symbol) -ge 3 ]; then
+#         echo "$(_format_head warning) $@" >&2
+#     fi
+# }
+
+info() {
+    if [ $(_loglevel_form_symbol) -ge 2 ]; then
+        echo "$(_format_head ${LOGTYPE:-info}) $@" >&2
+    fi
+}
+
+debug() {
+    if [ $(_loglevel_form_symbol) -ge 1 ]; then
+        echo "$(_format_head ${LOGTYPE:-debug}) $@" >&2
+    fi
+}
+
+trace() {
+    if [ $(_loglevel_form_symbol) -ge 0 ]; then
+        echo "$(_format_head ${LOGTYPE:-trace}) $@" >&2
+    fi
+}
+
+_critical() { critical "$@"; }
+_error() { error "$@"; }
+_warning() { warning "$@"; }
+_notice() { notice "$@"; }
+_info() { info "$@"; }
+_debug() { debug "$@"; }
+_trace() { trace "$@"; }
+
+die() {
+    error "$@"
+    exit 1
+}
+

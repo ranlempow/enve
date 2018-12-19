@@ -1,0 +1,774 @@
+#!/usr/bin/env bash
+
+# __NAME__=enve
+# __VERSION__=0.1.0
+# __REPO__=
+
+
+tab="$(printf '\tx')"
+tab="${tab%x}"
+feed="$(printf '\fx')"
+feed="${feed%x}"
+vtab="$(printf '\vx')"
+vtab="${vtab%x}"
+newl="$(printf '\nx')"
+newl="${newl%x}"
+
+if [ -z "${ENVE_HOME:-}" ]; then
+    if [ -L "$0" ]; then
+        ENVE_HOME="$(dirname "$(readlink "$0")")"
+    else
+        ENVE_HOME="$(dirname "$0")"
+    fi
+fi
+
+
+define_functions() {
+
+    # echo "ENVE_HOME: $ENVE_HOME" >&2
+    . "$ENVE_HOME/enve/base"
+    . "$ENVE_HOME/enve/envelib"
+    # . "$(dirname $0)/libexec/enve/pathutils"
+    
+}
+
+
+true '
+
+# 整體架構
+
+boot - 檢查和建立基礎環境(boot.cmd)
+enve - 鎖鏈式執行環境封裝/更友善的terminal&shell
+pm - 發布管理, 配置管理, 行程管理
+ci - 持續整合系統, 自動化測試與回報
+gitu - 簡化git操作, 實現gitflow, 多使用者流程
+
+nix-installer
+service-setup
+
+fs-plugin       協助分配與掛載檔案系統
+(X)env-plugin      協助引入其他依賴
+(X)build-plugin    協助簡化建造流程
+
+
+# 目錄結構
+
+/bin - 可供使用者直接執行的程式
+/libexec - 內部程式或模組, 進階使用者可以低階執行
+/libexec/enve/contrib/
+/libexec/enve/builtins/
+/libexec/enve/thirdparty/
+/libexec/pm/
+/libexec/ci/
+
+/test
+/docs - 所有非正式的文件
+/man - 正式的說明手冊
+/tools - 專案維護用的腳本(?)
+.gitattributes
+README.md
+
+
+# 模組
+
+模組本身是一個enve可執行環境
+根據被fire時所使用的角色, 可以執行不同的功能
+
+core/           內建模組, 官方維護, 相容性保證, 品質保證, 使用時可以省略core/, 會依照TABLE而被自動引入
+contrib/        內建模組, 貢獻者維護, 使用時可以省略contrib/
+thirdparty/     需下載模組, 因複雜度過高, 需要編譯, 過於龐大, 或是更新太快, 而放在外部的源碼庫, 但是仍被官方信任
+
+
+
+零件替換理論
+
+ab  Ab  aB  AB
+X   X   X   X   a與A損毀 或 b與B損毀
+O   X   X   X   A與B損毀
+O   O   X   X   B損毀
+O   O   O   X   A或B損毀, 也有可能只有AB這個組合損毀
+
+abc Abc aBc abC ABc AbC aBC ABC
+O   X   X   X   X   X   X   X   A與B與C損毀
+O   O   X   X   X   X   X   X   B與C損毀
+O   O   O   X   O   X   X   X   C損毀
+O   O   O   O   O   O   X   X   C損毀, 也有可能只有BC這個組合損毀
+
+
+
+如果config只依賴
+1. 專案資料夾裡面的檔案, 除非用bound.ignore排除
+2. 版本化的 enve core module
+3. pure outside module
+4. 也就是要版本化任何外部依賴, 包含npm, pyvenv, ruby, cocospods
+那我們可以說這個config是pure config
+
+
+pure config可以建構pure environment
+pure environment再加上只限於專案資料夾來源的build, 可以build出 pure installable
+pure installable -> pure runtime -> pure test
+
+                   unpure develop-env
+pure source       -> pure build-env          1..*  pure installable      extra-build-config
+pure installable  -> pure installable-env    1..*  pure runtime          extra-install-config
+pure installed    -> pure runtime-env        1..*  pure test             extra-run-config
+
+
+roles 可以作為決定變種的橋樑
+source_path@build@build-cfg-1@install-cfg-B@run-cfg-alpha
+
+
+每一個runtime都有一個版本標誌, 標誌裡多個stage, 目前有build, install, run, 三個stage
+每個stage內有下列內容
+1. source 可以連結到上個stage
+2. env 與他的依賴 modules, 每個module都是一個runtime
+3. roles
+4. extra-configs
+這些組合起的標誌用來代表一個軟體的出身, 是debug的時候非常重要的資訊
+
+
+用資料夾結構來表示如下
+$runtime_stage/
+$stage/input/source(version+commit_time|parent) -> stage Class
+$stage/input/maker                              -> stage Class
+$stage/env-modules/$mod_runtime/                -> runtime Class(stage class)
+$stage/env (roles, conifg, timestamp, kernel-version, machine, system-info, invocation-id)
+
+stage_name = $program-$version-(build|install|run|config)-$stage_hash
+
+用keyvalue config來表達stages
+[$stage_name]
+$key=$value
+
+
+
+
+# Module Resolve Process
+
+Project Table Analyzing Phase
+-----------------------------
+fire core.loader.enve environment with "loader" role and "loader" target.
+loader should take care "Source URL Resolve Phase" also
+
+input: project table (pure), loaders (pure)
+output: url (maybe pure), config table (pure)
+
+
+Source URL Resolve Phase
+------------------------
+locate module source code to a directory.
+maybe needs git operations, web download or unpack a compressed file.
+
+input: url (maybe pure)
+output: source_dir (maybe pure)
+
+
+Module Deploy Phase
+-------------------
+maybe the module source needs build.
+the extra build configure may set by "$module.build".
+
+after built, the module artifact maybe needs install.
+the extra install configure may set by "$module.install".
+
+input(hashed): source_dir (maybe pure), config table (pure)
+output(hashed): module_dir (pure)
+
+
+Module Execute Phase
+--------------------
+in final deployed directory.
+fire enve.ini environment with "module" role and "module" target.
+callee execution should accept caller CONFIG_TABLE from stdin
+and generate MOD_CONFIG_TABLE to stdout.
+caller environment should merge that MOD_CONFIG_TABLE to caller CONFIG_TABLE.
+
+input: project table (pure), $module_dir/module.enve (pure, hashed)
+output: table (pure)
+
+
+
+# Functional representation
+
+parse_config(files[NONE_PURE], keyvalues, roles, project_abs_path) -> CONFIG_TABLE
+load_modules(CONFIG_TABLE) -> module_paths
+resolve(module_paths, CONFIG_TABLE) -> ENV_TABLE
+
+
+gen_rcfile_runner(ENV_TABLE) -> rcfile_runner
+gen_rcfile_shell(ENV_TABLE, $shell) -> rcfile_$shell (combine with rcfile_runner)
+
+
+
+# build config
+resolve(parse_config(..., roles=build, project_abs_path)) -> ENV_TABLE_BUILD
+gen_rcfile_runner(ENV_TABLE_BUILD) -> build_rcfile_runner
+build_rcfile_runner build -> pkg_dir
+
+# partial run config
+resolve(parse_config(..., roles=run, project_abs_path=pkg_dir)) -> ENV_TABLE_RUN
+extact_env_files(ENV_TABLE_RUN) -> run_env_files
+gen_rcfile_runner(ENV_TABLE_RUN) -> rcfile_runner
+global_paths = pkg_dir + run_env_files + rcfile_runner
+
+# deploy config
+deploy([global_paths]+, deploy_config, run_config)
+
+
+
+
+# config
+
+var.bypass - 執行時引入環境變數
+var.memory - 紀錄建造時的環境變數
+
+build.xxx
+
+run.setup_cmd[list] - 進入環境之前最後的bash調整命令
+run.chain_cmd[list] - 進入環境時呼叫的前置命令列
+
+
+
+
+# gen_rcfile_run(ENV_TABLE, run_command) -> rcfile
+# gen_rcfile_shell(ENV_TABLE, run_command) -> rcfile
+# run(ENV_TABLE, run_command) -> NONE_PURE
+# shell(ENV_TABLE, run_command) -> NONE_PURE
+
+
+gen_rcfile_build(ENV_TABLE) -> rcfile
+build_new(ENV_TABLE, src) -> build_result_dir
+build_fixing_location(ENV_TABLE, src) -> NONE_PURE
+build_installable(ENV_TABLE, src) -> $build_result_dir/enve.ini
+
+install_new[$build_result_dir/enve.ini](INSTALLABLE_ENV_TABLE, build_result_dir) -> installed_result_dir
+install_specific(INSTALLABLE_ENV_TABLE, build_result_dir) -> NONE_PURE
+install_runable(INSTALLABLE_ENV_TABLE, build_result_dir) -> $run_result_dir/enve.ini
+
+deploy(deploy_list, INSTALLABLE_ENV_TABLE, build_result_dir) -> NONE_PURE
+deploy_transform(deploy_dest, INSTALLABLE_ENV_TABLE, build_result_dir) -> $prepare_to_depoly/enve.ini
+
+
+
+# NEW DEFINE
+
+fire = ( loadconfig | (firechain $module + resolve)* | gen_rcfile ) + target_exec "$@"
+firechain = (fire $target)* + fire final_target "$@"
+enve_main = crossplat_bootenv + parse_args + firechain
+
+
+# bootstrap process
+
+check what is the os we are running "$(system_roles)"
+    
+basic_require_ensure
+    install basic tools if not exist
+    Darwin: no
+    Linux: pacman -S curl git openssh
+    FreeBSD: pkg install curl git bash
+    Msys2: pacman -S git openssh
+
+parse_args
+    -> reexec_if_reqver_not_match
+
+
+'
+
+
+
+
+
+exec_loaders() {
+    (
+    set -euo pipefail
+    if [ "$(table_subset "core.no_load_core" | as_value)" = "yes" ]; then
+        return 0
+    fi
+    next_loaders="${module_paths}"
+    module_loaded=""
+
+    while [ -n "$next_loaders" ]; do
+        loader_path="${next_loaders%%,*}"
+        next_loaders="${next_loaders#*,}"
+
+        _trace "loader_path:   $loader_path"
+        _trace "module_loaded: $module_loaded"
+        _trace "next_loaders:  $next_loaders"
+
+        if [ -x "$loader_path/enve.loader" ]; then
+            if ! modules="$(echo "$TABLE" | ENVE_PROFILE="$loader_path/enve.ini" \
+                                            fire loader "$loader_path/enve.loader" "$0")"; then
+                _error "loader execute failed"
+                return 1
+            fi
+            while read -r module; do
+                module="$(canonicalize_symlinks "$module")"
+                if [[ "${module_loaded}" != *${module},* ]]; then
+                    next_loaders="${next_loaders}${module},"
+                    module_loaded="${module_loaded}${module},"
+                    echo "$module"
+                    _debug "module '$module' found"
+                else
+                    _debug "module '$module' already loaded"
+                fi
+            done <<< "$modules"
+        fi
+    done
+    )
+}
+
+resolve() {
+    if [ "$(table_subset "core.no_load_core" | as_value)" = "yes" ]; then
+        return 0
+    fi
+    _trace "module_paths $module_paths"
+    while read -r module_path; do
+        if [ -x "$module_path/enve.module" ]; then
+            if ! TABLE="$(echo "$TABLE" | ENVE_PROFILE="$module_path/enve.ini" \
+                                          fire module "$module_path/enve.module" "$0")"; then
+                _error "module execute error at $module_path"
+                return 1
+            fi
+        fi
+    done <<< "$(echo "$module_paths" | tac)"
+    echo "$TABLE"
+}
+
+
+print_help() {
+    prog="$(basename "$0")"
+    echo "Usage: $prog [COMMON_OPTIONS] <COMMAND>"
+    echo
+    echo "Common Options"
+    echo "    -f, --file <file>     parse config from the file"
+    echo "    -c, --config <key>=<value>"
+    echo "                          append a key-value pair to config"
+    echo "    -r, --role <role>     add a role to the roles set"
+    echo "    -p, --project <path>  default project is PWD, specfice another project folder instead"
+    echo
+    echo "Command"
+    echo "    noop                  not to promote any actions"
+    echo "    shell                 enter a interactive shell for the environment"
+    echo "    run                   run command in the environment"
+    echo "    launch                open a terminal for the environment"
+    echo "    boot                  enter a default shell environment"
+}
+
+# EXTRA_CENVE_PROFILE: user specficed config files, use as import at beginning
+
+get_rcfile_from_profiles_nocache() {
+    # input:
+    #   ENVE_PROFILE
+    #   ENVE_ROLES
+    #   ENVE_CONFIG
+    #   RCFILE_PATH
+    # output:
+    #   boundfiles
+    # sideeffect:
+    #   write $RCFILE_PATH
+
+
+    CONF_TABLE="$(ENVE_PROFILE="$ENVE_PROFILE" \
+                  ENVE_ROLES="$ENVE_ROLES" \
+                  ENVE_CONFIG="$ENVE_CONFIG" \
+                  enve_parse_config
+                  out_var core.target $target)" || {
+        _error "parse_config failed"
+        return 1
+    }
+    # CONF_TABLE="$(echo "$CONF_TABLE"; out_var core.target $target)"
+    _trace "=============$newl$CONF_TABLE"
+
+    module_paths="$(TABLE="$CONF_TABLE"
+                    module_paths="$ENVE_HOME/enve,"
+                    exec_loaders)" || {
+        _error "exec_loaders failed"
+        return 1
+    }
+    _trace "module_paths_loaded: $module_paths" >&2
+    TABLE="$(TABLE="$CONF_TABLE" module_paths="$module_paths" resolve
+             out_var bound "$(resolve_symlinks "$ENVE_HOME/../enve")"
+             out_var bound "$(resolve_symlinks "$ENVE_HOME/enve")"
+            )" || {
+        _error "resolve failed"
+        return 1
+    }
+    _debug "=== resolve ???-$target ===$newl$TABLE"
+
+    boundfiles="$(table_subset bound | as_value | sort -u)"
+    TABLE="$(echo "$TABLE" | grep -E -v "^VAR${tab}bound${tab}")"
+    echo "$(TREXEC="$(command -v tr)" UNAMEEXEC="$(command -v uname)" \
+            execute_envdef "$TABLE" "$target")" > "$RCFILE_PATH" || {
+        _error "execute_envdef failed"
+        return 1            
+    }
+    chmod 755 $RCFILE_PATH
+    echo "$boundfiles"
+}
+
+
+get_rcfile_from_profiles() {
+    # input:
+    #   ENVE_PROFILE
+    #   ENVE_ROLES
+    #   ENVE_CONFIG
+    # output:
+    #   rcfile path
+    
+
+    RCFILE_PATH=
+
+    if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
+        ENVE_CACHE_DIR="$(get_cachedir)"
+        if [ ! -d "$ENVE_CACHE_DIR/boundfiles" ]; then
+            mkdir -p "$ENVE_CACHE_DIR/boundfiles"
+        fi
+        if [ ! -d "$ENVE_CACHE_DIR/rcfiles" ]; then
+            mkdir -p "$ENVE_CACHE_DIR/rcfiles"
+        fi
+        profile_hash="$(hashstr << EOF
+$ENVE_ROLES
+$ENVE_CONFIG
+$(files_stats_contents $(
+    for file in $(IFS=','; echo $ENVE_PROFILE); do
+        canonicalize_symlinks "$file"
+    done
+))
+EOF
+)"
+        if [ -f "$ENVE_CACHE_DIR/boundfiles/$profile_hash.files" ]; then
+            _trace "profile: $ENVE_PROFILE"
+            _trace "read from: $ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
+            boundfiles="$(cat "$ENVE_CACHE_DIR/boundfiles/$profile_hash.files")"
+            _trace "-- boundfiles --$newl$boundfiles"
+            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
+            if [ "$boundhashes" = "$(cat $ENVE_CACHE_DIR/boundfiles/$profile_hash.hashes)" ]; then
+                RCFILE_PATH="$(cat $ENVE_CACHE_DIR/boundfiles/$profile_hash.rcfile 2>/dev/null || true)"
+            fi
+        fi
+        _debug "cached RCFILE_PATH: ${RCFILE_PATH:-none}"
+    fi
+    
+
+    if [ ! -f "$RCFILE_PATH" ]; then
+        if ! rcfile="$(mkstemp ${TMPDIR:-/tmp}/rcfile.XXXXXX)"; then
+            _error "failed to create tempfile"
+        fi
+        boundfiles="$(ENVE_PROFILE="$ENVE_PROFILE" \
+                     ENVE_ROLES="$ENVE_ROLES" \
+                     ENVE_CONFIG="$ENVE_CONFIG" \
+                     RCFILE_PATH="$rcfile" \
+                     get_rcfile_from_profiles_nocache)"
+
+        if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
+            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
+            cached_rcfile="$ENVE_CACHE_DIR/rcfiles/rcfile-$boundhashes-$target"
+            if ! mv "$rcfile" "$cached_rcfile"; then
+                _error "failed to write rcfile"
+            fi
+            
+            _trace "module_paths: $module_paths"
+            _trace "profile: $ENVE_PROFILE"
+            _trace "write to: $ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
+            _trace "-- boundfiles (write) --  "
+            _trace "$boundfiles"
+            echo "$boundfiles" > "$ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
+            echo "$boundhashes" > "$ENVE_CACHE_DIR/boundfiles/$profile_hash.hashes"
+            echo "$cached_rcfile" > "$ENVE_CACHE_DIR/boundfiles/$profile_hash.rcfile"
+            rcfile="$cached_rcfile"
+        fi
+        RCFILE_PATH="$rcfile"
+    fi
+    echo "$RCFILE_PATH"
+}
+
+
+get_rcfile_from_profiles_usecache() {
+    # input:
+    #   ENVE_PROFILE
+    #   ENVE_ROLES
+    #   ENVE_CONFIG
+    # output:
+    #   rcfile path
+    
+    mkrcfile() {
+        if ! tmprcfile="$(mkstemp ${TMPDIR:-/tmp}/rcfile.XXXXXX)"; then
+            _error "failed to create tempfile"
+            return 1
+        fi
+        boundfiles="$(ENVE_PROFILE="$ENVE_PROFILE" \
+                 ENVE_ROLES="$ENVE_ROLES" \
+                 ENVE_CONFIG="$ENVE_CONFIG" \
+                 RCFILE_PATH="$tmprcfile" \
+                 get_rcfile_from_profiles_nocache)"
+
+        if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
+            cached_rcfile="$(catalog=rcfile cache_add "$tmprcfile")"
+            rm $tmprcfile
+        else
+            cached_rcfile="$tmprcfile"
+        fi
+    }
+
+    if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
+        p_text() {
+            echo $ENVE_ROLES
+            echo $ENVE_CONFIG
+            files_stats_contents $(
+                for file in $(IFS=','; echo $ENVE_PROFILE); do
+                    canonicalize_symlinks "$file"
+                done)
+        }
+        p_vaild() {
+            boundfiles="$(cat "$CACHED/boundfiles")"
+            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
+            [ "$boundhashes" = "$(cat "$CACHED/hashes")" ]
+        }
+        p_make() {
+            mkdir "$CACHED"
+            mkrcfile
+            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
+            _trace "module_paths: $module_paths"
+            _trace "profile: $ENVE_PROFILE"
+            _trace "write to: $ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
+            _trace "-- boundfiles (write) --  "
+            _trace "$boundfiles"
+            echo "$boundfiles" > "$CACHED/boundfiles"
+            echo "$boundhashes" > "$CACHED/hashes"
+            echo "$cached_rcfile" > "$CACHED/rcfile"
+        }
+        RCFILE_PATH="$(catalog=boundfile cache_cat ./rcfile p_text p_make p_vaild)"
+    else
+        mkrcfile
+        RCFILE_PATH="$cached_rcfile"
+    fi
+    echo "$RCFILE_PATH"
+}
+
+
+
+
+fire() {
+    target=$1
+    shift
+    ENVE_ROLES="${target},${ENVE_ROLES}"
+    ENVE_FIRE_DEPTH="$((${ENVE_FIRE_DEPTH:--1} + 1))"
+    
+    LOGTYPE=fire trace "level $ENVE_FIRE_DEPTH $target $@"
+
+    RCFILE_PATH="$(get_rcfile_from_profiles)"
+    if [ -z "$RCFILE_PATH" ]; then
+        return 1
+    fi
+
+    shell_line="$(grep '; export SHELL' $RCFILE_PATH)"
+    eval $shell_line
+    _debug "SHELL: $SHELL"
+
+    # get bypassed variable list
+    bypass_line="$(grep '; export BYPASS' $RCFILE_PATH | tail -n 1)"
+    eval $bypass_line
+
+    bypass_envs="'ENVE_FIRE_DEPTH=$ENVE_FIRE_DEPTH'"
+    if [ -n "${BYPASS:-}" ]; then
+        bypass_envs="$bypass_envs $(
+            IFS=':'
+            for var in $BYPASS; do
+                if [ -n "$var" ]; then
+                    # printf "%s" "'$var=$(eval echo "\${$var:-}")' "
+                    eval printf "'%s=%s' " "$var" "\$(quote "\${$var\:-}")"
+                fi
+            done
+        )"
+    fi
+    _debug "bypass_envs: $bypass_envs"
+    _debug "rcfile: $RCFILE_PATH"
+
+    case $target in
+        run)
+                # exec env - $bypass_envs bash "$RCFILE_PATH" "$@"
+                args=$(save "$@")
+                eval exec env -i $bypass_envs sh \"\$RCFILE_PATH\" $args
+            ;;
+        loader|module)
+                exec sh "$RCFILE_PATH" "$@"
+            ;;
+        shell)
+                # shell="$(table_tail SHELL)"
+                shell=${shell:-$SHELL}
+
+                # posix mode
+                # ENV=$PWD/e zsh -c 'exec -a sh zsh "$@"' "$@"
+                # ENV=$PWD/e bash --posix
+                # ksh/bash POSIXLY_CORRECT=YES
+
+                case $(basename $shell) in
+                    dash|ash|ksh|sh)
+                            rc_arg=
+                            rc_env=ENV
+                        ;;
+                    zsh)
+                            rc_arg=--rcs
+                        ;;
+                    bash)
+                            rc_arg=--rcfile
+                        ;;
+                    *)
+                            echo "unsuported shell $shell" >&2
+                            exit 1
+                        ;;
+                esac
+                eval exec env -i $bypass_setup ${rc_env:+$rc_env=$rcfile} $shell ${rc_arg:+$rc_arg $RCFILE_PATH} -i
+            ;;
+        build)
+            ;;
+        install)
+            ;;
+        deploy)
+                # handle only simple case.
+                # for complex case, use a environment to run more script
+            ;;
+    esac
+}
+
+
+
+ENVE_PROFILE=
+ENVE_CONFIG=
+ENVE_ROLES=
+
+# echo "args: $@" >&2
+cmd=''
+
+while [ -n "${1:-}" ]; do
+    case $1 in
+        -f|--file)
+                case ${2:-} in -*|'')
+                    echo "you must supply a file path" >&2
+                    exit 1 ;; esac
+                ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$2"
+                shift 2
+            ;;
+        -c|--config)
+                case ${2:-} in
+                    -*)
+                            echo "you must supply a vaild key-value pair" >&2
+                            exit 1
+                        ;;
+                    ?*=*) ;;
+                    *)
+                            echo "you must supply a vaild key-value pair" >&2
+                            exit 1
+                esac
+                key="${2##=*}"
+                value="${2%*=}"
+                ENVE_CONFIG="$(printf "%s${ENVE_CONFIG:+\n}VAR\t%s\t%s" "${ENVE_CONFIG:-}" "$key" "$value")"
+                shift 2
+            ;;
+        -r|--role)
+                case ${2:-} in -*|'')
+                    echo "you must supply a role" >&2
+                    exit 1 ;; esac
+                ENVE_ROLES="${ENVE_ROLES:-}${ENVE_ROLES:+,}$2"
+                shift 2
+            ;;
+        -*)
+                echo "unknown option: $1" >&2
+                exit 1
+            ;;
+        noop|define|run|launchrun)
+                cmd=$1
+                shift
+                break
+            ;;
+        shell|launch)
+                cmd=$1
+                shift
+                if [ -n "$1" ]; then
+                    ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                    shift
+                fi
+                break
+            ;;
+        boot)
+                shift
+                ENVE_PROFILE="$ENVE_HOME/script/boot/enve.ini"
+                cmd=shell
+                break
+            ;;
+        auto)
+                cmd=auto
+                shift
+                if [ -n "$1" ]; then
+                    ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                    shift
+                fi
+            ;;
+        *)
+                if [ "$cmd" = "auto" ]; then
+                    break
+                else
+                    echo "unknown command: $1" >&2
+                    print_help >&2
+                    exit 1    
+                fi
+            ;;
+        
+    esac
+done
+
+ENVE_PROFILE="${ENVE_EXTRA_PROFILE:-}${ENVE_EXTRA_PROFILE:+,}${ENVE_PROFILE}"
+ENVE_CONFIG="${ENVE_EXTRA_CONFIG:-}${ENVE_EXTRA_CONFIG:+$newl}${ENVE_CONFIG}"
+ENVE_ROLES="${ENVE_EXTRA_ROLES:-}${ENVE_EXTRA_ROLES:+,}${ENVE_ROLES}"
+
+export ENVE_EXTRA_PROFILE=
+export ENVE_EXTRA_CONFIG=
+export ENVE_EXTRA_ROLES=
+
+launch_prefix="ENVE_EXTRA_PROFILE=\"$ENVE_PROFILE\" ENVE_EXTRA_CONFIG=\"$ENVE_EXTRA_ROLES\" ENVE_ROLES=\"$ENVE_ROLES\""
+
+case $cmd in
+    noop)
+        ;;
+    define)
+            define_functions
+            return
+        ;;
+    auto)
+            define_functions
+            if [ $# -eq 0 ]; then
+                fire shell
+            else
+                fire run "$@"
+            fi
+        ;;
+    run)
+            define_functions
+            fire run "$@"
+        ;;
+    shell)
+            define_functions
+            fire shell
+        ;;
+    launch)
+            define_functions
+            exec "$ENVE_HOME/script/term.applescript" "$launch_prefix \"$0\" shell"
+        ;;
+    launchrun)
+            define_functions
+            exec "$ENVE_HOME/script/term.applescript" "$launch_prefix \"$0\" run $@"
+        ;;
+    bootstrap)
+            define_functions
+            exec "$ENVE_HOME/script/install_nix.sh"
+        ;;
+    '')
+            print_help >&2
+            exit 1
+        ;;
+esac
+
+
+
+
+

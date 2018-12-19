@@ -1,0 +1,82 @@
+#!/bin/sh
+
+
+# readlink_posix is a function
+readlink_posix () 
+{ 
+    ( if ! links="$(ls -ld "$@" | grep " -> ")"; then
+        return 1;
+    else
+        printf %s\\n "$links" | sed 's|.* -> ||';
+    fi )
+}
+# ensure_readlink_command is a function
+ensure_readlink_command () 
+{ 
+    if [ -n "${ENVE_READLINK:-}" ]; then
+        return 0;
+    else
+        if command -v 'greadlink' > /dev/null; then
+            ENVE_READLINK='greadlink';
+        else
+            if command -v 'readlink' > /dev/null; then
+                ENVE_READLINK='readlink';
+            else
+                ENVE_READLINK="readlink_posix";
+            fi;
+        fi;
+    fi
+}
+# split_path is a function
+split_path () 
+{ 
+    [ -n "$1" ] || return 1;
+    dirpath="${1%/*}";
+    if [ "$dirpath" = "" ]; then
+        basepath=".";
+        dirpath="";
+    else
+        if [ "$dirpath" = "$1" ]; then
+            basepath="$dirpath";
+            dirpath=".";
+        else
+            basepath="${1##*/}";
+        fi;
+    fi
+}
+# resolve_symlinks is a function
+resolve_symlinks () 
+{ 
+    ensure_readlink_command;
+    function cd_target () 
+    { 
+        split_path "$TARGET" || return 1;
+        NAME="$basepath";
+        cd "${dirpath:-/}" || return 1
+    };
+    ( TARGET="$1";
+    cd_target || return 1;
+    while [ -L "$NAME" ]; do
+        TARGET="$($ENVE_READLINK "$NAME")" || return 1;
+        cd_target || return 1;
+    done;
+    if [ "$NAME" = ".." ]; then
+        echo "$(cd "$(pwd -P)/.."; echo "$(pwd)")";
+    else
+        if [ "$NAME" = "." ]; then
+            echo "$(pwd -P)";
+        else
+            parent="$(pwd -P)";
+            if [ "$parent" = "/" ]; then
+                echo "$parent$NAME";
+            else
+                echo "$parent/$NAME";
+            fi;
+        fi;
+    fi )
+}
+
+ENVE_HOME=$(resolve_symlinks "$0")
+ENVE_HOME="${ENVE_HOME%/bin/enve}/libexec"
+export ENVE_HOME
+exec "$ENVE_HOME/enve/enve" "$@"

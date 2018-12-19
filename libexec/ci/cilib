@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+true '
+
+# CI architecture
+
+commit = /commits/$commithash/
+a commit dir structure reprsent a test reporter
+
+$commit/$runner.state       contain a single word = request|passed|failed
+$commit/$runner.log         contain a runner infomation and enve running log
+/README.md
+/branchs/$branch/report     text states report in markdown format
+/config.ini                 runner configure file
+
+
+CI server is a startup service or timer-based service
+CI server read /etc/ci to found repos and roles to process
+clone new .git dir with "refs/heads/ci" branch
+checkout "refs/heads/ci"
+parser "/config.ini" to determain which role to run
+for each role find commits which state is "request" to run
+test those commit in original .git dir
+for each commit run "enve test $gittree/enve.ini@$runner"
+this maybe step may redirect to "enve $gittree/enve.ini!build@$runner!test@$runner"
+
+
+redirect stdout/stderr to $commit/log
+if success set $commit/state to "passed" else set to "failed"
+add record to /README.md
+commit "refs/heads/ci" and fetch-rebase-pushwithlease it to remote
+
+egrep -lir --include=commits/*/state "request" .
+
+
+## runner configure
+
+must have runner name
+may have different roles or config
+may have test only subset of commits by setting the filter
+
+'
+
+REPO=git@github.com:ranlempow/bats-core.git
+
+rm -rf abc
+
+if ! git clone --single-branch --branch ci "$REPO" abc; then
+    git clone --depth 1 --no-checkout "$REPO" abc
+    cd abc
+    git checkout --orphan ci
+    git reset --hard
+    echo X > README.md
+    git add .
+    git commit -m "new ci branch"
+    git push origin ci
+fi
+

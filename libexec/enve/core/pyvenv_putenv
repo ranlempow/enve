@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+find_bin(){
+    end_path="${PATH%:}:"
+    for p in ${end_path//://${1} }; do
+        [ -x "$p" ] && echo $p
+    done
+}
+find_bin $1

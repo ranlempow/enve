@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+
+if [ -n "${HAVE_ENVE_URLUTILS:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_URLUTILS=1
+
+
+function parse_unified_download() {
+    true '
+URL schima
+
+https://
+git+ssh://git@github.com/username/my_private_repo
+
+curl -k sftp://root:0000@192.168.56.3:22
+
+use homebrew to get libssh2 supported curl
+
+'
+
+    url=$1
+    dest=$2
+    desttype=$3
+    pure=
+    # desttype = file | dir
+    if [ "$downloadtype" = "file" ]; then
+        case $url in 
+            http://*|https://*)
+                    dl="curl"
+                ;;
+            ftp://*|sftp://*|ftps://*)
+                    dl="curl"
+                ;;
+            scp://*)
+                    dl="scp"
+                ;;
+            git+ssh://*|git+file://*|git+http://*|git+http://*)
+                    # NOT_SUPPORT
+                    return 1
+                ;;
+            file://*)
+                    # unified_download "${url##file://}" "$dest" "$desttype"
+                    return
+                ;;
+            *://*)
+                    # syntex error
+                    return 1
+                ;;
+            /*)
+                    dl="cp"
+                    dl_postfix="$(pwd)"
+                ;;
+            *)
+                    if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
+                        $DEFAULT_UD_PARSER
+                        return
+                    else
+                        # NOT_MATCH
+                        return 1
+                    fi
+                ;;
+        esac
+    else
+        case $url in
+            http://*|https://*)
+                    # NOT_SUPPORT
+                    return 1
+                ;;
+            ftp://*|sftp://*|ftps://*)
+                    # NOT_SUPPORT
+                    return 1
+                ;;
+            scp://*)
+                    dl="scp -pr"
+                ;;
+            git+ssh://*@*|git+file://*@*|git+http://*@*|git+http://*@*)
+                    branch="${url##*@}"
+                    url="${url%%@*}"
+                    url=${url##git+}
+                    if [ ${#branch} -eq 40 ]; then
+                        # https://stackoverflow.com/questions/3489173/how-to-clone-git-repository-with-specific-revision-changeset?answertab=votes#tab-top
+                        commit="$branch"
+                        dl="git init; git remote add origin $url; git fetch origin $commit; git reset --hard FETCH_HEAD"
+                        pure=true
+                    else
+                        dl="git clone --depth 1 --branch $branch $url"
+                        dl_postfix="$(pwd)"
+                    fi
+                ;;
+            git+ssh://*|git+file://*|git+http://*|git+http://*)
+                    url=${url##git+}
+                    dl="git clone --depth 1 $url"
+                    dl_postfix="$(pwd)"
+                ;;
+            file://*)
+                    # unified_download "${url##file://}" "$dest" "$desttype"
+                    return
+                ;;
+            *://*)
+                    # syntex error
+                    return 1
+                ;;
+            /*)
+                    dl="cp -r"
+                    dl_postfix="$(pwd)"
+                ;;
+            *)
+                    if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
+                        $DEFAULT_UD_PARSER
+                        return
+                    else
+                        # NOT_MATCH
+                        return 1
+                    fi
+                ;;
+        esac
+    fi
+
+    decomp=
+    if [ "$desttype" = "dir" ]; then
+        # need change directory to destination directory at first.
+        case $url in
+            *.tar)
+                    decomp="tar -xvf"
+                ;;
+            *.tar.gz)
+                    decomp="tar -zxvf"
+                ;;
+            *.tar.bz2)
+                    decomp="tar -jxvf"
+                ;;
+            *.tar.xz)
+                    decomp="tar -Jxvf"
+                ;;
+            *.zip)
+                    decomp="unzip"
+                ;;
+        esac
+    fi
+
+}
+
+function unified_download() {
+    :
+}

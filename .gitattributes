@@ -1,0 +1,5 @@
+* text=auto
+libexec/* eol=lf
+test/* eol=lf
+*.sh eol=lf
+*.cmd eol=crlf

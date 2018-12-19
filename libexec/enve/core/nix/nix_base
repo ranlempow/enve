@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+config=$(cat)
+. "$UTILS"
+
+nix_root=$(echo "$config" | tail_var "nix.root")
+env_root="$(
+	NIX_REMOTE=daemon \
+	NIX_PATH=/nix/var/nix/profiles/per-user/root/channels \
+$nix_root/bin/nix-build --no-out-link - <<'EOF'
+with import <nixpkgs> { };
+buildEnv {
+  name = "dummy";
+  paths = [
+  	nix
+  	coreutils diffutils findutils which file
+  	gnused gnugrep gawkInteractive gnutar gzip bzip2 less gettext
+  	git-lfs git openssl_1_1_0
+  	bashInteractive bashCompletion
+  	python34
+  ];
+}
+EOF
+)"
+
+out_join PATH ':'
+out_var ENV_ROOT "$env_root"
+out_list PATH "$env_root/bin"
+out_var SHELL "$env_root/bin/bash"
+out_var HOME "$HOME"
+out_var USER "$USER"
+out_var TERM "$TERM"
+out_var SSH_AUTH_SOCK "$SSH_AUTH_SOCK"
+out_var TMPDIR "$TMPDIR"
+
+(
+ 	export PATH=""
+ 	eval "$(/usr/libexec/path_helper -s)"
+ 	IFS=':'
+ 	for p in $PATH; do
+ 		out_list PATH "$p"
+ 	done
+)

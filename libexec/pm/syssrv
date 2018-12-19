@@ -1,0 +1,332 @@
+#!/usr/bin/env dash
+
+# http://www.launchd.info/
+
+# macos
+# -----
+# launchctl load ~/Library/LaunchAgents/com.example.app.plist
+# launchctl unload ~/Library/LaunchAgents/com.example.app.plist
+
+# cygwin
+# ------
+# http://web.mit.edu/cygwin/cygwin_v1.3.2/usr/doc/Cygwin/cygrunsrv.README
+# https://gist.github.com/samhocevar/00eec26d9e9988d080ac
+
+true '
+service <service> start
+cygrunsrv --start <svc_name>
+launchctl start com.example.app
+/etc/init.d/<service> start
+systemctl start <service>
+
+service <service> stop
+cygrunsrv --stop <svc_name>
+launchctl stop com.example.app
+/etc/init.d/<service> stop
+systemctl stop <service>    
+
+service <service> restart
+/etc/init.d/<service> restart
+systemctl restart <service>
+
+service <service> status
+launchctl list | grep com.example.app
+/etc/init.d/<service> status
+systemctl status <service>
+
+[edit /etc/rc.conf <service>_enable="YES"]| service <service> rcvar
+cygrunsrv --install svc_name --path /cygwin/style/path/to/daemon.exe --args "<args>" --user <user name> --passwd <password>
+launchctl load -w ~/Library/LaunchAgents/com.example.app.plist
+rc-update add <service> <runlevel>
+systemctl enable <service>  
+
+[edit /etc/rc.conf <service>_enable="NO"]
+cygrunsrv --remove <svc_name>
+launchctl unload -w ~/Library/LaunchAgents/com.example.app.plist
+rc-update del <service> <runlevel>
+systemctl disable <service>
+
+
+
+Show known startup script:
+rc-status|rc-update show
+systemctl list-units
+
+Show all startup scripts:
+ls /etc/init.d/|rc-update -v show
+systemctl list-unit-files --type=service
+
+
+systemctl kill <service> 
+journalctl _SYSTEMD_UNIT=<service>.service
+'
+
+
+
+
+bsdinit_detect() {
+    [ -e /etc/rc.subr ]
+}
+
+bsdinit_enable() {
+    sed -e 's/.*'"${service}"'_enable=.*/'"${service}"'_enable="YES"/' /etc/rc.conf > /etc/rc.conf
+}
+bsdinit_disable() {
+    sed -e 's/.*'"${service}"'_enable=.*/'"${service}"'_enable="NO"/' /etc/rc.conf > /etc/rc.conf
+}
+
+bsdinit_create() {
+    cat > /etc/rc.d/$service << EOF
+#!/bin/sh
+#
+
+# PROVIDE: foo
+# REQUIRE: bar_service_required_to_precede_foo
+
+. /etc/rc.subr
+
+name="$service"
+rcvar=${service}_enable
+command="/usr/local/bin/$bin"
+
+load_rc_config \$name
+run_rc_command "\$1"
+EOF
+
+}
+bsdinit_start='service $service start'
+bsdinit_stop='service $service stop'
+bsdinit_restart='service $service restart'
+bsdinit_status='service $service status'
+bsdinit_list='service -e'
+bsdinit_listall='service -l'
+
+
+
+
+
+
+openrc_detect() {
+    [ -d /etc/inid.d ] && [ -d /etc/conf.d ]
+}
+
+openrc_enable() {
+    rc-update add $service default
+}
+
+openrc_enable() {
+    rc-update del $service default
+}
+
+openrc_create() {
+    # refs: https://github.com/OpenRC/openrc/blob/master/service-script-guide.md
+    cat > /etc/init.d/$service << EOF
+#!/sbin/openrc-run
+name="$service"
+command="/usr/bin/nrpe"
+command_args="--config=/etc/nagios/nrpe.cfg"
+# pidfile="/run/${RC_SVCNAME}.pid"
+command_background=true
+
+depend() { :; }
+EOF
+}
+
+openrc_start='rc-service $service start'
+openrc_stop='rc-service $service stop'
+openrc_restart='rc-service $service restart'
+openrc_status='rc-service $service status'
+openrc_list='rc-status'
+openrc_listall='rc-status -s'
+
+
+
+runit_detect() {
+    [ -d /etc/sv ]
+}
+
+runit_enable() {
+    ln -s /etc/sv/$service /etc/runit/runsvdir/default/$service
+}
+
+runit_disable() {
+    rm /etc/runit/runsvdir/default/$service
+}
+
+runit_create() {
+    mkdir /etc/sv/$service
+    cat > /etc/sv/$service << EOF
+
+EOF
+}
+
+runit_start='sv start $service'
+runit_stop='sv stop $service'
+runit_restart='sv restart $service'
+runit_status='sv status $service'
+runit_list() {
+    ls /etc/runit/runsvdir/default
+}
+runit_listall() {
+    ls /etc/sv
+}
+
+
+sysvinit_detect() {
+    [ -d /etc/rc.d ] && [ -d /etc/init.d ]
+}
+
+sysvinit_enable() {
+    ln -s /etc/init.d/$service /etc/rc.d/rc{2,3,4}.d/S90$service 
+}
+
+sysvinit_disable() {
+    rm /etc/rc.d/rc{2,3,4}.d/S90$service 
+}
+
+sysvinit_create() {
+    cat > /etc/init.d/$service << EOF
+
+#!/bin/sh
+
+. /etc/rc.conf
+. /etc/rc.d/functions
+
+DAEMON=crond
+ARGS=
+
+[ -r /etc/conf.d/$DAEMON ] && . /etc/conf.d/$DAEMON
+
+PID=$(get_pid $DAEMON)
+
+case "$1" in
+ start)
+   stat_busy "Starting $DAEMON"
+   [ -z "$PID" ] && $DAEMON $ARGS &>/dev/null
+   if [ $? = 0 ]; then
+     add_daemon $DAEMON
+     stat_done
+   else
+     stat_fail
+     exit 1
+   fi
+   ;;
+ stop)
+   stat_busy "Stopping $DAEMON"
+   [ -n "$PID" ] && kill $PID &>/dev/null
+   if [ $? = 0 ]; then
+     rm_daemon $DAEMON
+     stat_done
+   else
+     stat_fail
+     exit 1
+   fi
+   ;;
+ restart)
+   $0 stop
+   sleep 1
+   $0 start
+   ;;
+ *)
+   echo "usage: $0 {start|stop|restart}"  
+esac
+EOF
+}
+
+sysvinit_start='sv start $service'
+sysvinit_stop='sv stop $service'
+sysvinit_restart='sv restart $service'
+sysvinit_status='sv status $service'
+sysvinit_list() {
+    ls /etc/rc.d/rc2.d
+    ls /etc/rc.d/rc3.d
+    ls /etc/rc.d/rc4.d
+}
+sysvinit_listall() {
+    ls /etc/init.d
+}
+
+
+
+systemd_detect() {
+    [ -d /etc/systemd ]
+}
+
+systemd_enable() {
+    systemctl enable $service
+}
+
+systemd_disable() {
+    systemctl disable $service
+}
+
+systemd_create() {
+    # contname="$(basename $1)"
+
+    # cat > "/run/systemd/$service.service" << EOF
+    cat > "/etc/systemd/system/$service.service" << EOF
+[Unit]
+Description=${contname} Namespace Daemon
+Before=cont-${contname}.service
+StopWhenUnneeded=true
+
+[Service]
+ExecStart=$0 serveroot $1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+systemd_start='systemctl start $service'
+systemd_stop='systemctl stop $service'
+systemd_restart='systemctl restart $service'
+systemd_status='systemctl status $service'
+systemd_list='systemctl'
+systemd_listall='systemctl list-unit-files --type=service'
+
+
+cygrunsrv_detect() {
+    command -v cygrunsrv >/dev/null 2>&1
+}
+
+cygrunsrv_enable() {
+    # sc config $service start=auto
+    :
+}
+
+cygrunsrv_disable() {
+    # sc config $service start=demand
+    :
+}
+
+cygrunsrv_create() {
+    cygrunsrv --install $service \
+        --path /cygwin/style/path/to/daemon.exe \
+        --args "<args>" \
+        --user <user name> --passwd <password>
+}
+
+cygrunsrv_remove='cygrunsrv --remove $service'
+cygrunsrv_start='cygrunsrv --start $service'
+cygrunsrv_stop='cygrunsrv --stop $service'
+cygrunsrv_restart='cygrunsrv --stop $service; cygrunsrv --start $service'
+cygrunsrv_status='sc query $service'
+cygrunsrv_listall='sc query type= service state= all'
+
+
+launchctl_detect() {
+    :
+}
+
+launchctl_enable() {
+    :
+}
+
+launchctl_disable() {
+    :
+}
+
+launchctl_create() {
+    :
+}

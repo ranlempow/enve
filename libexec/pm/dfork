@@ -1,0 +1,314 @@
+#!/bin/sh
+
+# dfork() {
+#     timeout_sec=$1
+#     start_time=$(date +"%s")
+#     shift
+
+#     tf=$(mktemp)
+#     rm $tf
+#     mkfifo $tf
+
+#     "$@" >$tf &
+#     pid=$!
+#     while read -r line; do
+#         echo $line.y
+#     done <$tf &
+#     handler_pid=$!
+
+#     retcode=
+#     while [ $(date +"%s") -lt $(($start_time + $timeout_sec + 1)) ]; do
+#         sleep 1
+#         if [ -z "$(ps -o pid= -p $pid || true)" ]; then
+#             wait $pid
+#             retcode=$?
+#             break
+#         fi
+#     done
+#     if [ -z "$retcode" ]; then
+#         if kill -TERM $pid; then
+#             kill -KILL $pid || true
+#         fi
+#         echo "timeout $pid" >&2
+#     else
+#         echo "safe $retcode" >&2
+#     fi
+# }
+# echo "dfork pid:$$"
+# dfork 5 bash -c 'sleep 1; echo a; sleep 100; echo b; exit 1'
+
+
+
+
+
+
+
+startDependencies() {
+    deps=$(getdeps $spot)
+    if [ -n "$deps" ]; then
+        for dep in deps; do
+            outi $dep:startRequest
+        done
+    else
+        outi $spot:dependExist
+    fi
+}
+
+calculateDependencies() {
+    :
+}
+
+liveCheck() {
+    return 0
+}
+
+list_process_children () {
+    children="$(ps -o "pid= ppid=" | awk '$2=='$1' {print $1}')"
+    for pid in $children; do
+        list_process_children "$pid"
+    done
+    echo "$children"
+}
+
+
+kill_children() {
+    targets="$(list_process_children $1)$(echo $1)"
+    if [ -z "$(ps -p "$targets")" ]; then
+        return 0
+    fi
+    kill -TERM $targets
+    count=0
+    while [ $count -lt 5 ]; do
+        if [ -z "$(ps -p "$targets")" ]; then
+            return 0
+        fi
+        count=$(($count + 1))
+    done
+    kill -KILL $targets
+}
+
+cleanup() {
+    if [ -f "$SPOTHOME/run" ]; then
+        kill_children "$(cat $SPOTHOME/run)"
+    fi
+    rm $SPOTHOME/run
+}
+
+run() {
+    cleanup
+    (
+        "$@"
+        ret=$?
+        prog=$1
+        if [ $ret -eq 0 ]; then
+            outi $spot:execPass.$prog
+        else
+            outi $spot:execFail.$prog
+        fi
+    ) &
+    pid=$!
+    echo $pid> "$SPOTHOME/run"
+}
+
+execStartPre() {
+    rm "$SPOTHOME/retry"
+    :
+}
+
+execRun() {
+    retry_count="$(cat "$SPOTHOME/retry || echo 0")"
+    if [ "$retry_count" -gt 2 ]; then
+        outi $spot:retryExceeded
+        return 0
+    fi
+    :
+}
+
+execStop() {
+    :
+}
+
+execStopPost() {
+    :
+}
+
+
+addRetryCount() {
+    retry_count="$(cat "$SPOTHOME/retry || echo 0")"
+    echo $(($retry_count + 1)) > "$SPOTHOME/retry"
+}
+
+
+
+fsm2() {
+    spot=$1
+    state=$(cat $SPOTHOME/state)
+    input=$2
+
+    sets() {
+        echo $1 >$SPOTHOME/state
+    }
+    outi() {
+        echo $1 >$sinput
+    }
+
+case $state/$input in
+
+    STOPPED/startRequest)               sets STOPPED.SCHE_START;    run startDependencies; ;;
+    FAILURE.*/startRequest)             sets STOPPED.SCHE_START;    run startDependencies; ;;
+
+    STOPPED.SCHE_START/dependExist)     sets START_PREPARING;       run execStartPre; ;;
+    STOPPED.SCHE_START/dependFail)      sets STOPPED;               run calculateDependencies; ;;
+    
+    START_PREPARING/execPass)           sets STARTING;              run execRun; ;;
+    START_PREPARING/execFail)           sets FAILURE.START;         run calculateDependencies; ;;
+    START_PREPARING/timeout)            sets FAILURE.START;         run calculateDependencies; ;;
+    
+    STARTING/execPass)                  sets STOPPED;                 ; ;;
+    STARTING/execFail)                  sets WAIT_RETRYING;         run addRetryCount; ;;
+    STARTING/retryExceeded)             sets FAILURE.START;         run calculateDependencies; ;;
+    STARTING/timeout)                   sets LIVE_CHECKING;         run liveCheck; ;;
+
+    LIVE_CHECKING/execPass)             sets RUNNING;               run calculateDependencies; ;;
+    LIVE_CHECKING/execFail)             sets WAIT_RETRYING;         run addRetryCount; ;;
+    
+    WAIT_RETRYING/timeout)              sets STARTING;              run execRun; ;;
+    WAIT_RETRYING/stopRequest)          sets STOPPED;               run calculateDependencies; ;;
+    WAIT_RETRYING/dependFail)           sets FAILURE.START;         run calculateDependencies; ;;
+    
+    # ===================
+    
+    RUNNING*/resourceGone)              sets STOPPED.FAILED;        run forceStopDependencies?; ;;
+    
+    # stopped by accident
+    STOPPED.FAILED/stopRequest)         sets STOPPED;               run execStopPost; ;;
+    STOPPED.FAILED/timeout)             sets STOPPED.MAY_RESTART;   run execStopPost; maybeStart?; ;;
+    STOPPED.MAY_START/execPass)         sets STOPPED.SCHE_START;    run startDependencies; ;;
+    STOPPED.MAY_START/execFail)         sets STOPPED;               ;;
+    
+    # TODO: with resourceGone
+    RUNNING/stopRequest)                sets RUNNING.SCHE_STOP      run StopDependencies; ;;
+    RUNNING/restartRequest)             sets RUNNING.WANT_RESTART   run execRestartPre; ;;
+    RUNNING/reloadRequest)              sets RUNNING.SCHE_RELOAD    run reloadDependencies; ;;
+    
+    # ===================
+
+    RUNNING.SCHE_STOP/dependStopped)    sets STOPPING;              run execStop; ;;
+    STOPPING/resourceGone)              sets STOPPED;               run execStopPost; ;;
+    STOPPING/timeout)                   sets FORCE;                 run forceExecStop; ;;
+    
+    FORCE/resourceGone)                 sets STOPPED;               run execStopPost; ;;
+    FORCE/timeout)                      sets FATAL;                 ;;
+    
+    # ===================
+
+    RUNNING.WANT_RESTART/execPass)      sets STOPPING.RESTARING;    run execStop; ;;
+    RUNNING.WANT_RESTART/execFail)      sets RUNNING;               ;;
+    RUNNING.WANT_RESTART/timeout)       sets RUNNING;               ;;
+    STOPPING.RESTARING/resourceGone)    sets STOPPED.SCHE_RESTART;  run restartDependencies; ;;
+    STOPPING.RESTARING/timeout)         sets FORCE.RESTARING;       run forceExecStop; ;;
+    FORCE.RESTARING/resourceGone)       sets STOPPED.SCHE_RESTART;  run restartDependencies; ;;
+    FORCE.RESTARING/timeout)            sets FATAL;                 ;;
+    
+    STOPPED.SCHE_RESTART/dependStopped) sets STOPPED.WAIT_RESTART;  ;;
+    STOPPED.SCHE_RESTART/timeout)       ???;;
+    STOPPED.WAIT_RESTART/timeout)       sets STOPPED.SCHE_START;    ;;
+    
+    # ===================
+
+    RUNNING.SCHE_RELOAD/dependReloaded  -> RUNNING.RELOADING    => execReload
+    RUNNING.RELOADING/conditionPass     -> RUNNING
+    RUNNING.RELOADING/conditionFail     ->
+    RUNNING.RELOADING/timeout           ->
+
+    # ===================
+
+    FAILURE.*/timeout)                  sets STOPPED;               ;;
+    FAILURE.*/stopRequest)              sets STOPPED;               ;;
+    FATAL/stopRequest)                  sets STOPPED;               ;;
+esac
+}
+
+
+
+
+fsm() {
+    sinput=$(mktemp)
+    rm $sinput
+    mkfifo $sinput
+
+    # ticker process
+    (
+        while true; do
+            sleep 1
+            echo tick>$sinput
+        done
+    ) &
+    ticker_pid=$!
+
+    main_pid=$?
+    # protect process
+    # ( (
+    #     while true; do
+    #         sleep 1
+    #         if ! ps -p $main_pid > /dev/null; then
+    #             killall
+    #             break
+    #         fi
+    #     done
+    # ) &) &
+
+    spots=./spots
+
+    true '
+        pipe: cat ./pipe
+        sock: nc -kU ./socket
+        tcp: nc -kl localhost 5487
+        udp: nc -klu localhost 5487
+        tls: openssl s_server -accept 443
+        tls: openssl s_client -connect localhost 443 
+    '
+    while true; do
+        if read -r line; then
+            case $line in
+                x)
+                        echo X
+                        break
+                    ;;
+                y)
+                        echo x>$sinput
+                    ;;
+                *:*)
+                        statename=${line%%:*}
+                        input=${line#*:}
+                        fsm2 "$statename" "$(cat $spots/$statename/state)" "$input"
+                    ;;
+                tick)
+                        # TODO: table: STATE -> timeout wait time
+                        cur=$(date +"%s")
+                        for statefile in $spots/*/state; do
+                            statename=$(basename $(dirname $statefile))
+                            last_state_time=$(stat -c %Y "$statefile")
+                            if [ $cur -gt $(($last_state_time + 100)) ]; then
+                                echo $statename:timeout >$sinput
+                            fi
+                        done
+                        # TODO: resource check
+                    ;;
+                FATAL)
+                    ;;
+                suspend)
+                    ;;
+            esac
+        else
+            sleep 0.1
+        fi
+    done <$sinput
+    echo "done"
+    kill $ticker_pid
+}
+
+# fsm
+
+
+

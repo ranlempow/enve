@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ENVE_HOME="$(dirname $0)/.."
+. "$ENVE_HOME/enve/base"
+. "$ENVE_HOME/enve/envelib"
+
+
+builtin_loader() {
+    # table_subset "module\.[[:alnum:]]*" | as_postfix "module\." | \
+    # while IFS="${tab}" read -r name value; do
+    # echo "$ENVE_HOME"
+    if [ -n "$(table_subset "python\..*")" ]; then
+        echo "$ENVE_HOME/enve/core/pyvenv"
+    fi
+    if [ -n "$(table_subset "nodejs\..*")" ]; then
+        echo "$ENVE_HOME/enve/core/nodejs"
+    fi
+    if [ -n "$(table_subset "ruby\..*")" ]; then
+        echo "$ENVE_HOME/enve/core/ruby"
+    fi
+    # echo "$TABLE" >&2
+    # echo "$(table_subset "module" )" >&2
+    # echo "$(table_subset "module" | as_value)" >&2
+    
+    { table_subset "module" | as_value || true; } | \
+    while read -r value; do
+        # echo o${value}o >&2
+        if [ -d "$ENVE_HOME/enve/core/$value" ]; then
+            echo "$ENVE_HOME/enve/core/$value"
+            # return 0
+        elif [ -d "$ENVE_HOME/enve/contrib/$value" ]; then
+            echo "$ENVE_HOME/enve/contrib/$value"
+            # return 0
+        elif [ -d "$(resolve_path "$value")" ]; then
+            echo "$value"
+            # return 0
+        fi
+    done
+}
+
+path_loader() {
+    table_subset "module\.[[:alnum:]]*\.path" | as_postfix "module\." | {
+        while IFS="${tab}" read -r name value; do
+            name="${name%.path}"
+            path="$(resolve_path "$value")"
+            if [ -d "$path" ]; then
+                echo "$path"
+                return 0
+            fi
+        done
+    } || return 0
+}
+
+self_loader() {
+    echo "$ENVE_HOME/enve"
+}
+
+echo IN $0 >&2
+TABLE="$(cat)"
+builtin_loader
+path_loader
+self_loader
+echo OUT $0 >&2

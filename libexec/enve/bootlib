@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+
+
+if [ -n "${HAVE_ENVE_BOOTLIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_BOOTLIB=1
+
+
+
+# if [ ! -d "/nix/store" ]; then
+#     (
+#         echo "warning: nix is not installed on this system."
+#         echo ""
+#         echo "you should prepare the essential tools that required by enve."
+#         echo "those tools includes bash, curl, shasum, md5sum, tar, mktemp, maybe more"
+#         echo "and all tools in posix definition."
+#         echo "we recommand install nix as soon as possible with:"
+#         echo "    enve bootstrap"
+#     ) >&2
+# # elif [ -z "${ENVE_BOOTED:-}" ]; then
+# elif [ "$PATH" = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" ]; then
+#     :
+# elif false; then
+#     # if [ "$(uname)" = "Darwin" ]; then
+#         env_root=$(
+#         NIX_REMOTE=daemon \
+#         NIX_PATH=nixpkgs=http://d3g5gsiof5omrk.cloudfront.net/nixpkgs/nixpkgs-18.09pre132003.13e74a838db/nixexprs.tar.xz \
+#         NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
+#         /nix/var/nix/profiles/default/bin/nix-build --no-out-link - <<'EOF'
+#         with import <nixpkgs> { };
+#         buildEnv { 
+#           name = "gnu-environment";
+#           paths = [
+#             coreutils diffutils findutils binutils which file
+#             gnused gnugrep gawkInteractive gnutar gzip bzip2 less gettext
+#             git openssl_1_1_0 gnupatch
+#             xz unzip
+#             bashInteractive
+#             time rsync
+#             # openssh curl utillinux mktemp
+#           ];
+#         }
+# EOF
+#         )
+#         shell="$env_root/bin/bash"
+#         BOOT_PATH="$env_root/bin:$PATH"
+#     # else
+#     #     # linux platform
+#     #     shell="$(which bash)"
+#     # fi
+#     PATH="$BOOT_PATH" SHELL="$shell" ENVE_BOOTED=1 exec "$shell" "$0" "$@"
+# fi
+
+
+ENVE_DEPENDCIES="curl git openssh"   # bash
+
+basetool_install_command() {
+    kernal_name="$(uname -s)"
+
+    case "$kernal_name" in
+        Darwin)
+                if hascmd brew; then
+                    cmd='brew install'
+                elif /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"; then
+                    cmd='brew install'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        Linux)
+                if hascmd apt-get; then
+                    cmd='sudo apt-get install'
+                elif hascmd yum; then
+                    cmd='sudo yum install'
+                elif hascmd pacman; then
+                    cmd='sudo pacman -S'
+                elif hascmd apk; then
+                    # alpine
+                    cmd='sudo apk add'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        FreeBSD)
+                if hascmd pkg; then
+                    cmd='sudo pkg install'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        MINGW32*|MSYS*)
+                if hascmd pacman; then
+                    cmd='pacman -S'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        CYGWIN*)
+                if [ -f "/setup-x86_64.exe" ]; then
+                    cmd='/setup-x86_64.exe -q --no-verify -R "$(cygpath /)" -l "xxx" -P'
+                elif [ -f "/setup-x86.exe" ]; then
+                    cmd='/setup-x86_64.exe -q --no-verify -R "$(cygpath /)" -l "xxx" -P'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        *)
+                error "unsuported operating system $kernal_name"
+                return 1
+            ;;
+    esac
+}
+
+is_need_toybox() {
+    { ! hascmd nc; } || \
+    { ps - 2>&1 | tail + 1 | grep BusyBox; } || \
+    { ! hascmd top; }
+}
+
+basic_require_ensure() {
+    deps="$ENVE_DEPENDCIES"
+    kernal_name="$(uname -s)"
+    case "$kernal_name" in
+        # procps-ng for 'top'
+        MINGW32*|MSYS*|CYGWIN*) deps="$deps procps-ng cygrunsrv" ;;
+    esac
+    if is_need_toybox; then
+        deps="$deps toybox"
+    fi
+    
+    needed=
+    for dep in $deps; do
+        hascmd $dep || needed="$needed${needed:+ }$dep"
+    done
+    if [ -n "$needed" ]; then
+        # thoroughly boot
+        if [ -n "${ENVE_BOOT_THOROUGH:-}" ]; then
+            if ! eval "$(basetool_install_command) $needed"; then
+                error "basic required program install failed"
+                return 1
+            fi
+        else
+            error "you need install basic required program manually by: "
+            error "  '$(basetool_install_command) $needed'"
+            error "or run again with --thorough option."
+            return 1
+        fi
+    fi
+}
+
+reexec_if_reqver_not_match() {
+    selfver="$(grep '# __VERSION__=' "$(readlinkf "$0")")"
+    selfver="$(eval "${selfver#??}"; echo "${__VERSION__}")"
+    if [ -n "${reqver:-}" ] && [ "$selfver" != "$reqver" ]; then
+        exec "$reqverdir/$(basename $0)" "$@"
+    fi
+}
+
+system_install_default_version() {
+    :
+}

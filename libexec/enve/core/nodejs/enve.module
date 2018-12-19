@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. "$1" define
+
+echo IN $0 >&2
+
+resolve_nodejs() {
+    TABLE=$(cat "${configfile:--}")
+    echo "$TABLE"
+    NODE2NIX_TMP="$HOME/.cache/enve/node2nix-tmp"
+    if [ -d "$NODE2NIX_TMP" ]; then
+        rm -r "$NODE2NIX_TMP"
+    fi
+    mkdir -p "$NODE2NIX_TMP"
+
+    node_version="$(table_tail "nodejs\.version")"
+    node_version="${node_version:-6}"
+    node_version="${node_version%%.*}"
+    if [ "$node_version" -gt 7 ]; then
+        node2nix_node_version=8
+    else
+        node2nix_node_version=6
+    fi
+    node_dev="$(table_tail "nodejs\.development")" || node_dev=
+    
+    if [ -f "$(resolve_path "package-lock.json")" ]; then
+        node_lockfile=1
+    fi
+
+    # tmp_project="$NODE2NIX_TMP/stage1"
+    # mkdir -p "$tmp_project"
+    # cp "$(resolve_path "package.json")" "$tmp_project/package.json"
+    # (
+    #     cd "$tmp_project"
+    #     npm install --package-lock-only >&2
+    # )
+    # exit 1
+
+    
+    package_json="$(resolve_path "package.json")"
+    echo "PACKAGE.JSON: $package_json" >&2
+    if [ ! -f "$(resolve_path "package.json")" ]; then
+        
+        packages="
+$({ table_subset "nodejs\.require\.packages" || true; } | as_value)
+$({ table_subset "nodejs\.require\.packages\..*" | as_postfix "nodejs\.require\.packages\." || true; })
+"
+        if [ -z "${packages//[[:space:]]/}" ]; then
+            echo "error: package.json not found" >&2
+            return 1
+        fi
+        mkdir -p "$NODE2NIX_TMP/tmp_project"
+        package_json="$NODE2NIX_TMP/tmp_project/package.json"
+        echo '
+{
+  "name": "enve-node-env",
+  "version": "0.0.1",
+  "description": "enve-node-env",
+  "dependencies": {
+' > "$package_json"
+        
+        
+        pkgs="$(echo "$packages" | while read -r name ver; do
+            if [ -n "$name" ]; then
+                echo "node-packages: $name, version :${ver:-}" >&2
+                if [ -z "$ver" ]; then
+                    ver=latest
+                fi
+                echo "    \"$name\": \"$ver\"${newl}"
+            fi
+        done)"
+        echo "$pkgs" >&2
+        echo "$(echo "$pkgs" | paste -sd ",${newl}" -)" >&2
+        echo "$pkgs" | paste -sd ",${newl}" - >> "$package_json"
+        echo "${newl}  }${newl}}" >> "$package_json"
+    fi
+    # exit 1
+
+    # '--bypass-cache' maybe useful, when: cache-mode is 'only-if-cached'
+    echo node2nix --nodejs-$node2nix_node_version \
+             ${node_dev:+ --development} \
+             ${node_lockfile:+ --lock "$(resolve_path "package-lock.json")"} \
+             --input "$package_json" \
+             --output "$NODE2NIX_TMP/node-packages.nix" \
+             --composition "$NODE2NIX_TMP/default.nix" \
+             --node-env "$NODE2NIX_TMP/node-env.nix" >&2
+             # --bypass-cache
+
+    node2nix --nodejs-$node_version \
+             ${node_dev:+ --development} \
+             ${node_lockfile:+ --lock "$(resolve_path "package-lock.json")"} \
+             --input "$package_json" \
+             --output "$NODE2NIX_TMP/node-packages.nix" \
+             --composition "$NODE2NIX_TMP/default.nix" \
+             --node-env "$NODE2NIX_TMP/node-env.nix"
+             # --bypass-cache 
+
+
+    # patch to resolve collision between $out/bin
+    # ln -s $out/lib/node_modules/.bin $out/bin
+    sed -i '/ln -s \$out\/lib\/node_modules\/.bin/d' "$NODE2NIX_TMP/node-env.nix"
+    
+    out_var "nix.packages" "nodejs-${node_version}_x"
+    out_var "nix.packages" "(import $NODE2NIX_TMP/default.nix {pkgs=pkgs;}).shell.nodeDependencies"
+    out_list PATH "\$ENV_ROOT/lib/node_modules/.bin"
+    out_join NODE_PATH ';'
+    out_list NODE_PATH "\$ENV_ROOT/lib/node_modules"
+
+}
+
+resolve_nodejs

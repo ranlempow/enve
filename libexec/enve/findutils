@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+
+
+if [ -n "${HAVE_ENVE_FINDUTILS:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_FINDUTILS=1
+
+
+tab="$(printf '\tx')"
+tab="${tab%x}"
+feed="$(printf '\fx')"
+feed="${feed%x}"
+vtab="$(printf '\vx')"
+vtab="${vtab%x}"
+newl="$(printf '\nx')"
+newl="${newl%x}"
+
+
+
+fnmatch_pathname_transform() {
+    pat="$1"
+    pat="${pat//\/\*\*\//\/!!!!!\/}"
+    pat="${pat//\*\*\//!!!!!\/}"
+    pat="${pat//\/\*\*/\/!!!!!}"
+    if [ "$pat" != "${pat//\*\*/}" ]; then
+        return 1
+    fi
+    pat="${pat//\*/\+\(\[\!\/\]\)}"
+    pat="${pat//\?/\@\(\[\!\/\]\)}"
+    pat="${pat//!!!!!\//\@\(\+\(\?\)\/\|\)}"   # replace to @(+(?)/|)
+    pat="${pat//!!!!!/\*}"
+
+    printf %s\\n "$pat"
+}
+
+
+# POSIX: 2.13.1 Patterns Matching a Single Character
+# http://pubs.opengroup.org/onlinepubs/009696899/utilities/xcu_chap02.html#tag_02_13_01
+fnmatch () { case "$2" in $1) return 0 ;; *) return 1 ;; esac ; }
+
+
+fnmatch_pathname () {
+    # only support in bash,zsh,ksh
+    # "*" matches anything except "/", "?" matches any one character except "/"
+    # "[/]**[/]" matches zero or more directories
+    pat="$(fnmatch_pathname_transform "$1")"
+    fnmatch "$pat" "$2"
+}
+
+
+make_gitignore_filter() {
+    # implement gitignore format
+    # output '__gf' function code, '__gf' filter filename per line from stdin.
+    # https://git-scm.com/docs/gitignore
+    #
+    # NOTE: this function will not respect this rule
+    # `it would only find a match with a directory if the pattern ends with a slash ("/").`
+    #
+
+    echo 'function __gf() {'
+    echo '  paths="$(cat)"'
+    echo '  origin_paths="$paths"'
+    echo "$1" | while IFS="$newl" read -r line; do
+        # A line starting with # serves as a comment
+        [ -z "$line" ] || [ "${line:0:1}" = "#" ] && continue
+        # Trailing spaces are ignored unless they are quoted with backslash ("\").
+        line="${line%%+([!\\][[:space:]])}"
+
+        if ! pat="$(fnmatch_pathname_transform "$line")"; then
+            return 1
+        fi
+        if [ "${pat:0:1}" = '!' ] && [ "${pat:0:2}" != '\!' ]; then
+            pat=${pat:1}
+            echo 'paths="$paths${paths:+$newl}$(echo "$origin_paths" | while IFS="$newl" read -r path; do'
+            echo '  case "$path" in '"$pat"') printf %s\\n "$path";; esac ;'
+            echo 'done)"'
+        else
+            echo 'paths="$(echo "$paths" | while IFS="$newl" read -r path; do'
+            echo '  case "$path" in '"$pat"') continue;; esac ; printf %s\\n "$path" ;'
+            echo 'done)"'
+        fi
+    done
+    echo 'echo "$paths"'
+    echo '}'
+}
+
+gitignore_filter() {
+    # only support in bash,zsh,ksh
+    (
+        eval "$(make_gitignore_filter "$1")"
+        shopt -s extglob
+        __gf
+    )
+}
+
+_files_stats() {
+    content="$1"
+    shift
+    for path in "$@"; do
+        (
+            set -euo pipefail
+            dirn=
+            if [ -z "$path" ]; then
+                continue
+            elif [ -d "$path" ]; then
+                dirn="$path"
+                finded=.
+            elif [ "${path/\//}" = "$path" ]; then
+                # '$path' contain '/'
+                dirn="${path%/*}"
+                finded="${path##*/}"
+            else
+                # '$path' NOT contain '/'
+                dirn=
+                finded="$path"
+            fi
+            if [ -n "$dirn" ]; then
+                cd "$dirn" || continue
+            fi
+            if [ ! -e "$finded" ]; then
+                continue
+            fi
+            # find "$finded" \
+            #   \( ! -type d -printf "%y %m %U %G %s %TY/%Tm/%Td %TH:%TM:%TS %p\\n" \) -o \
+            #   \( -type d -printf "%y %m %U %G 0 %TY/%Tm/%Td %TH:%TM:%TS %p\\n" \)
+            LANG=C ls -ln $(find "$finded" ! -type d) | awk '!($2="")' 
+            if [ -n "$content" ]; then
+                md5sum $(find "$finded" -type f)
+            fi
+        )
+    done
+}
+
+files_stats() {
+    _files_stats "" "$@"
+}
+
+files_stats_contents() {
+    _files_stats "content" "$@"
+}
