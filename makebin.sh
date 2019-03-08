@@ -15,12 +15,13 @@ for sc in enve/enve; do
 # $(type readlink_posix)
 # $(type ensure_readlink_command)
 # $(type split_path)
+# $(type _cd_target)
 # $(type resolve_symlinks)
 
 ENVE_HOME=\$(resolve_symlinks "\$0")
 ENVE_HOME="\${ENVE_HOME%/bin/$name}/libexec"
 export ENVE_HOME
-exec "\$ENVE_HOME/$sc" "\$@"
+exec "\$SHELL" "\$ENVE_HOME/$sc" "\$@"
 EOF
     chmod 755 "$target"
 done

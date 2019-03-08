@@ -1,0 +1,648 @@
+#!/usr/bin/env bash
+
+if [ -n "${HAVE_ENVE_CACHELIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_CACHELIB=1
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/base"
+
+
+# _checkperm() {
+#     targetuser=$1
+#     targetperm=$2
+#     targetdir=$3
+#     read -r ck_perm ck_group ck_owner <<EOF
+# $(stat -L -c "%a %G %U" $targetdir || stat -L -f "%p %g %u" $targetdir)
+# EOF
+#     case ${#ck_perm} in
+#         3) : ;;
+#         4) ck_perm=${ck_perm#.} ;;
+#         5) ck_perm=${ck_perm#..} ;;
+#         *) _error "ck_perm format inconsist"; return 1 ;;
+#     esac
+#     if [ $(( ck_perm & 00${targetperm} )) -ne 0 ]; then
+#         # Everyone has write access
+#         return 0
+#     elif [ $(( ck_perm & 0${targetperm}0 )) -ne 0 ]; then
+#         # Some group has write access.
+#         # Is user in that group?
+#         for g in $(groups $targetuser); do
+#             if [ $ck_group = $g ]; then
+#                 return 0
+#             fi
+#         done
+#     elif [ $(( ck_perm & ${targetperm}00 )) -ne 0 ]; then
+#         # The owner has write access.
+#         # Does the user own the file?
+#         [ $targetuser = $ck_owner ] && return 0
+#     fi
+#     return 1 
+# }
+
+# _subfolder() {
+#     # user catalog targetuser
+#     targetuser=${cacheuser:-$USER}
+
+#     _make_subfolder() {
+#         if [ -n "${cache_private:-}" ]; then
+#             ( umask 077; mkdir "$folder" )
+#         else
+#             ( umask 066; mkdir "$folder" )
+#         fi
+#     }
+
+#     for i in "" 1 2 3 4; do
+#         folder="$targetuser-${catalog:-any}${cache_private:+-private}${i:+-}$i"
+#         if [ -e "$folder" ]; then
+#             if [ -d "$folder" ] && [ -r "$folder" ] && [ -w "$folder" ] && [ -x "$folder" ]; then
+#                 echo "$folder"
+#                 return 0
+#             fi
+#         elif _make_subfolder; then
+#             echo "$folder"
+#             return 0
+#         fi
+#     done
+#     _error "unable create cache folder at $(pwd) by $USER"
+#     return 1
+# }
+
+
+path_rebuild() {
+    f_path=${1:-}
+    f_make=${2:-}
+    f_vaild=${3:-}
+    locktype=${4:-mv}
+
+    # locktype=lock
+    
+    do_wait=1
+    while [ "${do_wait:-0}" -lt 100 ]; do
+        if [ ! -e "$f_path" ]; then
+            do_make=1
+        elif [ "$locktype" != "mv" ] && [ -e "${f_path}.lock" ]; then
+            read -r pid timestamp < "${f_path}.lock" || {
+                _error "read error at ${f_path}.lock"
+                return 1
+            }
+            if [ "$pid" -eq "$$" ]; then
+                _error "maybe deadlock"
+                return 1
+            elif ! ps -p "$pid" >/dev/null || [ "$timestamp" -gt $(($(date +%s) + 3600)) ]; then
+                # previous builder is dead or timeout
+                rm -rf "$f_path" "${f_path}.lock"
+                do_make=1
+                # break
+            else
+                do_wait=$((do_wait + 1))
+                sleep 5
+                continue
+            fi
+        elif [ -n "$f_vaild" ]; then
+            set +e
+            vaild=$(
+                settrace
+                # shellcheck disable=2097 disable=2098
+                CACHED=$f_path f_path='' f_make='' f_vaild='' eval "$f_vaild"
+            )
+            retcode=$?
+            set -e
+            if [ "$retcode" -ne 0 ]; then
+                _error "execute f_vaild failed"
+                return 1
+            elif [ "$vaild" = "1" ]; then
+                do_make=
+            else
+                rm -rf "$f_path"
+                do_make=1
+            fi
+        else
+            # cache exist, don't do anything
+            do_make=
+        fi
+
+        result=
+        if [ -n "$do_make" ]; then
+            if [ -n "$f_make" ]; then
+                if [ "$locktype" = "mv" ]; then
+                    f_making_path=$(
+                        mkdtemp "$f_path.XXXXXX" || {
+                            _error "cannot create $f_path.XXXXXX"
+                            return 1
+                        })
+                else
+                    if mkdir "$f_path"; then
+                        echo "$$ $(date +%s)" > "${f_path}.lock"
+                        f_making_path=${f_path}
+                    else
+                        # _error "cannot create $f_path, other program created simultaneously"
+                        # return 1
+                        if [ -e "$f_path" ]; then
+                            do_wait=$((do_wait + 1))
+                            sleep 1
+                            continue
+                        else
+                            result=f
+                            _error "cannot create $f_path"
+                        fi
+                    fi
+                fi
+                if [ -z "$result" ]; then
+                    set +e
+                    (
+                        settrace
+                        # shellcheck disable=2097 disable=2098
+                        CACHED=$f_making_path f_path='' f_make='' f_vaild='' eval "$f_make"
+                    )
+                    retcode=$?
+                    set -e
+                    if [ "$retcode" -eq 0 ]; then
+                        output_none=
+                        if [ -d "$f_making_path" ]; then
+                            set -- "$f_making_path"/.* "$f_making_path"/*
+                            # if [ "${3##*/}" = "*" ]; then
+                                # output_none=1
+                            # fi
+                            if [ -z "${3:-}" ]; then
+                                output_none=1
+                            fi
+                        elif [ ! -e "$f_making_path" ]; then
+                            output_none=1
+                        fi
+                        if [ -n "$output_none" ]; then
+                            result=f
+                            _error "f_make output nothing, '$f_making_path' is empty, maybe build failed"
+                            # rm -rf "$f_path"
+                            # return 1
+                        else
+                            result=k
+                        fi
+                    else
+                        result=f
+                        _error "execute f_make failed"
+                        # rm -rf "$f_path"
+                        # return 1
+                    fi
+                fi
+            else
+                result=n
+                _debug "cache entry ${f_path} not found"
+                # return 1
+            fi
+        else
+            result=e
+        fi
+
+        if [ "$result" = f ]; then
+            if [ "$locktype" = "mv" ]; then
+                rm -rf "$f_making_path"
+            else
+                rm -rf "$f_path" "$f_path.lock"
+            fi
+            unset f_path f_vaild f_make
+            return 1
+        elif [ "$result" = k ]; then
+            if [ "$locktype" = "mv" ]; then
+                echo cache mv "$f_making_path" "$f_path" >&2
+                if [ ! -d "$f_path" ] && mv "$f_making_path" "$f_path"; then
+                    return 0
+                else
+                    result=
+                    rm -rf "$f_making_path"
+                    do_wait=$((do_wait + 1))
+                    sleep 1
+                    continue
+                fi
+                # mv "$f_making_path" "$f_path" || {
+                #     result=
+                #     rm -rf "$f_making_path"
+                #     do_wait=$((do_wait + 1))
+                #     sleep 1
+                #     continue
+                # }
+                # return 0
+            else
+                rm -rf "$f_path.lock"
+                return 0
+            fi
+        elif [ "$result" = n ]; then
+            return 30
+        elif [ "$result" = e ]; then
+            return 0
+        else
+            _fatal "unknown result: '$result'"
+            return 1
+            # do_wait=$((do_wait + 1))
+            # sleep 1
+            # continue
+        fi
+    done
+
+    _error "wait too long"
+    return 1
+}
+
+
+
+
+cache_rebuild() {
+    targetuser=${cacheuser:-$USER}
+
+    # dest=xxxx
+    f_text=$1
+    f_make=${2:-}
+    f_vaild=${3:-}
+    locktype=${4:-mv}
+
+    
+
+    as_cache() {
+        set +e
+        hashtext=$(
+            settrace
+            eval "$f_text"
+        )
+        retcode=$?
+        set -e
+        if [ "$retcode" -ne 0 ]; then
+            _error "execute f_text failed"
+            return 1
+        fi
+
+        hashstr >/dev/null <<EOF
+$hashtext
+EOF
+        hashid=$hashvalue
+
+        if [ -n "${ENVE_CACHE_DIR:-}" ]; then
+            cachedir=$ENVE_CACHE_DIR
+        else
+            cachedir=$(get_cachedir)
+        fi
+        [ -e "$cachedir" ] || mkdir -p "$cachedir"
+        # root user always use root/ or root-private/
+        # shared cached has rwx--x--x
+        # private cached has rwx------
+
+        founds=$(ls -ld \
+            "$cachedir/"*-"${catalog:-any}/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-1/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-2/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-3/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-4/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-private/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-private-1/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-private-2/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-private-3/$hashid-${title:-none}" \
+            "$cachedir/"*-"${catalog:-any}-private-4/$hashid-${title:-none}" \
+            2>/dev/null || echo "")
+
+        if [ "$targetuser" = "root" ]; then
+            to_founds=$founds
+            founds=
+            while read -r x1 x2 fileuser x4 x5 x6 x7 x8 path; do
+                if [ "$fileuser" = "root" ]; then
+                    founds="${founds}${founds:+$newl}$x1 $x2 $fileuser $x4 $x5 $x6 $x7 $x8 $path"
+                fi
+            done <<EOF
+$to_founds
+EOF
+        fi
+        
+        _make_subfolder() {
+            if [ -n "${cache_private:-}" ]; then
+                ( umask 077; mkdir "$folder" )
+            else
+                ( umask 066; mkdir "$folder" )
+            fi
+        }
+
+        empty_slot=
+        for i in "" 1 2 3 4; do
+            folder="$cachedir/$targetuser-${catalog:-any}${cache_private:+-private}${i:+-}$i"
+            if [ -e "$folder" ]; then
+                if [ -d "$folder" ] && [ -r "$folder" ] && [ -w "$folder" ] && [ -x "$folder" ]; then
+                    empty_slot=$folder
+                    break
+                fi
+            elif _make_subfolder; then
+                empty_slot=$folder
+                break
+            fi
+        done
+
+        if [ -z "$empty_slot" ]; then
+            _error "unable create cache folder at $(pwd) by $USER"
+            return 1
+        fi
+
+        CACHED="$empty_slot/$hashid-${title:-none}"
+    }
+    as_tmp() {
+        # dest=$(mkdtemp "$(get_tempdir)/enve-$title.XXXXXX")
+        CACHED="$(mkdtemp "$(get_tempdir)/enve-$title.XXXXXX")/${title:-none}"
+    }
+
+    if [ "${dest:-%cache}" = "%cache" ]; then
+        as_cache
+    elif [ "${dest:-%cache}" = "%tmp" ]; then
+        as_tmp
+    elif [ "${dest:-%cache}" = "%auto" ] && [ "${pure:-0}" -eq 0 ]; then
+        as_tmp
+    elif [ "${dest:-%cache}" = "%auto" ] && [ "${pure:-0}" -eq 1 ]; then
+        as_cache
+    else
+        d="$dest"
+        fast_dirname
+        if [ ! -e "$d" ]; then
+            mkdir -p "$d" || {
+                _error "unable create destination folder at $d"
+                return 1
+            }
+        elif [ ! -d "$d" ]; then
+            _error "destination folder is not a dir"
+            return 1
+        fi
+        unset d
+        CACHED=$dest
+    fi
+
+    # TODO: override
+    #     # this is dangerous
+    #     #
+    #     if [ -d "$dest" ] && [ -n "${overridedir:-}" ]; then
+    #         rm -rf "$dest"
+    #     fi
+
+    # CACHED="$empty_slot/$hashid-${title:-none}"
+    path_rebuild "$CACHED" "$f_make" "$f_vaild" "$locktype"
+}
+
+
+# cache_rebuild_old() {
+#     # TODO: check {targetuser, catalog, title} must
+#     #       contain only ascii code and vaild character.
+#     targetuser=${cacheuser:-$USER}
+
+#     f_text=$1
+#     f_make=${2:-}
+#     f_vaild=${3:-}
+
+
+#     do_make() {
+#         if [ -n "$f_make" ]; then
+#             # CACHED_MAKING=$(mkdtemp "${CACHED}-making-XXXXXX")
+#             # if ! mv "$CACHED_MAKING" "$CACHED"; then
+#             #     _error "cannot move $CACHED_MAKING to $CACHED"
+#             #     rm -rf "$CACHED_MAKING"
+#             #     return 1
+#             # fi
+#             mkdir $CACHED || {
+#                 _error "cannot create $CACHED"
+#                 return 1
+#             }
+#             set +e
+#             (
+#                 settrace
+#                 eval "$f_make"
+#             )
+#             retcode=$?
+#             set -e
+#             if [ "$retcode" -eq 0 ]; then
+#                 # if [ -d "$CACHED" ] && [ -z "$(ls -A "$CACHED")" ]; then
+#                 if [ -d "$CACHED" ]; then
+#                     set -- $CACHED/*
+#                     if [ "$1" = "*" ]; then
+#                         _error "f_make output nothing, maybe build failed"
+#                         rm -rf "$CACHED"
+#                         return 1
+#                     fi
+#                 fi
+#                 # if ! mv "$CACHED_MAKING" "$CACHED"; then
+#                 #     _warning "build success, but $CACHED exist. abandon $CACHED_MAKING"
+#                 #     rm -rf "$CACHED_MAKING"
+#                 # fi
+#             else
+#                 _error "f_make failed"
+#                 rm -rf "$CACHED"
+#                 return 1
+#             fi
+#         else
+#             _debug "cache entry ${CACHED} not found"
+#             return 1
+#         fi
+#     }
+
+#     set +e
+#     hashtext=$(
+#         settrace
+#         eval "$f_text"
+#     )
+#     retcode=$?
+#     set -e
+#     if [ "$retcode" -ne 0 ]; then
+#         _error "f_text failed"
+#         return 1
+#     fi
+#     # hashid=$(echo "$hashtext" | hashstr)
+#     hashstr >/dev/null <<EOF
+# $hashtext
+# EOF
+#     hashid=$hashvalue
+#     if [ -n "${ENVE_CACHE_DIR:-}" ]; then
+#         cachedir=$ENVE_CACHE_DIR
+#     else
+#         cachedir=$(get_cachedir)
+#     fi
+#     # cachedir=~/.cache/enve
+
+#     [ -e "$cachedir" ] || mkdir -p $cachedir
+#     # root user always use root/ or root-private/
+#     # shared cached has rwx--x--x
+#     # private cached has rwx------
+
+#     # founds=$(ls -ld "$cachedir/"*-${catalog:-any}{,-private}{,-1,-2,-3,-4}/$hashid-${title:-none} 2>/dev/null || echo "")
+#     founds=$(ls -ld \
+#         "$cachedir/"*-${catalog:-any}/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-1/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-2/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-3/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-4/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-private/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-private-1/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-private-2/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-private-3/$hashid-${title:-none} \
+#         "$cachedir/"*-${catalog:-any}-private-4/$hashid-${title:-none} \
+#         2>/dev/null || echo "")
+#     if [ "$targetuser" = "root" ]; then
+#         # founds=$(echo "$founds" | awk '$3=="root"{ print $0 }')
+#         founds=$(while read -r x1 x2 fileuser x4 x5 x6 x7 x8 path; do
+#             if [ "$fileuser" = "root" ]; then
+#                 printf "%s %s %s %s %s %s %s %s %s\\n" \
+#                     "$x1" "$x2" "$fileuser" "$x4" "$x5" "$x6" "$x7" "$x8" "$path"
+#             fi
+#         done <<EOF
+# $founds
+# EOF
+# )
+#     fi
+    
+#     cd "$cachedir" || {
+#         _error "cannot cd to $cachedir"
+#         return 1
+#     }
+#     _subfolder >/dev/null
+#     cd - >/dev/null
+#     CACHED="$cachedir/$folder/$hashid-${title:-none}"
+
+#     # CACHED="$cachedir/$(cd "$cachedir"; _subfolder)/$hashid-${title:-none}" || {
+#     #     _error "cannot cd to $cachedir"
+#     #     return 1
+#     # }
+#     if [ -n "$f_vaild" ]; then
+#         if [ ! -e "$CACHED" ]; then
+#             do_make
+#         # elif ! ( $f_vaild ); then
+#         else
+#             set +e
+#             vaild=$(
+#                 settrace
+#                 eval "$f_vaild"
+#             )
+#             retcode=$?
+#             set -e
+#             if [ "$retcode" -ne 0 ]; then
+#                 _error "f_vaild failed"
+#                 return 1
+#             elif [ "$vaild" != "1" ]; then
+#                 mv "$CACHED" "$CACHED-removing"
+#                 rm -rf "$CACHED-removing"
+#                 do_make
+#             fi
+#         fi
+#     else
+#         if [ -z "$founds" ]; then
+#             do_make
+#         else
+#             while read -r x1 x2 x3 x4 x5 x6 x7 x8 path; do
+#                 echo "$x3" >/dev/null
+#                 CACHED=${path# -> *}
+#                 return 0
+#             done <<EOF
+# $founds
+# EOF
+#         fi
+#     fi
+# }
+
+
+cache_cat() {
+    cat_target=$1
+    shift
+    cache_rebuild "$@"
+    cat "$CACHED/$cat_target"
+    unset CACHED cat_target
+}
+cache_cattext() {
+    cat_target=$1
+    shift
+    cache_rebuild "$@"
+    fast_readtext "$CACHED/$cat_target"
+    unset CACHED cat_target
+}
+cache_path() {
+    path=$1
+    shift
+    cache_rebuild "$@"
+    cached_path="$CACHED${path:+/}$path"
+    # echo "$CACHED${path:+/}$path"
+    unset CACHED path
+}
+
+
+# makepkg() {
+#     # TODO: add enve dependency: fakeroot
+#     # fakeroot cannot used with macos /bin/* /usr/bin/*
+#     TZ=UTC0 touch -t 197001010000.01 --no-dereference ./*
+#     # fakeroot -- \
+#     #     env LANG=C \
+#     #     tar -cf .MTREE --format=mtree \
+#     #     --options='!all,use-set,type,uid,gid,mode,time,size,md5,link' *
+#     # package="x$pkgname-$pkgver-$pkgrel-$arch.tar.xz"
+#     package="x$1-$2-$3-$4.tar.xz"
+#     # fakeroot -- \
+#     #     env LANG=C tar -cf - * | \
+#     #     xz -c -z - > "$package"
+#     fakeroot -- \
+#         env LANG=C tar jcf "$package" *
+#     mv "$package" "../"
+# }
+
+build_package() {
+    # TODO: add enve dependency: fakeroot
+    # fakeroot cannot used with macos /bin/* /usr/bin/*
+
+    TZ=UTC0 touch -t 197001010000.01 --no-dereference "$dir"/*
+    p_text() {
+        files_contents "$dir"
+    }
+    p_make() {
+        rmdir "$CACHED"
+        cd "$dir"
+        fakeroot -- \
+            env LANG=C tar jcf "$CACHED" *
+    }
+    d="$dir"
+    fast_dirname
+    title="$d.tar.bz2"
+    unset d
+    title="$title" cache_rebuild p_text p_make
+}
+
+
+cache_add() {
+    # add file or directory
+    # return cached path
+    (
+        t=$1
+        p_text() { files_stats_contents "$t"; }
+        p_make() {
+            rmdir "$CACHED"
+            if [ -d "$t" ]; then
+                cp -R "$t"/* "$CACHED"
+            else
+                cp "$t" "$CACHED"
+            fi
+        }
+        cache_rebuild p_text p_make
+        echo "$CACHED"
+    )
+}
+
+# cache_install() {
+#     # add files from extracted tar file
+#     # return cached path
+#     (
+#         tarfile=$1
+#         p_text() { cat "$tarfile"; }
+#         p_make() { extttttttttt "$tarfile"; }
+#         cache_rebuild p_text p_make
+#         echo "$CACHED"
+#     )
+# }
+
+
+# listpkg() {
+#     tar -tvf "$1"
+# }
+# inspkg() {
+#     package="$1"
+#     dest="$2"
+#     tar jxf "$package" "$2"
+# }
+# makepkg
+
+
+

@@ -6,6 +6,13 @@ if [ -n "${HAVE_ENVE_BOOTLIB:-}" ]; then
 fi
 HAVE_ENVE_BOOTLIB=1
 
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/cachelib
+. "$ENVE_HOME/enve/cachelib"
+# shellcheck source=libexec/enve/urlutils
+. "$ENVE_HOME/enve/urlutils"
+
 
 
 # if [ ! -d "/nix/store" ]; then
@@ -115,6 +122,7 @@ basetool_install_command() {
                 return 1
             ;;
     esac
+    cmd=$cmd
 }
 
 is_need_toybox() {
@@ -136,7 +144,7 @@ basic_require_ensure() {
     
     needed=
     for dep in $deps; do
-        hascmd $dep || needed="$needed${needed:+ }$dep"
+        hascmd "$dep" || needed="$needed${needed:+ }$dep"
     done
     if [ -n "$needed" ]; then
         # thoroughly boot
@@ -154,14 +162,53 @@ basic_require_ensure() {
     fi
 }
 
-reexec_if_reqver_not_match() {
-    selfver="$(grep '# __VERSION__=' "$(readlinkf "$0")")"
-    selfver="$(eval "${selfver#??}"; echo "${__VERSION__}")"
-    if [ -n "${reqver:-}" ] && [ "$selfver" != "$reqver" ]; then
-        exec "$reqverdir/$(basename $0)" "$@"
+_get_program_meta() {
+    programfile=$1
+    attr=$2
+    defline="$(grep "# ${attr}=" "$programfile")"
+    eval "${defline#??}"
+    eval echo \"\$"${attr}"\"
+}
+
+_get_program_meta_all() {
+    programfile=$1
+    while read -r attrdef; do
+        eval "${attrdef#?}"
+    done <<EOF
+$(grep -e "^# __[A-Z_]*__=[^; ]*$" "$programfile")
+EOF
+}
+
+reexec_if_req_not_match() {
+    reqver=$1
+    reqshell=$2
+    shift 2
+    if [ -n "${ENVE_REEXEC:-}" ]; then
+        return 0
+    fi
+
+    # curver=$(_get_program_meta "$ENVE_HOME/$ENVE_PROGRAM" __VERSION__)
+    # repo=$(_get_program_meta "$ENVE_HOME/$ENVE_PROGRAM" __REPO__)
+    _get_program_meta_all "$ENVE_HOME/$ENVE_PROGRAM"
+    if [ -n "${reqver:-}" ] && [ "$__VERSION__" != "$reqver" ]; then
+        # NEW_ENVE_HOME="$(url="$__REPO__" commit=$reqver fetch_git_commit)/libexec"
+        NEW_ENVE_HOME="$(fetch "${__REPO__}#$reqver" "%cache" "dir")/libexec"
+    else
+        NEW_ENVE_HOME=$ENVE_HOME
+    fi
+
+    curshell=$(ps -p "$$" -o comm || echo "$SHELL" )
+    NEW_SHELL=${reqshell:-$curshell}
+
+    if [ "$NEW_ENVE_HOME" != "$ENVE_HOME" ] || [ "$NEW_SHELL" != "$curshell" ]; then
+        _debug "reexec $NEW_SHELL $NEW_ENVE_HOME/$ENVE_PROGRAM"
+        ENVE_REEXEC=1 exec "$NEW_SHELL" "$NEW_ENVE_HOME/$ENVE_PROGRAM" "$@"
+    else
+        _debug "noexec $NEW_SHELL $NEW_ENVE_HOME/$ENVE_PROGRAM"
     fi
 }
 
-system_install_default_version() {
-    :
-}
+# system_install_default_version() {
+#     :
+# }
+

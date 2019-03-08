@@ -1,13 +1,23 @@
+#!/bin/sh
 #!/usr/bin/env bash
 
-set -euo pipefail
+# set -euo pipefail
 
 # . "$1" define
 
-ENVE_HOME="$(dirname $0)/.."
+# TODO: remove this
+# if [ -z "${ENVE_HOME:-}" ]; then
+#     ENVE_HOME="$(dirname $0)/.."
+# fi
+
+
+# shellcheck source=libexec/enve/base
 . "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
 . "$ENVE_HOME/enve/envelib"
 
+settrace
 
 # x='
 # config.clearEnv
@@ -40,14 +50,14 @@ resolve_basic() {
     TABLE="$(cat "${configfile:--}")"
     echo IN basic >&2
     echo "$TABLE"
-    if [ "${1:-}" != "--as_module" ]; then
-        PRJROOT="$(resolve_path "$(table_tail "layout\.root")")"
-        PRJVAR="$(resolve_path "$(table_tail "layout\.var")")"
-    fi
+    # if [ "${1:-}" != "--as_module" ]; then
+    #     PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
+    #     PRJVAR="$(resolve_path "$(table_tail "layout\\.var")")"
+    # fi
 
     { table_subset "path" || true; } | as_value | \
     while read -r value; do
-        if [ "${value:0:1}" != '$' ]; then
+        if [ "${value#${value%?}}" != '$' ]; then
             value="$(resolve_path "$value")"
         fi
         out_list PATH "$value"
@@ -61,19 +71,18 @@ resolve_basic() {
     out_list BYPASS "PRJ_NAME"
     out_list BYPASS "TERMTHEME"
 
-
     { table_subset "dotfiles" || true; } | as_value | \
     while read -r value; do
         cnt=$((${cnt:-0} + 1))
         out_source "dot${cnt}" "$(resolve_path "$value")"
     done
 
-    { table_subset "alias\..*" || true; } | as_postfix "alias\." | \
+    { table_subset "alias\\..*" || true; } | as_postfix "alias\\." | \
     while read -r name value; do
         eval out_alias "$name" "$value"
     done
 
-    { table_subset "variable\..*" || true; } | as_postfix "variable\." | \
+    { table_subset "variable\\..*" || true; } | as_postfix "variable\\." | \
     while read -r name value; do
         out_var "$name" "$value"
     done
@@ -88,10 +97,10 @@ resolve_command() {
     echo IN command >&2
     echo "$TABLE"
 
-    if [ -n "$(table_subset "cmd\..*" | as_concat ' ' || true)" ]; then
+    if [ -n "$(table_subset "cmd\\..*" | as_concat ' ' || true)" ]; then
         TDIR="$(mktemp -d)"
         mkdir "$TDIR/cmd"
-        { table_subset "cmd\..*" || true; } | as_postfix "cmd\." | \
+        { table_subset "cmd\\..*" || true; } | as_postfix "cmd\\." | \
         while read -r name value; do
             # out_var "$name" "$value"
             echo "$value" > "$TDIR/cmd/$name"
@@ -106,11 +115,13 @@ resolve_terminal() {
     TABLE="$(cat "${configfile:--}")"
     echo IN terminal >&2
     echo "$TABLE"
-    if [ "$(table_tail "core\.target")" = "shell" ]; then
-        if size="$(table_tail "terminal.size")"; then
+    if [ "$(table_tail "core\\.target")" = "shell" ]; then
+        size=$(table_tail "terminal.size")
+        if [ -n "$size" ]; then
             out_var TERMSIZE "$size"
         fi
-        if theme="$(table_tail "terminal.theme")"; then
+        theme=$(table_tail "terminal.theme")
+        if [ -n "$theme" ]; then
             out_var TERMTHEME "$theme"
         fi
     fi
@@ -122,17 +133,20 @@ resolve_prompt() {
     echo IN prompt >&2
     echo "$TABLE"
 
-    if [ "$(table_tail "core\.target")" = "shell" ]; then
-        ENV_ROOT="$(table_tail ENV_ROOT)" || true
+    if [ "$(table_tail "core\\.target")" = "shell" ]; then
+        ENV_ROOT="$(table_tail ENV_ROOT)"
         echo "ENV_ROOT:$ENV_ROOT">&2
-        for script in $ENV_ROOT/etc/bash_completion.d/*; do
+        for script in "$ENV_ROOT"/etc/bash_completion.d/*; do
             out_source "$(basename "${script%.*}")" "$script"
         done
         # export GIT_PS1_SHOWCOLORHINTS='true'
         out_var GIT_PS1_SHOWCOLORHINTS 'true'
         # export PS1='[\u@\h \W$(__git_ps1 " (%s)")]\$ '
         # export PROMPT_COMMAND='__git_ps1  "\u@\h:\w"  "\$ "  " (%s)"'
-        out_rawvar PROMPT_COMMAND '__git_ps1  "\u:\w [\[\033[36m\]${PRJ_NAME}\[\033[m\]]"  " \$ "  " (%s)"'
+
+        # shellcheck disable=2016
+        # out_rawvar PROMPT_COMMAND '__git_ps1  "\u:\w [\[\033[36m\]${PRJ_NAME}\[\033[m\]]"  " \$ "  " (%s)"'
+        out_var PROMPT_COMMAND '__git_ps1  "\u:\w [\[\033[36m\]${PRJ_NAME}\[\033[m\]]"  " \$ "  " (%s)"'
 
         # export LANG="zh_TW.UTF-8"
         # export PS1="\[\033[36m\]\u\[\033[m\]@\[\033[32m\]\h:\[\033[33;1m\]\w\[\033[m\]\$ "
@@ -155,40 +169,42 @@ resolve_nix() {
     TABLE="$(cat "${configfile:--}")"
     echo IN nix >&2
     
-    if [ "$(table_tail "enve\.no_nix" || true)" == "true" ]; then
+    if [ "$(table_tail "enve\\.no_nix")" = "true" ]; then
         out_var SHELL "/usr/bin/bash"
         [ -n "$TABLE" ] && echo "$TABLE"
         echo OUT nix >&2
         return
     fi
-    PRJ_NAME="$(table_tail "PRJ_NAME" || true)"
+    PRJ_NAME="$(table_tail "PRJ_NAME")"
 
-    nix_channel_url="$(table_tail "nix\.channel\.url" || true)"
-    # nix_channel_sha256="$(table_tail nix.channel.sha256 || true)"
+    nix_channel_url="$(table_tail "nix\\.channel\\.url")"
+    # nix_channel_sha256="$(table_tail nix.channel.sha256)"
     
     if [ -z "${nix_channel_url:-}" ]; then
-        nix_channel_version="$(table_tail nix.channel.version || true)"
+        nix_channel_version="$(table_tail nix.channel.version)"
         if [ -n "$nix_channel_version" ]; then
             nix_channel_url="https://github.com/NixOS/nixpkgs/archive/$nix_channel_version.tar.gz"
         else
-            nix_channel_url="https://github.com/NixOS/nixpkgs/archive/17.09.tar.gz"
+            # nix_channel_url="https://github.com/NixOS/nixpkgs/archive/17.09.tar.gz"
+            nix_channel_url="https://github.com/NixOS/nixpkgs/archive/18.09.tar.gz"
         fi
         # nix_channel_sha256="405f1d6ba523630c83fbabef93f0da11ea388510a576adf2ded26a744fbf793e"
     fi
 
-    pkgs="$(table_subset "nix\.require" | as_concat ' ' || true)"
-    pkgs="$pkgs $(table_subset "nix\.packages" | as_concat ' ' || true)"
+
+    pkgs="$(table_subset "nix\\.require" | as_concat ' ')"
+    pkgs="$pkgs $(table_subset "nix\\.packages" | as_concat ' ')"
 
     echo "pkgs: $pkgs" >&2
-    nix_root="$(resolve_path "$(table_tail "nix\.root" || true)")"
+    nix_root="$(resolve_path "$(table_tail "nix\\.root")")"
     nix_root=${nix_root:-/nix/var/nix/profiles/default}
     # if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
     #   . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
     # fi
 
-    # echo "$(table_subset "nix\.files")" >&2
+    # echo "$(table_subset "nix\\.files")" >&2
     nix_extra=
-    for file in $(table_subset "nix\.files" | as_value); do
+    for file in $(table_subset "nix\\.files" | as_value); do
         absfile="$(resolve_path "$file")"
         nix_extra="${nix_extra}${newl}$(cat "$absfile")"
     done
@@ -196,7 +212,7 @@ resolve_nix() {
     echo "$nix_extra"
 
     nix_config="$(
-        { table_subset "nix.config\..*" || true; } | as_postfix "nix.config\." | \
+        { table_subset "nix.config\\..*"; } | as_postfix "nix.config\\." | \
         while read -r name value; do
             if [ -n "$name" ]; then
                 echo "$name = $value;"
@@ -204,11 +220,11 @@ resolve_nix() {
         done
     )"
 
-    env_root="$(
+    if env_root="$(
         NIX_REMOTE=daemon \
         NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
         NIXPKGS_ALLOW_UNFREE=1 \
-    $nix_root/bin/nix-build --no-out-link --show-trace - <<EOF
+    "$nix_root"/bin/nix-build --no-out-link --show-trace - <<EOF
     let
       pkgs = import (builtins.fetchTarball {
         url = $nix_channel_url;
@@ -229,7 +245,11 @@ resolve_nix() {
       }
     
 EOF
-    )"
+    )"; then
+        echo "env_root: $env_root" >&2
+        out_var ENV_ROOT "$env_root"
+        out_var SHELL "$env_root/bin/bash"
+    fi
 
 
 #     env_root="$(
@@ -250,11 +270,8 @@ EOF
 # EOF
 #     )"
 
-    echo "env_root: $env_root" >&2
-    out_var ENV_ROOT "$env_root"
-    out_var SHELL "$env_root/bin/bash"
     [ -n "$TABLE" ] && echo "$TABLE"
-    out_list PATH "$env_root/bin"
+    [ -n "${env_root:-}" ] && out_list PATH "$env_root/bin"
     echo OUT nix >&2
 }
 
@@ -264,6 +281,7 @@ resolve_macos() {
     out_join PATH ':'
     [ -n "$TABLE" ] && echo "$TABLE"
     (
+        # shellcheck disable=2123
         PATH=
         export PATH
         eval "$(/usr/libexec/path_helper -s)"
@@ -274,7 +292,13 @@ resolve_macos() {
     )
 
     out_var SSH_AUTH_SOCK "$SSH_AUTH_SOCK"
-    
+    out_var enve.bound.ignore '**/.DS_Store'
+    out_var enve.bound.ignore '**/.git/**'
+
+    out_list BYPASS "TERMINFO"
+    out_list BYPASS "KITTY_WINDOW_ID"
+    out_list BYPASS "COLORTERM"
+
     # out_var LC_ALL "en_US.UTF-8"
     # out_var LC_CTYPE "en_US.UTF-8"
     # out_var LANG "en_US.UTF-8"
@@ -293,23 +317,24 @@ resolve_boundfiles() {
     # 2. include .gitignore
     # 3. +enve.bound
     # 4. include enve.bound.ignore
-    
     TABLE="$(cat "${configfile:--}")"
-    
+    echo "IN resolve_boundfiles" >&2
 
     # TODO: PRJROOT must be abspath
-    PRJROOT="$(resolve_path "$(table_tail "layout\.root")")"
-
+    PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
 
     bounds="$(cd "$PRJROOT"; find . ! -type d)"
+    
     if [ -f "$PRJROOT/.gitignore" ]; then
         bounds="$(echo "$bounds" | gitignore_filter "$(cat "$PRJROOT/.gitignore")" )"
     fi
-    if table_subset "enve\.bound"; then
-        bounds="$bounds${bounds:+$newl}$(table_subset "enve\.bound" | as_concat "$newl" || true)"
+    if table_subset "enve\\.bound"; then
+        bounds="$bounds${bounds:+$newl}$(table_subset "enve\\.bound" | as_concat "$newl" || true)"
     fi
-    
-    bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\.bound\.ignore" | as_concat "$newl" || true)" )"
+    bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\\.bound\\.ignore" | as_concat "$newl" || true)" )"
+    echo "== BOUND:" >&2
+    echo "$bounds" >&2
+
     bounds_table="$(
         cd "$PRJROOT"
         while read -r path; do
@@ -337,21 +362,27 @@ filter_kv_in_table() {
 
 
 
-if [ "${2:-}" = "test" ]; then
+# if [ "${2:-}" = "test" ]; then
+#     return 0
+# fi
+
+if [ "${TEST:-}" = "test" ]; then
     return 0
 fi
 
 
-echo IN $0 >&2
+echo "IN $0" >&2
 resolve_first | resolve_basic | resolve_command | resolve_nix | resolve_terminal | resolve_prompt | {
     resolve_macos
-} | resolve_boundfiles | filter_kv_in_table
+} | resolve_boundfiles #| filter_kv_in_table
 
 # resolve_first | resolve_basic | resolve_command | resolve_nix | resolve_terminal | resolve_prompt | {
 #     resolve_macos
 # } | filter_kv_in_table
 
-echo OUT $0 >&2
+echo "OUT $0" >&2
+
+
 
 
 # resolve() {

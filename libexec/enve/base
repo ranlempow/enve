@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-
 if [ -n "${HAVE_ENVE_BASE:-}" ]; then
     return 0
 fi
@@ -9,7 +8,7 @@ HAVE_ENVE_BASE=1
 ENVE_PROGRAM_NAME="${0##*/}"
 
 hascmd() {
-    command -v $1 >/dev/null
+    command -v "$1" >/dev/null
 }
 
 
@@ -26,8 +25,9 @@ if ! hascmd tac; then
     }
 fi
 
+
 in_busybox_shell() {
-    [ "$(ps -o pid,comm | awk '$1=='"$$"'{ print $2 }' | tail -n 1)" = "busybox" ]
+    [ "$SHELL" = "/bin/ash" ] && [ "$(ps -o pid,comm | awk '$1=='"$$"'{ print $2 }' | tail -n 1)" = "busybox" ]
 }
 
 if in_busybox_shell; then
@@ -35,34 +35,83 @@ if in_busybox_shell; then
     :
 fi
 
-hashstr() {
-    data="$(cat)"
-    echo "$data" | md5sum | while read -r sha __file; do
-        echo "$sha"
+replace() {
+    # c=0
+    while [ "$s" != "${s%%$1*}" ]; do
+        s="${s%%$1*}$2${s#*$1}"
+        # echo x "$s" "${s%%$1*}" >&2
+        # if [ "$c" -gt 100 ]; then
+        #     break
+        # fi
+        # c=$((c+1))
     done
+    # printf %s "$s"
+}
+
+hashstr() {
+    # data="$(cat)"
+    # echo "$data" | md5sum "$@" | while read -r sha __file; do
+    # shellcheck disable=2034
+    # md5sum "$@" | while read -r hashvalue __file; do
+
+    result=$(md5sum "$@")
+    hashvalue=
+    while read -r _hashvalue __file; do
+        hashvalue=${_hashvalue}
+        echo "$hashvalue"
+
+    done <<EOF
+$result
+EOF
+    __file=${__file}
+    unset _hashvalue __file
+}
+
+
+fast_readtext() {
+    text=
+    while IFS='' read -r line; do
+        text="$text${text:+$newl}$line"
+    done < "$1"
+    unset line
+}
+
+fast_dirname() {
+    d=${d%%/}
+    if [ -z "$d" ]; then
+        d=\.
+    elif [ -z "${d%/*}" ]; then
+        d=/
+    elif [ "$d" = "${d%/*}" ]; then
+        d=\.
+    else
+        d=${d%/*}
+    fi
 }
 
 combine_umask() {
+    mask=
     eval "mask=$((0$(umask) & 0$1))"
-    printf %o\\n $mask
+    printf %o\\n "$mask"
 }
 
 create_file_mutex() {
     (
-        umask $(combine_umask "${2:-7077}")
+        umask "$(combine_umask "${2:-7077}")"
         set -o noclobber
-        { > "$1" ; } &> /dev/null
+        { true > "$1" ; } >/dev/null 2>&1
     )
 }
 
 create_dir_mutex() {
     (
-        umask $(combine_umask "${2:-7077}")
-        mkdir "$1" &> /dev/null
+        umask "$(combine_umask "${2:-7077}")"
+        mkdir "$1" >/dev/null 2>&1
     )
 }
 
 _sixrand50() {
+    # shellcheck disable=1004
     awk 'BEGIN {  srand(); for (i = 1; i <= 50; i++)
                         printf("%c%c%c%c%c%c\n", rand() * 26 + 97, rand() * 26 + 97 \
                                                , rand() * 26 + 97, rand() * 26 + 97 \
@@ -101,8 +150,9 @@ mkdtemp() {
 # enve is a stateless program, that is unnecessary to use '/var'
 
 get_cachedir() {
-    if [ -n "$ENVE_CACHE_DIR" ]; then
+    if [ -n "${ENVE_CACHE_DIR:-}" ]; then
         echo "$ENVE_CACHE_DIR"
+        return 0
     fi
     kernal_name="$(uname -s)"
     case "$kernal_name" in
@@ -111,13 +161,15 @@ get_cachedir() {
                 # $HOME always contain only alphanum without space and all lowercase.
                 
                 # echo ~/Library/Caches/enve
+
+                # shellcheck disable=2034
                 read -r fileperm x2 fileuser x4 x5 x6 x7 x8 path <<EOF
-$(ls -ld /var/cache/enve)
+$(ls -ld /var/cache/enve 2>/dev/null)
 EOF
                 if [ "$fileperm" = "drwxrwxrwt" ] && [ "$fileuser" = "root" ]; then
                     echo /var/cache/enve
                 else
-                    echo ~/.cache/enve    
+                    echo ~/.cache/enve
                 fi
                 
             ;;
@@ -133,7 +185,9 @@ EOF
                 # but $HOME may contain non-acsii character or space.
                 # so, we use $ProgramData
                 # The file system directory that contains application data for all users.
-                echo "$(cygpath -u "$ProgramData/enve")"
+
+                # shellcheck disable=2154
+                cygpath -u "$ProgramData/enve"
             ;;
         *)
                 echo /var/cache/enve
@@ -143,13 +197,13 @@ EOF
 
 get_tempdir() {
     if [ -n "${TMP:-}" ]; then
-        echo "$TMP"
+        echo "${TMP%%/}"
     elif [ -n "${TMPDIR:-}" ]; then
-        echo "$TMPDIR"
+        echo "${TMPDIR%%/}"
     elif [ -n "${TEMP:-}" ]; then
-        echo "$TEMP"
+        echo "${TEMP%%/}"
     elif [ -n "${TEMPDIR:-}" ]; then
-        echo "$TEMPDIR"
+        echo "${TEMPDIR%%/}"
     else
         echo "/tmp"
     fi
@@ -169,21 +223,39 @@ save () {
 
 
 _loglevel_form_symbol() {
-    case ${ENVE_VERBOSE:-NOTICE} in
-        CRIT|CRITICAL)  echo "6" ;;
-        ERROR)          echo "5" ;;
-        WARN|WARNING)   echo "4" ;;
-        NOTICE)         echo "3" ;;
-        INFO)           echo "2" ;;
-        DEBUG)          echo "1" ;;
-        TRACE)          echo "0" ;;
+    case ${ENVE_VERBOSE:-TRACE} in
+        CRIT|CRITICAL)  loglevel=6 ;;
+        ERROR)          loglevel=5 ;;
+        WARN|WARNING)   loglevel=4 ;;
+        NOTICE)         loglevel=3 ;;
+        INFO)           loglevel=2 ;;
+        DEBUG)          loglevel=1 ;;
+        TRACE)          loglevel=0 ;;
 
-        *)              echo "3" ;;
+        *)              loglevel=3 ;;
     esac
+    if [ "${1:-nonfast}" = "nonfast" ]; then
+        echo "$loglevel"
+    fi
 }
 
 timestamp() {
-  date +%s%N | cut -b5-13
+    # date +%s%N | cut -b5-13
+    tm=$(date +%s%N)
+    # tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
+    tm=${tm#?????}
+    tm=${tm%${tm#????????}}
+    echo "$tm"
+    unset tm
+}
+
+timestamp2() {
+    tm=$(date +%s%N)
+    # tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
+    tm=${tm#?????}
+    tm=${tm%${tm#????????}}
+    echo "$tm"
+    unset tm
 }
 
 
@@ -197,14 +269,15 @@ _format_head() {
         case $1 in
             critical|error) C2="$Cr" ;;
         esac
+
         case ${ENVE_VERBOSE:-TRACE} in
             CRIT|CRITICAL)  fmts="$C1%4s$C0 $C2%8s$C0" ;;
             ERROR)          fmts="$C1%4s$C0 $C2%8s$C0" ;;
             WARN|WARNING)   fmts="$C1%4s$C0 $C2%8s$C0" ;;
             NOTICE)         fmts="$C1%4s$C0 $C2%8s$C0" ;;
             INFO)           fmts="$C1%4s$C0 $C2%8s$C0" ;;
-            DEBUG)          fmts="[$(date -u +"%D %T")] $C1%4s$C0 $C2%8s$C0" ;;
-            TRACE)          fmts="[$(timestamp)] $C1%4s$C0 $C2%8s$C0" ;;
+            DEBUG)          eval "fmts=\"[$(date -u +"%D %T")] $C1%4s$C0 $C2%8s$C0\"" ;;
+            TRACE)          eval "fmts=\"[$(timestamp)] $C1%4s$C0 $C2%8s$C0\"" ;;
         esac
     else
         case ${ENVE_VERBOSE:-NOTICE} in
@@ -213,57 +286,79 @@ _format_head() {
             WARN|WARNING)   fmts="%4s %s:" ;;
             NOTICE)         fmts="%4s %s:" ;;
             INFO)           fmts="%4s %8s:" ;;
-            DEBUG)          fmts="[$(date -u +"%D %T")] %4s %8s:" ;;
-            TRACE)          fmts="[$(timestamp)] %4s %8s:" ;;
+            DEBUG)          eval fmts=\""[$(date -u +"%D %T")] %4s %8s:"\" ;;
+            TRACE)          eval fmts=\""[$(timestamp)] %4s %8s:"\" ;;
         esac
     fi
+    # shellcheck disable=2059
     printf "$fmts" "$ENVE_PROGRAM_NAME" "$1"
 }
 
 critical() {
-    if [ $(_loglevel_form_symbol) -ge 6 ]; then
-        echo "$(_format_head ${LOGTYPE:-critical}) $@" >&2
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 6 ]; then
+        _format_head "${LOGTYPE:-critical}" >&2
+        echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-critical}) $*" >&2
     fi
 }
 error() {
-    if [ $(_loglevel_form_symbol) -ge 5 ]; then
-        echo "$(_format_head ${LOGTYPE:-error}) $@" >&2
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 5 ]; then
+        _format_head "${LOGTYPE:-error}" >&2
+        echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-error}) $*" >&2
     fi
 }
 
 warning() {
-    if [ $(_loglevel_form_symbol) -ge 4 ]; then
-        echo "$(_format_head ${LOGTYPE:-warning}) $@" >&2
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 4 ]; then
+        _format_head "${LOGTYPE:-warning}" >&2
+        echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-warning}) $*" >&2
     fi
 }
 
 notice() {
-    if [ $(_loglevel_form_symbol) -ge 3 ]; then
-        echo "$(_format_head ${LOGTYPE:-notice}) $@" >&2
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 3 ]; then
+        _format_head "${LOGTYPE:-notice}" >&2
+        echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-notice}) $*" >&2
     fi
 }
 
 # log() {
-#     if [ $(_loglevel_form_symbol) -ge 3 ]; then
-#         echo "$(_format_head warning) $@" >&2
+#     if [ "$(_loglevel_form_symbol)" -le 3 ]; then
+#         echo "$(_format_head warning) $*" >&2
 #     fi
 # }
 
 info() {
-    if [ $(_loglevel_form_symbol) -ge 2 ]; then
-        echo "$(_format_head ${LOGTYPE:-info}) $@" >&2
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 2 ]; then
+        _format_head "${LOGTYPE:-info}" >&2
+        echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-info}) $*" >&2
     fi
 }
 
 debug() {
-    if [ $(_loglevel_form_symbol) -ge 1 ]; then
-        echo "$(_format_head ${LOGTYPE:-debug}) $@" >&2
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 1 ]; then
+        _format_head "${LOGTYPE:-debug}" >&2
+        echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-debug}) $*" >&2
     fi
 }
 
 trace() {
-    if [ $(_loglevel_form_symbol) -ge 0 ]; then
-        echo "$(_format_head ${LOGTYPE:-trace}) $@" >&2
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 0 ]; then
+        _format_head "${LOGTYPE:-trace}" >&2
+        echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-trace}) $*" >&2
     fi
 }
 
@@ -276,7 +371,40 @@ _debug() { debug "$@"; }
 _trace() { trace "$@"; }
 
 die() {
-    error "$@"
-    exit 1
+    trap - EXIT
+    if [ -n "${1:-}" ]; then
+        _error "$1"
+    fi
+    exit "${2:-1}"
 }
+
+
+settrace() {
+    # trap '[ $? -eq 0 ] || echo err in $FUNCNAME in $BASH_SOURCE >&2' EXIT
+
+    trap '
+    retcode=$?
+    if [ "$retcode" -ne 0 ]; then
+        if [ -n "${FUNCNAME:-}" ]; then
+            _trace "Traceback:"
+            i=0
+            while [ -n "${FUNCNAME[$i]:-}" ]; do
+                _trace "  File $(basename "${BASH_SOURCE[$i]}"), in ${FUNCNAME[$i]}"
+                i=$(( i + 1 ))
+            done
+        fi
+        _error "Unexpected exit code $retcode"
+    fi
+    '"$(eval echo \$\*)" EXIT
+    retcode=
+    set -eu
+    if hascmd shopt; then
+        # for posix-sh compative in bash, need bash>=4.4
+        # shellcheck disable=2039
+        shopt -s inherit_errexit >/dev/null 2>&1 || true
+    fi
+}
+
+
+
 

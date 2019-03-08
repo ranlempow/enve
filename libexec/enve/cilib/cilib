@@ -39,7 +39,26 @@ must have runner name
 may have different roles or config
 may have test only subset of commits by setting the filter
 
+# cache-base ci
+
+summary=
+for rev in git rev-list HEAD
+  cache_build
+    use local repo
+    git+file://*#* checkout to cache
+    run test with enve fire test, redirect(tee) stdout/stderr $CACHED/log
+    if success set $CACHED/state to "passed" else set to "failed"
+  summary=...
+print summary
+
+# timeout?
+
+# 平行化
+
 '
+
+
+
 
 REPO=git@github.com:ranlempow/bats-core.git
 

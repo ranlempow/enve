@@ -1,25 +1,12 @@
 #!/usr/bin/env bats
 
-
-# EVNE_EXEC="$BATS_TEST_DIRNAME/../enve"
-# echo "$BATS_TEST_DIRNAME"
-# echo "$BATS_TMPDIR"
-
+load common
 
 setup() {
-    mkdir -p $BATS_TMPDIR/cmds
-    for func in normalize readlink_posix canonicalize_symlinks; do
-        cat > "$BATS_TMPDIR/cmds/$func" <<EOF
-set -euo pipefail
-. "$BATS_TEST_DIRNAME/../libexec/enve/pathutils"
-$func "\$@"
-EOF
-    done
-    chmod 755 $BATS_TMPDIR/cmds/*
-    export PATH="$BATS_TMPDIR/cmds:$PATH"
 
+    mkstab ../libexec/enve/pathutils \
+        normalize readlink_posix canonicalize_symlinks
 
-    # . "$EVNE_EXEC" define
     rm -rf $BATS_TMPDIR/test_readlinkf
     mkdir -p $BATS_TMPDIR/test_readlinkf
     (
@@ -159,7 +146,51 @@ test_links() {
 
 @test "canonicalize_symlinks" {
     READLINK_F_EXEC="canonicalize_symlinks"
-    test_links
+    cd $BATS_TMPDIR/test_readlinkf
+    target="$(set -P; cd $BATS_TMPDIR; echo $PWD)/test_readlinkf"
+    eval $READLINK_F_EXEC a/1 >&2
+    [ "$(eval $READLINK_F_EXEC a/1)" = "$target/a/1" ]
+    [ "$(eval $READLINK_F_EXEC a/2)" = "$target/a/1" ]
+    [ "$(eval $READLINK_F_EXEC a/3)" = "$target/a/1" ]
+    [ "$(eval $READLINK_F_EXEC b/1)" = "$target/a/1" ]
+    [ "$(eval $READLINK_F_EXEC c/1)" = "$target/a/1" ]
+    [ "$(eval $READLINK_F_EXEC b/)" = "$target/b" ]
+    [ "$(eval $READLINK_F_EXEC c/)" = "$target/b" ]
+    [ "$(eval $READLINK_F_EXEC b/.)" = "$target/b" ]
+    [ "$(eval $READLINK_F_EXEC c/.)" = "$target/b" ]
+    [ "$(eval $READLINK_F_EXEC aa/a/.)" = "$target/a" ]
+    [ "$(eval $READLINK_F_EXEC aa/a/..)" = "$target" ]
+    [ "$(eval $READLINK_F_EXEC b/../aa/a/..)" = "$target" ]
+    [ "$(eval $READLINK_F_EXEC aaa/aa/a/..)" = "$target" ]
+    [ "$(eval $READLINK_F_EXEC aaa/aa/a/../..)" = "$(dirname $target)" ]
+    [ "$(eval $READLINK_F_EXEC a/../b/../aaa/aa/a/../..)" = "$(dirname $target)" ]
+    [ "$(eval $READLINK_F_EXEC .)" = "$target" ]
+    [ "$(eval $READLINK_F_EXEC .////././///.)" = "$target" ]
+    [ "$(eval $READLINK_F_EXEC nonexist)" = "$target/nonexist" ]
+    [ "$(eval $READLINK_F_EXEC a/nonexist)" = "$target/a/nonexist" ]
+    [ "$(eval $READLINK_F_EXEC b/nonexist)" = "$target/b/nonexist" ]
+    [ "$(eval $READLINK_F_EXEC c/nonexist)" = "$target/b/nonexist" ]
+
+
+    # not a directory
+    eval run $READLINK_F_EXEC a/1/nonexist
+    [ "$status" -eq 1 ]
+    eval run $READLINK_F_EXEC b/1/nonexist
+    [ "$status" -eq 1 ]
+    eval run $READLINK_F_EXEC a/1/nonexist/..
+    [ "$status" -eq 1 ]
+    # not a directory with ending slash
+    eval run $READLINK_F_EXEC a/1/
+    [ "$status" -eq 1 ]
+
+    eval run $READLINK_F_EXEC badfile
+    [ "$status" -eq 1 ]
+    eval run $READLINK_F_EXEC baddir
+    [ "$status" -eq 1 ]
+
+    # not exist directory
+    eval run $READLINK_F_EXEC nonexist/1
+    [ "$status" -eq 1 ]
 }
 
 

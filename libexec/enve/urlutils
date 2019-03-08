@@ -6,8 +6,17 @@ if [ -n "${HAVE_ENVE_URLUTILS:-}" ]; then
 fi
 HAVE_ENVE_URLUTILS=1
 
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
 
-function parse_unified_download() {
+# shellcheck source=libexec/enve/cachelib
+. "$ENVE_HOME/enve/cachelib"
+
+# shellcheck source=libexec/enve/pathutils
+. "$ENVE_HOME/enve/pathutils"
+
+
+parse_unified_download() {
     true '
 URL schima
 
@@ -18,130 +27,336 @@ curl -k sftp://root:0000@192.168.56.3:22
 
 use homebrew to get libssh2 supported curl
 
+dest=%cache|%cacheifpure(%auto)|%tmp|[path]
+pure=""|1|0
+desttype=auto|file|dir
+autodecomp=1|0
+
+TODO: "desttype=auto" is not done yet
+
 '
 
     url=$1
+    # TODO: dest is not used
     dest=$2
     desttype=$3
-    pure=
-    # desttype = file | dir
-    if [ "$downloadtype" = "file" ]; then
-        case $url in 
-            http://*|https://*)
-                    dl="curl"
-                ;;
-            ftp://*|sftp://*|ftps://*)
-                    dl="curl"
-                ;;
-            scp://*)
-                    dl="scp"
-                ;;
-            git+ssh://*|git+file://*|git+http://*|git+http://*)
-                    # NOT_SUPPORT
-                    return 1
-                ;;
-            file://*)
-                    # unified_download "${url##file://}" "$dest" "$desttype"
-                    return
-                ;;
-            *://*)
-                    # syntex error
-                    return 1
-                ;;
-            /*)
-                    dl="cp"
-                    dl_postfix="$(pwd)"
-                ;;
-            *)
-                    if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
-                        $DEFAULT_UD_PARSER
-                        return
-                    else
-                        # NOT_MATCH
-                        return 1
-                    fi
-                ;;
-        esac
-    else
-        case $url in
-            http://*|https://*)
-                    # NOT_SUPPORT
-                    return 1
-                ;;
-            ftp://*|sftp://*|ftps://*)
-                    # NOT_SUPPORT
-                    return 1
-                ;;
-            scp://*)
-                    dl="scp -pr"
-                ;;
-            git+ssh://*@*|git+file://*@*|git+http://*@*|git+http://*@*)
-                    branch="${url##*@}"
-                    url="${url%%@*}"
-                    url=${url##git+}
-                    if [ ${#branch} -eq 40 ]; then
-                        # https://stackoverflow.com/questions/3489173/how-to-clone-git-repository-with-specific-revision-changeset?answertab=votes#tab-top
-                        commit="$branch"
-                        dl="git init; git remote add origin $url; git fetch origin $commit; git reset --hard FETCH_HEAD"
-                        pure=true
-                    else
-                        dl="git clone --depth 1 --branch $branch $url"
-                        dl_postfix="$(pwd)"
-                    fi
-                ;;
-            git+ssh://*|git+file://*|git+http://*|git+http://*)
-                    url=${url##git+}
-                    dl="git clone --depth 1 $url"
-                    dl_postfix="$(pwd)"
-                ;;
-            file://*)
-                    # unified_download "${url##file://}" "$dest" "$desttype"
-                    return
-                ;;
-            *://*)
-                    # syntex error
-                    return 1
-                ;;
-            /*)
-                    dl="cp -r"
-                    dl_postfix="$(pwd)"
-                ;;
-            *)
-                    if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
-                        $DEFAULT_UD_PARSER
-                        return
-                    else
-                        # NOT_MATCH
-                        return 1
-                    fi
-                ;;
-        esac
-    fi
+    autodecomp=1
+    # pure=
 
+    dl=
+    keepdir=
     decomp=
-    if [ "$desttype" = "dir" ]; then
-        # need change directory to destination directory at first.
+
+
+    if [ "$autodecomp" = "1" ]; then
         case $url in
             *.tar)
-                    decomp="tar -xvf"
+                    if [ "$desttype" != "file" ]; then
+                        decomp='cd "${dest}"; tar -xvf "${tmpdest}"'
+                        keepdir=1
+                    fi
                 ;;
             *.tar.gz)
-                    decomp="tar -zxvf"
+                    if [ "$desttype" != "file" ]; then
+                        decomp='cd "${dest}"; tar -zxvf "${tmpdest}"'
+                        keepdir=1
+                    fi
                 ;;
             *.tar.bz2)
-                    decomp="tar -jxvf"
+                    if [ "$desttype" != "file" ]; then
+                        decomp='cd "${dest}"; tar -jxvf "${tmpdest}"'
+                        keepdir=1
+                    fi
                 ;;
             *.tar.xz)
-                    decomp="tar -Jxvf"
+                    if [ "$desttype" != "file" ]; then
+                        decomp='cd "${dest}"; tar -Jxvf "${tmpdest}"'
+                        keepdir=1
+                    fi
                 ;;
             *.zip)
-                    decomp="unzip"
+                    if [ "$desttype" != "file" ]; then
+                        decomp='cd "${dest}"; unzip "${tmpdest}";'
+                        keepdir=1
+                    fi
+                ;;
+            *.gz)
+                    if [ "$desttype" != "dir" ]; then
+                        decomp='gzip -dc "${tmpdest}" > "${dest}"'
+                    fi
+                ;;
+            *.bz2)
+                    if [ "$desttype" != "dir" ]; then
+                        decomp='bzip2 -dc "${tmpdest}" > "${dest}"'
+                    fi
+                ;;
+            *.xz)
+                    if [ "$desttype" != "dir" ]; then
+                        decomp='xz -dc "${tmpdest}"> "${dest}"'
+                    fi
                 ;;
         esac
     fi
 
+
+    needunpack=
+    path=
+    case $url in 
+        http://*|https://*)
+                if [ "$desttype" = "dir" ]; then
+                    needunpack=1
+                fi
+                dl='curl -L "${url}" -o "${dest}"'
+                pure=${pure:-0}
+            ;;
+        ftp://*|sftp://*|ftps://*)
+                if [ "$desttype" = "dir" ]; then
+                    needunpack=1
+                fi
+                dl='curl -L "${url}" -o "${dest}"'
+                pure=${pure:-0}
+            ;;
+        scp://*)
+                url="${url%scp://}"
+                if [ "$desttype" = "file" ] || [ -n "$decomp" ]; then
+                    dl='scp "${url}" "${dest}"'
+                else
+                    dl='scp -pr "${url}" "${dest}"'
+                    keepdir=1
+                fi
+                pure=${pure:-0}
+            ;;
+        git+ssh://*#*|git+file://*#*|git+http://*#*|git+https://*#*|git+git@*:*#*)
+                if [ "$desttype" = "file" ]; then
+                    _error "git with file destination is not support"
+                    return 1
+                fi
+                branch_commit="${url#*#}"
+                url="${url%%#*}"
+                url=${url#git+}
+                if [ "${branch_commit#*#}" != "$branch_commit" ]; then
+                    branch=${branch_commit#*#}
+                    commit=${branch_commit%%#*}
+                elif [ ${#branch_commit} -eq 40 ]; then
+                    branch=
+                    commit=$branch_commit
+                else
+                    branch=$branch_commit
+                    commit=
+                fi
+                unset branch_commit
+
+                if [ -n "$commit" ] && [ -n "$branch" ]; then
+                    # if [ ${#branch} -eq 40 ]; then
+                    repopath=$(
+                        p_text() {
+                            echo "repo"
+                            echo "$url"
+                            echo "$branch"
+                        }
+                        p_make() {
+                            cd $CACHED
+                            if [ ! -e "$CACHED/.git" ]; then
+                                git init >/dev/null
+                            fi
+                            git remote add origin "${url}" >/dev/null
+                            if [ "$branch" = "%all" ]; then
+                                git fetch --all >/dev/null
+                            else
+                                git fetch origin "$branch" >/dev/null
+                            fi
+                        }
+                        CACHED='' \
+                        dest='%cache' \
+                        ENVE_CACHE_DIR=${ENVE_SESSION_DIR:-$(mkdtemp "$(get_tempdir)/gitrepo.XXXXXX")} \
+                            catalog=gitrepo cache_path "" p_text p_make || return 1
+                        echo "$cached_path"
+                    ) || {
+                        return 1
+                    }
+                    # echo "repopath:$repopath" >&2
+                    # dl='cd "${dest}"; git init; git remote add origin "'"$repopath"/.git'";'
+                    # dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
+                    dl='git --git-dir='$repopath/.git' --work-tree="${dest}" checkout "'$commit'"'
+                    keepdir=1
+                    pure=${pure:-1}
+                elif [ -n "$commit" ]; then
+                    # https://stackoverflow.com/questions/3489173/how-to-clone-git-repository-with-specific-revision-changeset?answertab=votes#tab-top
+                    # commit="$branch"
+                    dl='cd "${dest}"; git init; git remote add origin "${url}";'
+                    dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
+                    keepdir=1
+                    pure=${pure:-1}
+                else
+                    if [ "$branch" = "%all" ]; then
+                        # dl='git clone "${url}" "${dest}";'
+                        dl='cd "${dest}";'
+                        dl="$dl"'git init; git remote add origin "${url}"; git fetch --all;'
+                        dl="$dl"' { git branch -r | grep -v \\-\> | while read remote; do git branch --force --track ${remote#origin/} $remote; done; };'
+                        dl="$dl"' git pull --all;'
+                        keepdir=1
+                    else
+                        dl='git clone --depth 1 --branch "'$branch'" "${url}" "${dest}"'
+                    fi
+                    pure=${pure:-0}
+                fi
+                unset commit branch branch_commit
+            ;;
+        git+ssh://*|git+file://*|git+http://*|git+https://*|git+git@*:*)
+                if [ "$desttype" = "file" ]; then
+                    _error "git with file destination is not support"
+                    return 1
+                fi
+                url=${url#git+}
+                dl='git clone --depth 1 "${url}" "${dest}"'
+                pure=${pure:-0}
+            ;;
+        file://*)
+                path="${url#file://}"
+                if [ -z "$path" ]; then
+                    _error "url syntex error '$url'"
+                    return 1
+                fi
+            ;;
+        *://*)
+                _error "url syntex error '$url'"
+                return 1
+            ;;
+        /*|\./*)
+                path="$url"
+            ;;
+        *)
+                if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
+                    $DEFAULT_UD_PARSER
+                    return
+                else
+                    # NOT_MATCH
+                    _error "url not found '$url'"
+                    return 1
+                fi
+            ;;
+    esac
+
+    
+    
+
+    if [ -n "$path" ]; then
+        path=$(canonicalize_symlinks "$path")
+        if [ -n "$decomp" ] && [ -f "$path" ]; then
+            # direct decompress without copy first
+            decomp=${decomp%\$\{tmpdest*}"\${url}"${decomp#*tmpdest\}}
+        else
+            decomp=
+        fi
+        if [ -n "$decomp" ]; then
+            dl='true'
+        elif [ "$desttype" = "file" ]; then
+            dl='cp "${url}" "${dest}"'
+        else
+            dl='cp -R "${url}"/* "${dest}"'
+            keepdir=1
+        fi
+        if [ -n "${ENVE_CACHE_DIR:-}" ] && [ "${path%$ENVE_CACHE_DIR}" != "$path" ]; then
+            # copy or decompress from cachedir
+            pure=${pure:-1}
+        else
+            pure=${pure:-0}
+        fi
+        url=$path
+        if [ "$desttype" = "file" ] && [ -d "$path" ] && [ -z "$decomp" ]; then
+            _error "request file but directory"
+            return 1
+        elif [ "$desttype" = "dir" ] && [ ! -d "$path" ] && [ -z "$decomp" ]; then
+            _error "request directory but file"
+            return 1
+        fi
+    fi
+    unset path
+
+    if [ -n "$needunpack" ] && [ -z "$decomp" ]; then
+        _error "implicit decompression, but '$url' seem not to do it"
+        return 1
+    fi
+    unset needunpack
+
+    if [ -n "${FETCH_DEBUG:-}" ]; then
+        echo "url='$url'; dl='$dl'; decomp='$decomp'"
+    fi
 }
 
-function unified_download() {
-    :
+
+unified_fetch() {
+    p_text() {
+        echo "$url"
+        echo "$dl"
+        echo "$decomp"
+    }   
+    p_make() {
+        dest=$CACHED
+        if [ -n "$keepdir" ]; then
+            mkdir -p "$CACHED"
+        elif [ -d "$dest" ]; then
+            rmdir "$dest"
+        fi
+        if [ -n "$decomp" ]; then
+            tmpdest=$(mkstemp "$(get_tempdir)/needunpack.XXXXXX")
+            ( dest=$tmpdest eval echo "\"$dl\"" ) >&2
+            ( dest=$tmpdest eval "$dl" ) >/dev/null
+            ( eval echo "\"$decomp\"" ) >&2
+            ( eval "$decomp" ) >/dev/null
+        else
+            # ( eval echo "\"$dl\"" ) >&2
+            ( eval "$dl" ) >/dev/null
+        fi
+    }
+    if [ $# -gt 0 ]; then
+        parse_unified_download "$@"
+    fi
+
+    title="${url##*/}"
+    title=${title%.zip}
+    title=${title%.gz}
+    title=${title%.bz2}
+    title=${title%.xz}
+    title=${title%.tar}
+    title="$title" dest="$dest" catalog=fetch cache_rebuild p_text p_make
+
+    dest=$CACHED
+    if [ -z "${FASTRUN:-}" ]; then
+        echo "$dest"
+    fi
 }
+
+fetch() {
+    unified_fetch "$@"
+}
+
+
+# clone_git_commit() {
+#     url=$1
+#     commit=$2
+#     # make a new blank repository in the current directory
+#     git init >&2
+#     # add a remote
+#     git remote add origin $url >&2
+#     # fetch a commit (or branch or tag) of interest
+#     # Note: the full history up to this commit will be retrieved unless 
+#     #       you limit it with '--depth=...' or '--shallow-since=...'
+#     git fetch --depth=1 origin $commit >&2
+#     # reset this repository's master branch to the commit of interest
+#     git reset --hard FETCH_HEAD >&2
+# }
+# fetch_git_commit() {
+#     (
+#         p_text() {
+#             echo "$url"
+#             echo "$commit"
+#         }
+#         p_make() {
+#             cd $CACHED || return 1
+#             clone_git_commit "$url" "$commit"
+#         }
+#         title="${url##*/}-${commit##*/}" catalog=fetch cache_rebuild p_text p_make
+#         echo $CACHED
+#     )
+# }

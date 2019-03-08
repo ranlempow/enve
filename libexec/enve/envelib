@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=2016
+true
+
 if [ -n "${HAVE_ENVE_ENVELIB:-}" ]; then
     return 0
 fi
 HAVE_ENVE_ENVELIB=1
 
-
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/findutils
 . "$ENVE_HOME/enve/findutils"
+# shellcheck source=libexec/enve/pathutils
 . "$ENVE_HOME/enve/pathutils"
+# shellcheck source=libexec/enve/cachelib
+. "$ENVE_HOME/enve/cachelib"
 
 # ENVE_HOME="$(canonicalize_symlinks "$0/..")"
-
 
 
 tab="$(printf '\tx')"
@@ -40,19 +47,157 @@ newl="${newl%x}"
 
 
 
+# table_tail() {
+#     vtype="${2:-VAR}"
+#     echo "$TABLE" | grep -E "^${vtype}${tab}${1}${tab}" | tail -n 1 | cut -d"${tab}" -f3-
+# }
+
+_table_match() {
+    if [ "${1#*\*}" = "$1" ] && [ "${1#*\.}" = "$1" ]; then
+        # fast match
+        while read -r line; do
+            if [ "${line#$vtype$tab$1$tab}" != "$line" ]; then
+                printf %s\\n "$line"
+            fi
+        done <<EOF
+$TABLE
+EOF
+    else
+        # regex match
+        printf %s\\n "$TABLE" | grep -E "^${vtype}${tab}${1}${tab}" || true
+    fi
+}
+
 table_tail() {
     vtype="${2:-VAR}"
-    echo "$TABLE" | grep -E "^${vtype}${tab}${1}${tab}" | tail -n 1 | cut -d"${tab}" -f3-
+    _val=
+    while read -r line; do
+        if [ -n "$line" ]; then
+            _val=${line#$vtype$tab*$tab}
+        fi
+    done <<EOF
+$(_table_match "$1")
+EOF
+    if [ -n "${_val}" ]; then
+        printf %s\\n "${_val}"
+    elif [ -n "${TABLE_DEFAULT:-}" ]; then
+        printf %s\\n "${TABLE_DEFAULT}"
+    fi
+    unset vtype line _val
 }
+
+# table_subset() {
+#     vtype="${2:-VAR}"
+#     echo "$TABLE" | grep -E "^${vtype}${tab}${1}${tab}" | cut -d"${tab}" -f2-
+# }
 
 table_subset() {
     vtype="${2:-VAR}"
-    echo "$TABLE" | grep -E "^${vtype}${tab}${1}${tab}" | cut -d"${tab}" -f2-
+    while read -r line; do
+        if [ -n "$line" ]; then
+            printf %s\\n "${line#$vtype$tab}"
+        fi
+    done <<EOF
+$(_table_match "$1")
+EOF
+    unset vtype line
 }
+
+
 
 table_exclude() {
     vtype="${2:-VAR}"
     echo "$TABLE" | grep -E -v "^${vtype}${tab}${1}${tab}" | cut -d"${tab}" -f2-
+}
+
+# shellcheck disable=2120
+value_substi() {
+    _cur="${_value}"
+    _PASSVARS="$newl${PASSVARS:-}$newl"
+    _newvalue=
+    while [ "${_cur%\$\{*\}*}" != "${_cur}" ]; do
+        _left=${_cur%%\$\{*\}*}
+        _right=${_cur#*\$\{*\}}
+        _center=${_cur%\}"${_right}"}
+        _center=${_center#"$_left"\$\{}
+        # echo "${_left}--${_center}--${_right}" >&2
+        if [ "${_left#${_left%?}}" = "\\" ]; then
+            _newvalue="${_newvalue}${_left%?}\${${_center}}"
+            _cur=${_right}
+            continue
+        fi
+        if [ "${_center%${_center#?}}" = "_" ]; then
+            _newvalue="${_newvalue}${_left}\${${_center}}"
+            _cur=${_right}
+            continue
+        fi
+        if [ "${_center#*:[-+=]}" != "${_center}" ]; then
+            _namepart=${_center%%:[-+=]*}
+            _recpart=${_center#*:[-+=]}
+            # _symbol=${_center#$_namepart}
+            # _symbol=${_symbol%$_recpart}
+            # _center="${_namepart}${_symbol}$(_value="${_recpart}" value_substi nonfast)"
+        elif [ "${_center#*[-+=]}" != "${_center}" ]; then
+            _namepart=${_center%%[-+=]*}
+            _recpart=${_center#*[-+=]}
+            # _symbol=${_center#$_namepart}
+            # _symbol=${_symbol%$_recpart}
+            # _center="${_namepart}${_symbol}$(_value="${_recpart}" value_substi nonfast)"
+        else
+            _namepart=${_center}
+            _recpart=
+        fi
+
+        # echo "R:${_recpart:-}" >&2
+        # echo "N:${_namepart}" >&2
+        # echo "C:${_center}" >&2
+        if [ -n "${_namepart}" ] && [ "${_namepart#*\$}" = "${_namepart}" ] && \
+                                    [ "${_recpart#*\$\(}" = "${_recpart}" ]; then
+            if [ "${_PASSVARS#*$newl$_namepart$newl}" = "${_PASSVARS}" ]; then
+                eval _center=\$\{"${_center}"\}
+            else
+                # output the "'" escape form
+                _center="'\"\${${_center}}\"'"
+            fi
+        else
+            error "unsaft variable subsitution"
+            return 1
+        fi
+
+        _newvalue="${_newvalue}${_left}${_center}"
+        _cur=${_right}
+    done
+    _newvalue="${_newvalue}${_cur}"
+    if [ "${1:-}" = nonfast ]; then
+        # echo "${_newvalue}" >&2
+        printf %s\\n "${_newvalue}"
+    else
+        _value=${_newvalue}
+    fi
+}
+
+
+table_substi() {
+    # table values substitution
+    (
+        IFS="${tab}"
+        # use "$1" as variable table to make context
+        while read -r _vt _vk _value; do
+            if [ "${_vt}" = "VAR" ] && [ "${_vk%\.*}" = "${_vk}" ]; then
+                value_substi
+                eval "${_vk}=\"\${_value}\""
+            fi
+        done <<EOF
+$1
+EOF
+
+        while read -r _vt _vk _value; do
+            value_substi
+            printf %s\\n "${_vt}${tab}${_vk}${tab}${_value}"
+        done <<EOF
+$TABLE
+EOF
+    )
 }
 
 
@@ -69,33 +214,50 @@ as_rootkey() {
 }
 
 as_value() {
+    _list=
     while IFS="${tab}" read -r name value; do
         if [ -n "$value" ]; then
-            echo "$value"
+            # echo "$value"
+            _list="${_list}${_list:+$newl}$value"
+        else
+            _list=
         fi
     done
+    if [ -n "${_list}" ]; then
+        printf %s\\n "${_list}"
+    fi
+    unset name value _list
 }
 
 as_uniquekey() {
-    keys=
+    keys="$newl"
     while IFS="${tab}" read -r name value; do
-        if [ -n "$name" ] && [ "${keys/$name$newl/}" = "${keys}" ]; then
+        # if [ -n "$name" ] && [ "${keys/$name$newl/}" = "${keys}" ]; then
+        if [ -n "$name" ] && [ "${keys%$newl$name$newl*}" = "${keys}" ]; then
             keys="${keys}${name}${newl}"
         fi
-    done 
+    done
+    keys="${keys#$newl}"
     echo "${keys%$newl}"
     keys=   
 }
 
 as_concat() {
     concat="${1:-}"
-    as_value | (c="$(cat)"; printf "${c%%$newl}") | {
-        if [ -n "$concat" ]; then
-            tr "$newl" "$concat"
-        else
-            tr -d "$newl"
-        fi
-    }
+    # as_value | (c="$(cat)"; printf %s "${c%%$newl}") | {
+    s=$(as_value)
+    # s=${s%%$newl}
+    if [ "$concat" = "$newl" ]; then
+        printf %s\\n "$s"
+    elif [ -n "$concat" ]; then
+        # printf %s "${v%%$newl}" | tr "$newl" "$concat"
+        replace "$newl" "$concat"
+        printf %s\\n "$s" 
+    else
+        # printf %s "${v%%$newl}" | tr -d "$newl"
+        replace "$newl" ""
+        printf %s\\n "$s" 
+    fi
 }
 
 
@@ -106,7 +268,7 @@ resolve_path() {
         return
     fi
     if [ "${1%${1#?}}" = '/' ]; then
-        echo $1
+        echo "$1"
         return
     fi
     if [ -z "${root:-}" ]; then
@@ -126,25 +288,35 @@ resolve_path() {
 }
 
 out_var() {
-    echo "VAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+    # echo "VAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+    echo "VAR${tab}$1${tab}$(s=$2; replace "$newl" "$feed"; printf "%s" "$s")"
 }
 out_var_fast() {
     printf %s\\n "VAR${tab}$1${tab}$2"
 }
-out_rawvar() {
-    echo "RVAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+out_var_just() {
+    TABLE="${TABLE}${newl}${3:-VAR}${tab}$1${tab}$2"
 }
-out_func() {
-    # TODO: types $2
-    funcbody="${2##*()}"
-    echo "FUNC${tab}$1${tab}$(printf "%s" "$funcbody" | tr '\n' '\f')"
-    unset funcbody
-}
+# out_rawvar() {
+#     # echo "RVAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+#     echo "RVAR${tab}$1${tab}$(s=$2; replace "$newl" "$feed"; printf "%s" "$s")"
+# }
+
+# out_func() {
+#     # TODO: types $2
+#     # funcbody="${2##*()}"
+#     # echo "FUNC${tab}$1${tab}$(printf "%s" "$funcbody" | tr '\n' '\f')"
+#     # unset funcbody
+#     echo "FUNC${tab}$1${tab}$(s=${2##*()}; replace "$newl" "$feed"; printf "%s" "$s")"
+# }
+
 out_alias() {
-    echo "ALIAS${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+    # echo "ALIAS${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+    echo "ALIAS${tab}$1${tab}$(s=$2; replace "$newl" "$feed"; printf "%s" "$s")"
 }
 out_list() {
-    echo "LIST${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+    # echo "LIST${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+    echo "LIST${tab}$1${tab}$(s=$2; replace "$newl" "$feed"; printf "%s" "$s")"
 }
 out_join() {
     echo "JOIN${tab}$1${tab}$2"
@@ -186,89 +358,109 @@ _parse_keyvalue() {
             key="${line%%=*}"
         fi
     else
-        value="${line//^=/=}"
+        # value="${line//^=/=}"
+        value=$(printf %s "$line" | sed 's/\^=//g')
     fi
-    key="${key##+([[:space:]])}"
-    key="${key%%+([[:space:]])}"
+
+    # key="${key##+([[:space:]])}"
+    # key="${key%%+([[:space:]])}"
+    if [ -n "$key" ]; then
+        junk=${key%%[![:space:]]*}
+        key=${key#"$junk"}
+        junk=${key##*[![:space:]]}
+        key=${key%"$junk"}
+    fi
     # echo "P:'$line' $key='$value'" >&2
 }
 
+
+
 parse_config_recursive() {
-    #
-    # this function must run in bash
-    #
 
-    # TODO: put roles to table
-    # TODO: maybe also put profiles to table?
-
-    set -euo pipefail
-    shopt -s extglob
-    config_path="$(canonicalize_symlinks "$1")" || {
-        echo "WARNING: no a resolvable path '$config_path'" >&2
+    config_path="$(
+            canonicalize_symlinks "$1")" || {
+        warning "WARNING: not a resolvable path '$1'"
         return
     }
     
-    # root_path="$(canonicalize_symlinks "$(dirname "$config_path")")"
-    # root_path="$(dirname "$config_path")"
-    root_path="$(canonicalize_symlinks "$(dirname "$1")")"
-
 
     # echo "loading $config_path" >&2
     [ -f "$config_path" ] || {
-        echo "WARNING: no such config file $config_path" >&2
+        warning "WARNING: no such config file $config_path"
         return
     }
-    if cat "$LOADED_RECORD" | grep "$config_path"; then
-        # echo "LOADED $config_path" >&2
+    loaded=${loaded:-$newl}
+    if [ "${loaded#$newl$config_path$newl}" != "$loaded" ]; then
         return
     fi
 
+    # root_path="$(canonicalize_symlinks "$(dirname "$config_path")")"
+    # root_path="$(dirname "$config_path")"
+    # root_path="$(canonicalize_symlinks "$(dirname "$1")")"
+    d="$1"
+    fast_dirname
+    root_path=$(canonicalize_symlinks "$d")
+
+    # if grep "$config_path" < "$LOADED_RECORD"; then
+    #     # echo "LOADED $config_path" >&2
+    #     return
+    # fi
     # trace "parsing [roles: ${roles}] ${config_path}"
 
 
     filter_roles() {
-        key="$1${newl}"
-        key="${key//,/@}"
+        s="$key${newl}"
+        replace "," "@"
+        _roles=,$roles
         IFS=','
-        for role in $roles; do
-                key="${key//@$role@/@}"
-                key="${key//@$role./.}"
-                key="${key//@$role$newl/$newl}"
+        for role in ${_roles}; do
+            replace "@$role@" "@"
+            replace "@$role." "."
+            replace "@$role$newl" "$newl"
         done
+        key=$s
         key="${key%$newl}"
         key="${key%\.}"
-        echo "$key"
-        # echo "key: '$key'" >&2
+        # echo "$key"
     }
     is_roles_pass() {
-        [ "$1" = "${1//[@,]/}" ]
+        # [ "$1" = "${1//[@,]/}" ]
+        [ "$1" = "${1%%[@,]*}" ]
     }
     emit() {
-        key="$(filter_roles "$1")"
+        # key="$(filter_roles "$1")"
+        key="$1"
         value="$2"
+        filter_roles
         if is_roles_pass "$key"; then
-            echo "VAR${tab}"${key}"${tab}"${value}            
+            printf VAR\\t%s\\t%s\\n "$key" "$value"
         fi
     }
 
-    
+    out_var_fast layout.root "$root_path"
+
+    loaded="$loaded$config_path$newl"
     stab=
     stabkey=
     while IFS="${newl}" read -r line; do
-        line="${line##+([[:space:]])}"
-        line="${line%%+([[:space:]])}"
-        [ -z "$line" ] || [ "${line:0:1}" = ";" ] || [ "${line:0:1}" = "#" ] && continue
-        # [ -z "$line" -o "${line%${line#?}}" = ";" -o "${line%${line#?}}" = "#" ] && continue
-
+        # line="${line##+([[:space:]])}"
+        # line="${line%%+([[:space:]])}"
+        junk=${line%%[![:space:]]*}
+        line=${line#"$junk"}
+        junk=${line##*[![:space:]]}
+        line=${line%"$junk"}
+        # [ -z "$line" ] || [ "${line:0:1}" = ";" ] || [ "${line:0:1}" = "#" ] && continue
+        { [ -z "$line" ] || [ "${line%"${line#?}"}" = ";" ] || [ "${line%"${line#?}"}" = "#" ]; } && continue
+        
         if [ -n "$stab$stabkey" ]; then
             # if [ "${line: -1}" = '\' ] && [ "${line: -2}" != '\\' ]; then
             #     stab="${stab}${line:0: -1}"
             # else
-            if [ "${line#${line%?}}" = '\' ] && [ "${line#${line%??}}" != '\\' ]; then
+            if [ "${line#"${line%?}"}" = "\\" ] && [ "${line#"${line%??}"}" != "\\\\" ]; then
                 stab="${stab}${line%?}"
             else
                 # [ "${line: -2}" = '\\' ] && line="${line%\\}"
-                [ "${line#${line%??}}" = '\\' ] && line="${line%\\}"
+                [ "${line#"${line%??}"}" = "\\\\" ] && line="${line%\\}"
 
                 stab="${stab}${line}"
                 # echo "VAR${tab}"${stabkey}"${tab}"${stab}
@@ -279,13 +471,18 @@ parse_config_recursive() {
         else
             # if [ "${line:0:1}" = '[' ] && [ "${line: -1}" = ']' ]; then
             #     new_area="${line:1:-1}"
-            if [ "${line%${line#?}}" = '[' ] && [ "${line#${line%?}}" = ']' ]; then
-                new_area="${line#[}"
-                new_area="${new_area%]}"
+            if [ "${line%"${line#?}"}" = '[' ] && [ "${line#"${line%?}"}" = ']' ]; then
+                new_area="${line#\[}"
+                new_area="${new_area%\]}"
 
                 # Note: original key should not contain character '@' or ',', otherwise role test failed
-                new_area="${new_area##+([[:space:]])}"
-                new_area="${new_area%%+([[:space:]])}"
+                # new_area="${new_area##+([[:space:]])}"
+                # new_area="${new_area%%+([[:space:]])}"
+                junk=${new_area%%[![:space:]]*}
+                new_area=${new_area#"$junk"}
+                junk=${new_area##*[![:space:]]}
+                new_area=${new_area%"$junk"}
+
                 area="$new_area"
                 # if [ -n "${new_area}" ]; then
                 #     new_area="$(filter_roles "${new_area}")"
@@ -298,9 +495,30 @@ parse_config_recursive() {
                 #     fi
                 # fi
             else
-                if [ "${area}" = "import" ]; then
+                # import (Deprecated) == include 
+                if [ "${area}" = "import" ] || [ "${area}" = "include" ] || [ "${area}" = "inherit" ]; then
                     # TODO: not resolve, only normalize path
-                    parse_config_recursive "$(root="$root_path" resolve_path "$line")"
+                    innerfile=$(root="$root_path" resolve_path "$line")
+                    if ! innertable=$(
+                                settrace
+                                parse_config_recursive "$innerfile"); then
+                        error "parse error at $innerfile"
+                        return 1
+                    fi
+                    while IFS="$tab" read -r vtype key value; do
+                        if [ "$key" = "enve.configs" ]; then
+                            if [ "${loaded#$newl$value$newl}" != "$loaded" ]; then
+                                loaded="$loaded$value$newl"
+                                printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+                            fi
+                        elif [ "$key" = "layout.root" ] && [ "${area}" != "inherit" ]; then
+                            :
+                        else
+                            printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+                        fi
+                    done <<EOF
+$innertable
+EOF
                 elif [ "${area}" = "comment" ]; then
                     :;
                 elif [ -n "${area}" ]; then
@@ -322,12 +540,12 @@ parse_config_recursive() {
                     #     stabkey="${area}${key:+.}${key}"
                     #     stab="${stab}${value:0: -1}"
                     # else                
-                    if [ "${value#${value%?}}" = '\' ] && [ "${value#${value%??}}" != '\\' ]; then
+                    if [ "${value#"${value%?}"}" = "\\" ] && [ "${value#"${value%??}"}" != "\\\\" ]; then
                         stabkey="${area}${key:+.}${key}"
                         stab="${stab}${value%?}"
                     else
                         # [ "${value: -2}" = '\\' ] && value="${value%\\}"
-                        [ "${value#${value%??}}" = '\\' ] && value="${value%\\}"
+                        [ "${value#"${value%??}"}" = "\\\\" ] && value="${value%\\}"
                         emit "${area}${key:+.}${key}" "$value"
                         # echo "VAR${tab}"${area}${key:+.}${key}"${tab}"${value}
                     fi
@@ -336,71 +554,82 @@ parse_config_recursive() {
         fi
     done < "$config_path"
 
-    out_var enve.bound "${config_path}"
-    out_var layout.root "$root_path"
-    echo "$config_path" >> "$LOADED_RECORD"
+    out_var_fast bound "$config_path"
+    out_var_fast enve.configs "$config_path"
+    out_var_fast enve.roles "$roles"
+    
+    # echo "$config_path" >> "$LOADED_RECORD"
 }
 
 parse_config() {
-    LOADED_RECORD="$(mktemp)"
+    # LOADED_RECORD="$(mktemp)"
     for cfg in "$@"; do
-        roles="$(system_roles)" parse_config_recursive "$cfg"
+        roles="${roles:-}${roles:+,}$(system_roles)" parse_config_recursive "$cfg"
     done
-    rm $LOADED_RECORD >/dev/null
+    # rm $LOADED_RECORD >/dev/null
 }
 
 enve_parse_config() {
-    LOADED_RECORD="$(mktemp)"
-    for cfile in $(IFS=','; echo $ENVE_PROFILE); do
-        roles="${ENVE_ROLES}${ENVE_ROLES:+,}$(system_roles)" parse_config_recursive "$cfile" || return 1
+    # LOADED_RECORD="$(mktemp)"
+    _trace enve_parse_config
+    OLDIFS=$IFS
+    IFS=','
+    # for cfile in $(IFS=','; echo $ENVE_PROFILE); do
+    for cfile in $ENVE_PROFILE; do
+        IFS=$OLDIFS
+        if [ -n "$cfile" ]; then
+            # echo "cfile: $cfile" >&2
+            roles="${ENVE_ROLES}${ENVE_ROLES:+,}$(system_roles)" parse_config_recursive "$cfile"
+        fi
     done
     if [ -n "$ENVE_CONFIG" ]; then
         echo "$ENVE_CONFIG"
     fi
-    rm $LOADED_RECORD >/dev/null
+    # rm $LOADED_RECORD >/dev/null
 }
 
 
 
-DEVON_DEBUG=1
+# DEVON_DEBUG=1
 
-eval_line() {
-    if [ "$DEVON_DEBUG" -eq 1 ]; then
-        echo "EVAL: $1" >&2
-    fi
-    echo "$1"
-}
+
 
 variable_action() {
     case $name in
         PRJ_NAME)
-                if [ "$target" = "shell" ] && [ "$($UNAMEEXEC)" = "Darwin" ]; then
+                if [ -n "$r_value" ] && [ "$target" = "shell" ] && [ "$UNAME_S" = "Darwin" ]; then
                     eval_line 'OLD_PRJ_NAME="$PRJ_NAME"'
-                    eval_line 'echo -n -e "\033]0;'$r_value'\007"'
-                    exithook="${exithook}${exithook:+$newl}  echo -n -e "'"\033]0;$OLD_PRJ_NAME\007"'
+                    # eval_line 'echo -n -e "\033]0;'$r_value'\007"'
+                    # exithook="${exithook}${exithook:+$newl}  echo -n -e "'"\033[0;$OLD_PRJ_NAME\007"'
+                    eval_line "printf '\\033]0;%s\\007' '$r_value'"
+                    exithook="${exithook}${exithook:+$newl}  printf '\\033]0;%s\\007' \"\$OLD_PRJ_NAME\""
                 fi
             ;;
         TERMSIZE)
-                if [ "$target" = "shell" ] && [ -x "/usr/bin/tput" ]; then
+                if [ -n "$r_value" ] && [ "$target" = "shell" ] && [ -x "/usr/bin/tput" ]; then
                     # echo -e -n "\033[8;10;140t"
                     width="${r_value%%x*}"
                     height="${r_value##*x}"
                     eval_line "OLD_COLUMNS=\$(/usr/bin/tput cols)"
                     eval_line "OLD_LINES=\$(/usr/bin/tput lines)"
-                    eval_line "echo -e -n \"\\033[8;${height};${width}t\""
-                    exithook="${exithook}${exithook:+$newl}  echo -e -n \"\\033[8;\${OLD_LINES};\${OLD_COLUMNS}t\""
+                    # eval_line "echo -e -n \"\\033[8;${height};${width}t\""
+                    # exithook="${exithook}${exithook:+$newl}  echo -e -n \"\\033[8;\${OLD_LINES};\${OLD_COLUMNS}t\""
+                    eval_line "printf '\\033[8;%s;%st' \"${height}\" \"${width}\""
+                    exithook="${exithook}${exithook:+$newl}  printf '\\033[8;%s;%st' \"\${OLD_LINES}\" \"\${OLD_COLUMNS}\""
                 fi
             ;;
         TERMTHEME)
-            if [ "$target" = "shell" ] && [ "$($UNAMEEXEC)" = "Darwin" ]; then
-                eval_line 'OLD_TERMTHEME="$TERMTHEME"'
-                eval_line "${ENVE_HOME}/script/term_theme.applescript \"$r_value\""
-                exithook="${exithook}${exithook:+$newl}  ${ENVE_HOME}/script/term_theme.applescript \"\$OLD_TERMTHEME\""
-            fi
-        ;;
+                if [ -n "$r_value" ] && [ "$target" = "shell" ] && [ "$UNAME_S" = "Darwin" ]; then
+                    eval_line 'OLD_TERMTHEME="$TERMTHEME"'
+                    eval_line "$ENVE_HOME/enve/script/term_theme.applescript '$r_value'"
+                    exithook="${exithook}${exithook:+$newl}  $ENVE_HOME/enve/script/term_theme.applescript \"\$OLD_TERMTHEME\""
+                fi
+            ;;
     esac
-    eval_line "$name='$(eval echo "$r_value")'; export $name"
+    # eval_line "$name='$(eval echo "$r_value")'; export $name"
+    eval_line "$name='$r_value'; export $name"
 }
+
 
 
 execute_envdef() {
@@ -414,10 +643,23 @@ execute_envdef() {
     #     target=$1
     #     shift
     # fi
+    _loglevel_form_symbol fast
+    if [ "$loglevel" -le 1 ]; then
+        eval_line() {
+            echo "EVAL: $1" >&2
+            echo "$1"
+        }
+    else
+        eval_line() {
+            echo "$1"
+        }
+    fi
 
+    _lists=
     exithook=
     while IFS="$tab" read -r vtype name value; do
-        r_value="$(echo "$value" | "$TREXEC" '\f' '\n')"
+        # r_value="$(echo "$value" | "$TREXEC" '\f' '\n')"
+        r_value=$(s=$value; replace "$feed" "$newl"; replace "'" "'\\''"; printf %s "$s")
         case $vtype in
             VAR)
                     variable_action
@@ -426,26 +668,36 @@ execute_envdef() {
                     #     eval_line 'echo -n -e "\033]0;$PRJ_NAME\007"'
                     # fi
                 ;;
-            RVAR)
-                    eval_line "$name='$(echo "$r_value")'; export $name"
-                ;;
+            # RVAR)
+            #         eval_line "$name='$r_value'; export $name"
+            #     ;;
             LIST)
-                    eval "_LIST_$name='$(eval echo \$_LIST_$name)$(eval echo \${_LIST_$name:+\$_JOIN_$name})$value'"
-                    eval_line "eval $name='$(eval echo "\$_LIST_$name")'; export $name"
+                    # eval "_LIST_$name='$(eval echo \$_LIST_$name)$(eval echo \$\{_LIST_$name:+\$_JOIN_$name\})$value'"
+                    # eval_line "eval $name='$(eval echo "\$_LIST_$name")'; export $name"
+                    if eval [ -z \""\$_JOIN_$name"\" ]; then
+                        continue
+                    fi
+                    if [ -n "$r_value" ]; then
+                        eval eval "_LIST_$name='\${_LIST_$name}\${_LIST_$name:+\$_JOIN_$name}\$r_value'"
+                    else
+                        eval "_LIST_$name="
+                    fi
+                    # eval_line "$name='$(eval echo "\$_LIST_$name")'; export $name"
                 ;;
             JOIN)
-                    eval "_JOIN_$name='$value'; _LIST_$name="
-                    eval_line "export $name=''"
+                    eval "_JOIN_$name='$value'; _LIST_$name=\"\${_LIST_$name:-}\""
+                    _lists="${_lists}${_lists:+ }$name"
+                    # eval_line "export $name=''"
                     # eval_line "export $name"
                 ;;
-            FUNC)
-                    eval_line "$name() $r_value"
-                ;;
+            # FUNC)
+            #         eval_line "$name() $r_value"
+            #     ;;
             ALIAS)
                     eval_line "alias $name='$r_value'"
                 ;;
             SRC)
-                    eval_line ". $r_value"
+                    eval_line ". '$r_value'"
                 ;;
             EXEC)
                     set -- "$@" "$r_value"
@@ -454,18 +706,49 @@ execute_envdef() {
     done <<EOF
 $TABLE
 EOF
-    
+
+    for name in ${_lists}; do
+        # TODO: need test with variable subsitution
+        eval_line "$name='$(eval printf %s\\\\n \""\$_LIST_$name"\")'; export $name"
+    done
+
+    cwd=$(TABLE=$PAST_TABLE table_tail exec.cwd)
+    cwd=${cwd:-%cwd}
+    if [ "$cwd" = "%cwd" ]; then
+        :
+    elif [ "${cwd%"${cwd#?????}"}" = "%root" ]; then
+        # echo "%root" >&2
+        # TABLE=$PAST_TABLE table_tail layout.root >&2
+        eval_line 'cd "'"$(TABLE=$PAST_TABLE table_tail layout.root)${cwd#\%root}"'"'
+    else
+        eval_line 'cd "'"$cwd"'"'
+    fi
+
     if [ "$target" = "shell" ]; then
         eval_line 'OLDIFS="$IFS"; IFS=":";'
         eval_line 'for opt in $ENVE_SHELLOPTS; do set -o $opt; done'
-        eval_line 'for opt in $ENVE_BASHOPTS; do shopt -s $opt; done'
+        eval_line 'if [ -n "${ZSH_VERSION:-}" ] || [ -n "${BASH_VERSION:-}" ]; then'
+        eval_line ' for opt in $ENVE_BASHOPTS; do shopt -s $opt; done'
+        eval_line 'fi'
         eval_line 'IFS="$OLDIFS"'
-        eval_line 'export -n ENVE_SHELLOPTS'
-        eval_line 'export -n ENVE_BASHOPTS'
+        eval_line 'unset ENVE_SHELLOPTS'
+        eval_line 'unset ENVE_BASHOPTS'
         eval_line 'onexit() { '
         eval_line '  '"${exithook:-true}"
         eval_line '}'
         eval_line 'trap onexit INT TERM EXIT'
+    elif [ "$target" = "test" ]; then
+        eval_line '. $ENVE_HOME/enve/testlib'
+        eval_line 'TEST_OUTPUT=${ENVE_TEST_OUTPUT:-$(mkdtemp "$(get_tempdir)"/enve-test.XXXXXX)}'
+        eval_line 'CACHED=$TEST_OUTPUT harness \'
+        while IFS="$tab" read -r casename cmd; do
+            if [ -n "$casename" ]; then
+                eval_line '  "'"$casename"'" "'"$cmd"'" \'
+            fi
+        done <<EOF
+$(TABLE=$PAST_TABLE table_subset "test.jobs\\..*" | as_postfix "test.jobs\\.")
+EOF
+        eval_line '  ;'
     else
         # TODO: test this
         if [ $# -gt 0 ]; then
@@ -475,11 +758,15 @@ EOF
                 if [ "$stage" -eq $# ]; then
                     eval_line "  $stage) exec ${execstmt} \"\$@\";;"
                 else
-                    eval_line "  $stage) ENVE_CHAINEXEC_STAGE=$(($stage + 1)) exec ${execstmt%__chain__*} sh \$0 \"\$@\" ${execstmt#*__chain__} ;;"
+                    eval_line "  $stage) ENVE_CHAINEXEC_STAGE=$((stage + 1)) exec ${execstmt%__chain__*} sh \$0 \"\$@\" ${execstmt#*__chain__} ;;"
                 fi
-                stage=$(($stage + 1))
+                stage=$((stage + 1))
             done
             eval_line 'esac'
+        elif [ "$target" = "module" ] || [ "$target" = "loader" ]; then
+            eval_line 'if [ -z "${sh_module:-}" ]; then'
+            eval_line '  exec "$@"'
+            eval_line 'fi'
         else
             eval_line 'exec "$@"'
         fi
@@ -523,24 +810,25 @@ ____resolve2() {
             fi
             TABLE="$NEW_TABLE"
         fi
-    done <<< "$(echo "$module_paths" | tac)"
-    echo "$TABLE"
-}
-
-
-_resolve3() {
-    TABLE="$(cat)"
-
-    while read -r module_path; do
-        if ! TABLE="$(echo "$TABLE" | $firechain_function "$module_path!module")"; then
-            error "resolve error: module error at $module_path" >&2
-            return 1
-        fi
     done <<EOF
 $(echo "$module_paths" | tac)
 EOF
     echo "$TABLE"
 }
+
+
+# _resolve3() {
+#     TABLE="$(cat)"
+#     while read -r module_path; do
+#         if ! TABLE="$(echo "$TABLE" | $firechain_function "$module_path!module")"; then
+#             error "resolve error: module error at $module_path" >&2
+#             return 1
+#         fi
+#     done <<EOF
+# $(echo "$module_paths" | tac)
+# EOF
+#     echo "$TABLE"
+# }
 
 
 # _simple_builtin_loader() {
@@ -585,7 +873,7 @@ _simple_fire() {
             ENVE_ROLES="${target},$ENVE_ROLES" \
             ENVE_CONFIG="$ENVE_CONFIG" \
             enve_parse_config
-            out_var core.target $target)"; then
+            out_var core.target "$target")"; then
         echo "fire error: parse_config error" >&2
         return 1
     fi
@@ -597,17 +885,14 @@ _simple_fire() {
         echo "fire error: resolve error" >&2
         return 1
     fi
-    if ! rccontent="$(
-                TREXEC="$(which tr)" \
-                UNAMEEXEC="$(which uname)" \
-                execute_envdef "$TABLE" "$target")"; then
+    if ! rccontent="$(UNAME_S=$(uname -s) execute_envdef "$TABLE" "$target")"; then
         echo "fire error: make rcfile error" >&2
         return 1
     fi
 
     RCFILE_PATH=$(mktemp)
     echo "$rccontent" >> "$RCFILE_PATH"
-    chmod 755 $RCFILE_PATH
+    chmod 755 "$RCFILE_PATH"
     echo "rcfile: $RCFILE_PATH" >&2
 
 
@@ -747,10 +1032,9 @@ parse_fire_chain() {
         input="${input#*$vtab}"
         if [ "$input" = "$spec" ]; then input=; fi
 
-        stage=$(($stage + 1))
+        stage=$((stage + 1))
         target=
         roles=
-        configs=
         while [ -n "$spec" ]; do
 
             word="${spec%%${feed}*}"
@@ -771,7 +1055,7 @@ parse_fire_chain() {
                     _error "target cannot empty"
                     return 1
                 fi
-            elif [ "${word/=/}" != "$word" ]; then
+            elif [ "${word%=*}" != "$word" ]; then
                 _parse_keyvalue "$word"
                 if [ -n "$target" ]; then
                     out_var "stage$stage.$key" "$value"
@@ -838,9 +1122,9 @@ exec_fire_chain_table() {
         }
         if [ $stage -gt 0 ]; then
             # TODO: table_subset must really subset
-            ENVE_ROLES="$(table_subset "stage$stage\.roles" | as_concat ",")"
+            ENVE_ROLES="$(table_subset "stage$stage\\.roles" | as_concat ",")"
             ENVE_CONFIG="$global_config$newl"
-            ENVE_CONFIG="$ENVE_CONFIG$(table_subset "stage$stage\..*" | as_postfix "stage$stage\.")"
+            ENVE_CONFIG="$ENVE_CONFIG$(table_subset "stage$stage\\..*" | as_postfix "stage$stage\\.")"
             if [ -f "$project_dir/enve.ini" ]; then
                 case $target in
                     shell|run|loader|module)
@@ -849,21 +1133,28 @@ exec_fire_chain_table() {
                             ENVE_PROFILE="$project_dir/enve.ini" \
                             ENVE_ROLES="$ENVE_ROLES" \
                             ENVE_CONFIG="$ENVE_CONFIG" \
-                            $fire_function "$target" "$@"
-                            if [ $? -ne 0 ]; then
+                            # $fire_function "$target" "$@"
+                            # if [ $? -ne 0 ]; then
+                            if $fire_function "$target" "$@"; then
                                 _error "fire failed at stage $stage"
                                 return 1
                             fi
                             finally=true
                         ;;
                     build|install|deploy)
-                            url="$(
-                                ENVE_PROFILE="$project_dir/enve.ini" \
-                                ENVE_ROLES="$ENVE_ROLES" \
-                                ENVE_CONFIG="$ENVE_CONFIG" \
-                                $fire_function "$target"
-                            )"
-                            if [ $? -ne 0 ]; then
+                            # url="$(
+                            #     ENVE_PROFILE="$project_dir/enve.ini" \
+                            #     ENVE_ROLES="$ENVE_ROLES" \
+                            #     ENVE_CONFIG="$ENVE_CONFIG" \
+                            #     $fire_function "$target"
+                            # )"
+                            # if [ $? -ne 0 ]; then
+                            if url="$(
+                                        ENVE_PROFILE="$project_dir/enve.ini" \
+                                        ENVE_ROLES="$ENVE_ROLES" \
+                                        ENVE_CONFIG="$ENVE_CONFIG" \
+                                        $fire_function "$target"
+                                    )"; then
                                 _error "fire failed at stage $stage"
                                 return 1
                             fi
@@ -878,10 +1169,489 @@ exec_fire_chain_table() {
                 return 1
             fi
         else
-            global_config="$(table_subset "global\..*" | as_postfix "global\.")"
+            global_config="$(table_subset 'global\..*' | as_postfix 'global\.')"
         fi
-        stage=$(($stage + 1))
+        stage=$((stage + 1))
         target="$(table_tail stage$stage.target || true)"
     done
     )
+}
+
+
+
+exec_loaders() {
+    next_loaders="${module_paths}"
+    loader_execed=,
+    module_loaded=,
+
+    while [ -n "$next_loaders" ]; do
+        loader_path="${next_loaders%%,*}"
+        next_loaders="${next_loaders#*,}"
+
+        # _trace "loader_path:   $loader_path"
+        # _trace "module_loaded: $module_loaded"
+        # _trace "next_loaders:  $next_loaders"
+
+        if [ -x "$loader_path/enve.loader" ]; then
+            if ! modules="$(echo "$TABLE" | ENVE_PROFILE="$loader_path/enve.ini" \
+                                            fire loader "$loader_path/enve.loader" "$0")"; then
+                _error "loader execute failed"
+                return 1
+            fi
+            loader_execed="${loader_execed}$loader_path,"
+
+            while read -r module; do
+                module="$(canonicalize_symlinks "$module")"
+                if [ "${module_loaded}" = "${module_loaded%,$module,}" ]; then
+                    if [ "$loader_execed" = "${loader_execed%,$module,}" ]; then
+                        next_loaders="${next_loaders}${module},"
+                    fi
+                    module_loaded="${module_loaded}${module},"
+                    # echo "$module"
+                    _debug "module '$module' found"
+                else
+                    _debug "module '$module' already loaded"
+                fi
+            done <<EOF
+$modules
+EOF
+        fi
+    done
+    unset loader_execed next_loaders loader_path module
+    module_loaded=${module_loaded#,}
+}
+
+resolve() {
+    _trace "module_paths $module_paths"
+    while read -r module; do
+        if [ -x "$module/enve.module" ]; then
+            if ! TABLE="$(echo "$TABLE" | ENVE_PROFILE="$module/enve.ini" \
+                                          fire module "$module/enve.module" "$0")"; then
+                _error "module execute error at $module"
+                return 1
+            fi
+        fi
+    done <<EOF
+$module_paths
+EOF
+unset module
+}
+
+# EXTRA_CENVE_PROFILE: user specficed config files, use as import at beginning
+
+get_rcfile_from_profiles_nocache() {
+    # input:
+    #   ENVE_PROFILE
+    #   ENVE_ROLES
+    #   ENVE_CONFIG
+    #   RCFILE_PATH
+    # output:
+    #   boundfiles
+    # sideeffect:
+    #   write $RCFILE_PATH
+
+    # proc            cond    hash                    vaild       make
+    # --------------------------------------------------------------------
+    # final-rc        -       url|profile             rc+marks    genrcfile
+    #   checkout      url     url|profile             -           fetch
+    #   paser&load    -       -
+    #   settle        m       sub(s, pTABLE)          rootmark    settle
+    #   install       m       sub(i, pTABLE)+artifact installmark unpack
+    #     build       m       sub(b, pTABLE)+source   artifact    exec build
+    #       build-rc  m       sub(b, pTABLE)          rc          genrcfile
+    #   setup         m       sub(u, pTABLE)          setupmark   setup
+
+    # /Users/pengweiqi/googlesync/sync2017/doc-linux2015/devon/devon_bash/libexec/enve/enve.ini
+    
+    if [ "$ENVE_PROFILE" = "$ENVE_HOME/enve/enve.ini" ]; then
+        TABLE=
+        out_var_just core.target $target
+        out_var_just sh_module 1
+        # CONF_TABLE=$(
+        #     out_var_fast core.target $target
+        #     out_var_fast sh_module 1
+        # )
+        module_paths=
+    else
+        # checkout procedure
+        # OLDIFS=$IFS; IFS=,
+        # if [ -z "${ENVE_MAIN_PROFILE:-}" ]; then
+        #     for cfile in $ENVE_PROFILE; do
+        #         ENVE_MAIN_PROFILE=$cfile
+        #     done
+        # fi
+        # IFS=$OLDIFS
+        # if is_url "$ENVE_MAIN_PROFILE"; then
+        #     ENVE_PROFILE=",$ENVE_PROFILE"
+        #     ENVE_PROFILE="${ENVE_PROFILE#*,$ENVE_MAIN_PROFILE,}${ENVE_PROFILE%%,$ENVE_MAIN_PROFILE,*}"
+        #     ENVE_PROFILE=${ENVE_PROFILE#,}
+        #     ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$(fetch "$ENVE_MAIN_PROFILE")/enve.ini"
+        # fi
+
+
+        # parse procedure
+        TABLE="$(
+                      settrace
+                      ENVE_PROFILE="$ENVE_PROFILE" \
+                      ENVE_ROLES="$ENVE_ROLES" \
+                      ENVE_CONFIG="$ENVE_CONFIG" \
+                      enve_parse_config
+                      out_var_fast core.target $target)" || {
+            _error "parse_config failed"
+            return 1
+        }
+        _trace "=============$newl$TABLE"
+
+        # _trace "DO exec_loaders"
+        # module_paths="$(
+        #                 settrace
+        #                 TABLE="$CONF_TABLE"
+        #                 module_paths="$ENVE_HOME/enve,"
+        #                 exec_loaders)" || {
+        #     _error "exec_loaders failed"
+        #     return 1
+        # }
+
+        # load procedure
+        TABLE="$TABLE" module_paths="$ENVE_HOME/enve," exec_loaders || {
+            _error "exec_loaders failed"
+            return 1
+        }
+
+        module_paths=
+        OLDIFS=$IFS; IFS=,
+        for module in $module_loaded; do
+            module_paths="$module${module_paths:+$newl}${module_paths:-}"
+        done
+        IFS=$OLDIFS
+        # _trace "DONE exec_loaders"
+    fi
+
+    _trace "module_paths_loaded: $module_paths"
+    # TABLE="$CONF_TABLE"
+    module_paths="$module_paths" resolve || {
+        _error "resolve failed"
+        return 1
+    }
+    while read -r envebound; do
+        out_var_just bound "$ENVE_HOME/$envebound"
+    done <<EOF
+$(cd "$ENVE_HOME"; find enve ! -type d ! -name .DS_Store)
+EOF
+    _debug "=== resolve ???-$target ===$newl$TABLE"
+
+#     TABLE="$(
+#              settrace
+#              TABLE="$CONF_TABLE" module_paths="$module_paths" resolve 
+#              # out_var_fast bound "$(resolve_symlinks "$ENVE_HOME/../enve")"
+#              # out_var_fast bound "$(resolve_symlinks "$ENVE_HOME/enve")"
+#              while read -r envebound; do
+#                 out_var_fast bound "$ENVE_HOME/$envebound"
+#              done <<EOF
+# $(cd "$ENVE_HOME"; find enve ! -type d)
+# EOF
+#             )" || {
+#         _error "resolve failed"
+#         return 1
+#     }
+#    _debug "=== resolve ???-$target ===$newl$TABLE"
+
+    # boundfiles="$(table_subset bound | as_value | sort -u)"
+    # TABLE="$(echo "$TABLE" | grep -E -v -e "^VAR${tab}bound${tab}" \
+    #                                     -e "^VAR${tab}.*[.].*${tab}" || true)"
+
+    PAST_TABLE=$TABLE
+    TABLE=
+    boundfiles=
+    OLDIFS=$IFS
+    IFS=$tab
+    while read -r ctype key value; do
+        case "$ctype$tab$key" in
+            VAR"${tab}"bound)
+                    boundfiles="${boundfiles}${boundfiles:+$newl}$value"
+                ;;
+            VAR"${tab}"*'.'*|"$tab")
+                    :
+                ;;
+            *)
+                    out_var_just "$key" "$value" "$ctype"
+                ;;
+        esac
+    done <<EOF
+$PAST_TABLE
+EOF
+    IFS=$OLDIFS
+
+
+
+    UNAME_S=$(uname -s) \
+    PAST_TABLE="$PAST_TABLE" execute_envdef "$TABLE" "$target" > "$RCFILE_PATH" || {
+        _error "execute_envdef failed"
+        return 1
+    }
+
+    _debug "RC DONE"
+    chmod 755 "$RCFILE_PATH"
+    echo "$boundfiles"
+}
+
+
+
+get_rcfile_from_profiles_usecache() {
+    # input:
+    #   ENVE_PROFILE
+    #   ENVE_ROLES
+    #   ENVE_CONFIG
+    # output:
+    #   rcfile path
+    
+    mkrcfile() {
+        # if ! tmprcfile="$(mkstemp ${TMPDIR:-/tmp}/rcfile.XXXXXX)"; then
+        #     _error "failed to create tempfile"
+        #     return 1
+        # fi
+        # tmprcfile=$CACHED/real_rcfile
+        boundfiles="$(
+                 settrace
+                 ENVE_PROFILE="$ENVE_PROFILE" \
+                 ENVE_ROLES="$ENVE_ROLES" \
+                 ENVE_CONFIG="$ENVE_CONFIG" \
+                 RCFILE_PATH="$1" \
+                 get_rcfile_from_profiles_nocache)" || return 1
+
+        # if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
+        #     cached_rcfile="$(catalog=rcfile cache_add "$tmprcfile")"
+        #     rm $tmprcfile
+        # else
+        #     cached_rcfile="$tmprcfile"
+        # fi
+        # cached_rcfile=$tmprcfile
+    }
+
+    if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
+        # RCFILE_PATH="$(
+        # settrace
+        p_text() {
+            # echo "p_text" >&2
+            printf %s\\n "$ENVE_ROLES"
+            printf %s\\n "$ENVE_CONFIG"
+            printf %s\\n "$ENVE_PROFILE"
+            # timestamp2 >&2
+            # shellcheck disable=2046
+            # files_stats_contents $(
+            #     for file in $(IFS=','; echo $ENVE_PROFILE); do
+            #         canonicalize_symlinks "$file"
+            #     done)
+            # set --
+            
+            # for file in $(IFS=','; echo $ENVE_PROFILE); do
+            IFS=','
+            for file in $ENVE_PROFILE; do
+                # set -- "$@" "$file"
+                fast_readtext "$file"
+                printf %s\\n "$text"
+            done
+            # cat "$@"
+            # timestamp2 >&2
+        }
+
+        p_vaild() {
+            fast_readtext "$CACHED/boundfiles" || {
+                _trace F1
+                return 0
+            }
+            boundfiles="$text"
+            boundhashes=$(files_stats $boundfiles) || {
+                _trace F2
+                return 0
+            }
+            fast_readtext "$CACHED/hashes" || {
+                _trace F3
+                return 0
+            }
+            excepted_boundhashes="$text"
+            [ "$boundhashes" = "$excepted_boundhashes" ] || {
+                _trace F4
+                return 0
+            }
+            [ -s "$CACHED/real_rcfile" ] || {
+                _trace F5
+                return 0
+            }
+            echo 1
+        }
+        p_make() {
+            # settrace
+            # set -eu
+            # echo "p_make"
+            # mkdir "$CACHED"
+            mkrcfile "$CACHED/real_rcfile"
+            # boundhashes="$(files_stats_contents $boundfiles | hashstr)"
+            boundhashes=$(files_stats $boundfiles)
+            # boundhashes=$(echo "$boundhashes" | hashstr)
+            # _trace "module_paths: $module_paths"
+            _trace "profile: $ENVE_PROFILE"
+            _trace "write to: $CACHED/boundfiles"
+            # _trace "-- boundfiles (write) --  "
+            # _trace "$boundfiles"
+            echo "$boundfiles" > "$CACHED/boundfiles"
+            echo "$boundhashes" > "$CACHED/hashes"
+            # echo "$CACHED/real_rcfile" > "$CACHED/rcfile"
+        }
+        # catalog=boundfile cache_cattext ./rcfile p_text p_make p_vaild
+        # RCFILE_PATH=$text
+        catalog=boundfile cache_path real_rcfile p_text p_make p_vaild
+        RCFILE_PATH=$cached_path
+        # )"
+    else
+        if ! tmprcfile="$(mkstemp ${TMPDIR:-/tmp}/rcfile.XXXXXX)"; then
+            _error "failed to create tempfile"
+            return 1
+        fi
+        mkrcfile "$tmprcfile"
+        RCFILE_PATH=$tmprcfile
+    fi
+    echo "$RCFILE_PATH"
+}
+
+
+
+fire() {
+    target=$1
+    shift
+    ENVE_ROLES="${target},${ENVE_ROLES}"
+    ENVE_FIRE_DEPTH="$((${ENVE_FIRE_DEPTH:--1} + 1))"
+    
+    LOGTYPE=fire info "level $ENVE_FIRE_DEPTH $target $*"
+
+
+    ensure_readlink_command
+    if [ -z "${ENVE_CACHE_DIR:-}" ]; then
+        ENVE_CACHE_DIR=$(get_cachedir)
+    fi
+    export ENVE_CACHE_DIR
+    export ENVE_READLINK
+
+
+    # RCFILE_PATH="$(get_rcfile_from_profiles)"
+    RCFILE_PATH="$(
+        # settrace
+        get_rcfile_from_profiles_usecache
+    )"
+    if [ -z "$RCFILE_PATH" ]; then
+        return 1
+    fi
+
+
+    while read -r line; do
+        case $line in
+            *"; export SHELL")
+                    cuts=${line%\'; export SHELL}
+                    invoke_shell=${cuts#*SHELL=\'}
+                ;;
+            *"; export BYPASS")
+                    cuts=${line%\'; export BYPASS}
+                    invoke_bypass=${cuts#*BYPASS=\'}
+                ;;
+            *"; export sh_module")
+                    cuts=${line%\'; export sh_module}
+                    sh_module=${cuts#*sh_module=\'}
+                ;;
+        esac
+        # if [ "${line%; export SHELL}" != "$line" ]; then
+        #     cuts=${line%\'; export SHELL}
+        #     invoke_shell=${cuts#*SHELL=\'}
+        # elif [ "${line%; export BYPASS}" != "$line" ]; then
+        #     cuts=${line%\'; export BYPASS}
+        #     invoke_bypass=${cuts#*BYPASS=\'}
+        # fi
+    done < "$RCFILE_PATH"
+
+    # shell_line="$(grep '; export SHELL' $RCFILE_PATH)"
+    # eval $shell_line
+    # _debug "SHELL: ${invoke_shell:-}"
+
+    # # get bypassed variable list
+    # bypass_line="$(grep '; export BYPASS' $RCFILE_PATH | tail -n 1)"
+    # eval $bypass_line
+
+    bypass_envs="ENVE_FIRE_DEPTH='$ENVE_FIRE_DEPTH'"
+    if [ -n "${invoke_bypass:-}" ]; then
+        bypass_envs="$bypass_envs $(
+            IFS=':'
+            for var in $invoke_bypass; do
+                if [ -n "$var" ] && eval [ -n \"\$\{$var+x\}\" ]; then
+                    # printf "%s" "'$var=$(eval echo "\${$var:-}")' "
+                    # eval printf \"%s=%s \" "$var" "\$(quote \"\${$var:-}\")"
+                    eval printf \"%s=\'%s\' \" "$var" "\$$var"
+                    :
+                fi
+            done
+        )"
+    fi
+    # _debug "bypass_envs: $bypass_envs"
+    _notice "enter $RCFILE_PATH"
+
+
+    case $target in
+        shell)
+                # shell="$(table_tail SHELL)"
+                shell=${invoke_shell:-$SHELL}
+
+                # posix mode
+                # ENV=$PWD/e zsh -c 'exec -a sh zsh "$@"' "$@"
+                # ENV=$PWD/e bash --posix
+                # ksh/bash POSIXLY_CORRECT=YES
+
+                case $(basename $shell) in
+                    dash|ash|ksh|sh)
+                            rc_arg=
+                            rc_env=ENV
+                        ;;
+                    zsh)
+                            rc_arg=--rcs
+                        ;;
+                    bash)
+                            rc_arg=--rcfile
+                        ;;
+                    *)
+                            die "unsuported shell $shell"
+                        ;;
+                esac
+                eval exec env -i $bypass_envs ${rc_env:+$rc_env=$rcfile} $shell ${rc_arg:+$rc_arg $RCFILE_PATH} -i
+            ;;
+        run)
+                # exec env - $bypass_envs bash "$RCFILE_PATH" "$@"
+                args=$(save "$@")
+                eval exec env -i "$bypass_envs" sh \"\$RCFILE_PATH\" "$args"
+            ;;
+        loader|module)
+                if [ -n "${sh_module:-}" ]; then
+                    # _info "SH_MODULE:${sh_module:-}"
+                    
+                    # shellcheck disable=1090
+                    . "$RCFILE_PATH"
+                    # shellcheck disable=1090
+                    . "$@"
+                else
+                    exec sh "$RCFILE_PATH" "$@"
+                fi
+            ;;
+        test)
+                bypass_envs="$bypass_envs ENVE_HOME='$ENVE_HOME' ENVE_TEST_OUTPUT='$ENVE_TEST_OUTPUT'"
+                eval exec env -i "$bypass_envs" sh \"\$RCFILE_PATH\"
+            ;;
+        build)
+            ;;
+        install)
+            ;;
+        deploy)
+                # handle only simple case.
+                # for complex case, use a environment to run more script
+            ;;
+    esac
+}
+
+enve_fire() {
+    fire "$@"
 }

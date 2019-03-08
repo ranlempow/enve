@@ -44,21 +44,22 @@ split_path ()
         fi;
     fi
 }
+# _cd_target is a function
+_cd_target () 
+{ 
+    split_path "$TARGET" || return 1;
+    NAME="$basepath";
+    cd "${dirpath:-/}" || return 1
+}
 # resolve_symlinks is a function
 resolve_symlinks () 
 { 
     ensure_readlink_command;
-    function cd_target () 
-    { 
-        split_path "$TARGET" || return 1;
-        NAME="$basepath";
-        cd "${dirpath:-/}" || return 1
-    };
     ( TARGET="$1";
-    cd_target || return 1;
+    _cd_target || return 1;
     while [ -L "$NAME" ]; do
         TARGET="$($ENVE_READLINK "$NAME")" || return 1;
-        cd_target || return 1;
+        _cd_target || return 1;
     done;
     if [ "$NAME" = ".." ]; then
         echo "$(cd "$(pwd -P)/.."; echo "$(pwd)")";
@@ -76,7 +77,8 @@ resolve_symlinks ()
     fi )
 }
 
+
 ENVE_HOME=$(resolve_symlinks "$0")
 ENVE_HOME="${ENVE_HOME%/bin/enve}/libexec"
 export ENVE_HOME
-exec "$ENVE_HOME/enve/enve" "$@"
+exec "$SHELL" "$ENVE_HOME/enve/enve" "$@"

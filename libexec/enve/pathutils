@@ -10,6 +10,7 @@ HAVE_ENVE_PATHUTILS=1
 readlink_posix() {
     # readlink '.' or '..' always return 1
     (
+        # shellcheck disable=2012 disable=2010
         if ! links="$(ls -ld "$@" | grep " -> ")"; then
             return 1
         else
@@ -21,10 +22,10 @@ readlink_posix() {
 ensure_readlink_command() {
     if [ -n "${ENVE_READLINK:-}" ]; then
         return 0
-    elif command -v 'greadlink' >/dev/null; then
-        ENVE_READLINK='greadlink'
     elif command -v 'readlink' >/dev/null; then
         ENVE_READLINK='readlink'
+    elif command -v 'greadlink' >/dev/null; then
+        ENVE_READLINK='greadlink'
     else
         ENVE_READLINK="readlink_posix"
     fi    
@@ -64,33 +65,34 @@ rsplit_path() {
     fi
 }
 
+_cd_target() {
+    split_path "$TARGET" || return 1
+    NAME="$basepath"
+    # cd "${dirpath:-/}" 2>/dev/null || return 1
+    cd "${dirpath:-/}" || return 1
+}
 
 resolve_symlinks() {
     # If $1 is a symlink, follow it as many times as possible, return absolute path
 
     ensure_readlink_command
-
-    cd_target() {
-        split_path "$TARGET" || return 1
-        NAME="$basepath"
-        # cd "${dirpath:-/}" 2>/dev/null || return 1
-        cd "${dirpath:-/}" || return 1
-    }
-
     (
         TARGET="$1"
-        cd_target || return 1
+        _cd_target || return 1
         # Iterate down a (possible) chain of symlinks
         while [ -L "$NAME" ]
         do
             TARGET="$($ENVE_READLINK "$NAME")" || return 1
-            cd_target || return 1
+            _cd_target || return 1
         done
 
         if [ "$NAME" = ".." ]; then
-            echo "$(cd "$(pwd -P)/.."; echo "$(pwd)")"
+            echo "$(cd "$(pwd -P)/.."; pwd)" || {
+                echo "cannot change directory" >&2
+                return 1
+            }
         elif [ "$NAME" = "." ]; then
-            echo "$(pwd -P)"
+            pwd -P
         else
             parent="$(pwd -P)"
             if [ "$parent" = "/" ]; then
@@ -103,15 +105,18 @@ resolve_symlinks() {
 }
 
 normalize() {
-    (
-        path="${1:-}"
+    # (
+        path=${1:-}
+        nonfast=${2:-nonfast}
         tailslash=
         if [ -n "$path" ] && [ -z "${path##*/}" ]; then
             tailslash=/
         fi
         set --
+        OLDIFS=$IFS
         IFS=/
         for c in $path; do
+            IFS=$OLDIFS
             case $c in
                 '')
                         if [ $# -eq 0 ]; then
@@ -159,40 +164,61 @@ normalize() {
         fi
 
         if [ $# -eq 0 ]; then
-            echo ""
+            ret=
         elif [ -z "$1" ] && [ $# -eq 1 ]; then
-            echo "/"
+            ret="/"
         else
-            output="$1"
+            ret="$1"
             shift
             for c; do
-                output="$c/$output"
+                ret="$c/$ret"
             done
-            echo "$output"
+            
         fi
-
-    )
+        if [ "$nonfast" = "nonfast" ]; then
+            echo "$ret"
+        fi
+    # )
 }
+
 
 follow_one() {
     # "$1" must be a absolute path,
     # and not contain any symlink componment except last componment
+    dst=$1
 
-    if [ -L "$1" ]; then
-        resolve_parts "$(normalize "$1/..")" "$($ENVE_READLINK "$1")"
+    if [ -L "$dst" ]; then
+        # resolve_parts "$(normalize "$dst/..")" "$($ENVE_READLINK "$dst")"
+        
+        # normalize "$dst/.." fast
+        dstdir=${dst%/*}
+        if [ -z "$dstdir" ]; then
+            dstdir=/
+        fi
+        resolve_parts "$dstdir" "$($ENVE_READLINK "$dst")" fast || {
+            return 1
+        }
     else
-        normalize "$1"
+        normalize "$dst" fast || {
+            return 1
+        }
+    fi
+    if [ "${2:-nonfast}" = "nonfast" ]; then
+        echo "$ret"
     fi
 }
 
-follow_directory() {
-    ret="$(follow_one "$1")"
+follow_directory_fast() {
+    # ret="$(follow_one "$1")"
+    follow_one "$1" fast || {
+        return 1
+    }
     # respect 'realpath' and 'readlink -f' behavier
     if [ ! -d "$ret" ]; then
         return 1
     fi
-    echo "$ret"
 }
+
 
 resolve_parts() {
     # resolve $2 (unknown) to $1 (known)
@@ -203,51 +229,69 @@ resolve_parts() {
     #  -> (resolve_parts "1/2/3/4" "5")
     #  -> "1/2/3/4/5"
     
-    if [ $infcnt -gt 100 ]; then
+    if [ "$infcnt" -gt 100 ]; then
         echo "too many chain of symlinks" >&2
         return 1
     fi
-    infcnt=$(($infcnt + 1))
+    infcnt=$((infcnt + 1))
 
     known="$1"
     unknown="$2"
+
+    # echo "resolve_parts:($known):($unknown)" >&2
+
     rsplit_path "$unknown" || return 1
-    
 
     if [ "$headpath" = "" ] && [ "$tailpath" = "" ]; then
         # unknown is root
-        echo "/"
-        return
+        ret="/"
     elif [ "$headpath" = "" ]; then
         # unknown is abspath
-        resolve_parts "/" "$tailpath"
-        return
-    fi
-
-    # resolve known part if that is not absolute path
-    if [ "${known%${known#?}}" != "/" ]; then
-        split_path "$known"
-        abs="$(cd "$dirpath"; pwd)"
-        known=$(resolve_parts "/" "$abs/$basepath")
-    elif [ "$known" = "/" ]; then
-        known=
-    fi
-
-    if [ "$tailpath" = "" ]; then
-        # unknown is the only last componment and user indicate that last componment is a directory
-        # example: this/must/be_dir/
-        follow_directory "$known/$headpath"
-    elif [ "$headpath" = "." ]; then
-        # unknown is the only last componment
-        follow_one "$known/$tailpath"
+        resolve_parts "/" "$tailpath" fast
     else
-        # unknown is a relative path contain more then two componments
-        new_known="$(follow_directory "$known/$headpath")" || return 1
-        resolve_parts "$new_known" "$tailpath"
+        # resolve known part if that is not absolute path
+        if [ "${known%${known#?}}" != "/" ]; then
+            split_path "$known"
+            abs="$(cd "$dirpath"; pwd)" || {
+                echo "cannot change directory" >&2
+                return 1
+            }
+            known=$(resolve_parts "/" "$abs/$basepath") || {
+                # echo "XXXX" >&2
+                return 1
+            }
+        elif [ "$known" = "/" ]; then
+            known=
+        fi
+
+        if [ "$tailpath" = "" ]; then
+            # unknown is the only last componment and user indicate that last componment is a directory
+            # example: this/must/be_dir/
+            follow_directory_fast "$known/$headpath" || return 1
+        elif [ "$headpath" = "." ]; then
+            # unknown is the only last componment
+            follow_one "$known/$tailpath" fast || return 1
+        else
+            # unknown is a relative path contain more then two componments
+            # new_known="$(follow_directory "$known/$headpath")" || return 1
+            set -- "$1" "$2" "${3:-}" "$tailpath"
+            follow_directory_fast "$known/$headpath" || {
+                return 1
+            }
+            new_known=$ret
+            tailpath=$4
+            resolve_parts "$new_known" "$tailpath" fast || {
+                return 1
+            }
+        fi
+    fi
+    if [ "${3:-nonfast}" = "nonfast" ]; then
+        echo "$ret"
     fi
 }
 
 canonicalize_symlinks() {
+
     # example: /a/b/../c
     #
     # 1. resolve as $(readlink /a/c)   

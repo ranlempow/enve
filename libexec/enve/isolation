@@ -28,14 +28,25 @@ timestamp() {
 
 
 # echo "$(timestamp) start"
+# ENVE_HOME="$(dirname $0)"
+if [ -z "${ENVE_HOME:-}" ]; then
+    echo "fatal: ENVE_HOME not set." >&2
+    exit 1
+fi
 
-ENVE_HOME="$(dirname $0)"
-
+# shellcheck source=libexec/enve/envelib
 . "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/envelib
 . "$ENVE_HOME/enve/envelib"
 
 
 true "
+
+cygwin 有關於切換使用者的參考資料
+https://cygwin.com/cygwin-ug-net/ntsec.html#ntsec-setuid-overview
+cygstart --action=runas "\$@"
+
+
 # invoke 協定
 
 (O)path - chroot path
@@ -147,18 +158,20 @@ pm 只是單純的 event trigger
 "
 
 plain() {
-    local mesg=$1; shift
-    printf "    $mesg\n" "$@" >&1
+    mesg=$1; shift
+    # shellcheck disable=2059
+    printf "    $mesg\\n" "$@" >&1
 }
 
 quiet() {
     _optquiet=0
-    (( _optquiet )) || plain "$@"
+    [ "${_optquiet}" -ne 0 ] || plain "$@"
 }
 
 error() {
-    local mesg=$1; shift
-    printf "$==> ERROR: $mesg\n" "$@" >&2
+    mesg=$1; shift
+    # shellcheck disable=2059
+    printf "$==> ERROR: $mesg\\n" "$@" >&2
     return 1
 }
 
@@ -171,46 +184,51 @@ add_file() {
     #   $2: destination on initcpio (optional, defaults to same as source)
     #   $3: mode
 
-    (( $# )) || return 1
+    [ $# -ne 0 ] || return 1
 
     # determine source and destination
-    local src=$1 dest=${2:-$1} mode=
+    src=$1
+    dest=${2:-$1}
+    mode=
 
-    if [[ ! -f $src ]]; then
+    if [ ! -f "$src" ]; then
         error "file not found: \`%s'" "$src"
         return 1
     fi
 
     mode=${3:-$(stat -c %a "$src")}
-    if [[ -z $mode ]]; then
+    if [ -z "$mode" ]; then
         error "failed to stat file: \`%s'." "$src"
         return 1
     fi
 
-    if [[ -e $CHROOT/$dest ]]; then
+    if [ -e "$CHROOT/$dest" ]; then
         quiet "overwriting file: %s" "$dest"
     else
         quiet "adding file: %s" "$dest"
     fi
-    command install -Dm$mode "$src" "$CHROOT/$dest"
+    command install -Dm"$mode" "$src" "$CHROOT/$dest"
 }
 
+
 add_binary() {
+    # TODO: posix
+
     # Add a binary file to the initcpio image. library dependencies will
     # be discovered and added.
     #   $1: path to binary
     #   $2: destination on initcpio (optional, defaults to same as source)
 
     local -a sodeps
-    local line= regex= binary= dest= mode= sodep= resolved=
+    local line='' regex='' binary='' dest='' mode='' sodep='' resolved=''
 
-    if [[ ${1:0:1} != '/' ]]; then
+    if [ "${1%${1#?}}" != '/' ]; then
         binary=$(type -P "$1")
     else
         binary=$1
     fi
 
-    if [[ ! -f $binary ]]; then
+    if [ ! -f "$binary" ]; then
         error "file not found: \`%s'" "$1"
         return 1
     fi
@@ -245,7 +263,7 @@ add_binary() {
             # (( ++_builderrors ))
             continue
         fi
-        if [[ -f $sodep && ! -e $CHROOT/$sodep ]]; then
+        if [ -f "$sodep" ] && [ ! -e "$CHROOT/$sodep" ]; then
             case $(uname) in
                 Linux)
                         add_file "$sodep" "$sodep" "$(stat -Lc %a "$sodep")"
@@ -255,8 +273,9 @@ add_binary() {
                     ;;
             esac
         fi
-    done <<< "$lddout"
-
+    done <<EOF
+$lddout
+EOF
     return 0
 }
 
@@ -267,14 +286,14 @@ simple_root_mac() {
 
     # setup root filesystem
     for d in bin boot dev etc home lib share usr var opt run; do
-        install -d -m755 $d
+        install -d -m755 "$d"
     done
     install -d -m0750 root
     install -d -m1777 tmp
 
     # setup /var
     for d in cache local opt log/old lib/misc empty; do
-        install -d -m755 var/$d
+        install -d -m755 "var/$d"
     done
     install -d -m1777 var/tmp
 
@@ -283,10 +302,10 @@ simple_root_mac() {
 
     # setup /usr hierarchy
     for d in bin include lib share/misc src; do
-        install -d -m755 usr/$d
+        install -d -m755 "usr/$d"
     done
-    for d in {1..8}; do
-        install -d -m755 usr/share/man/man$d
+    for d in 1 2 3 4 5 6 7 8; do
+        install -d -m755 "usr/share/man/man$d"
     done
 
     cd -
@@ -297,12 +316,14 @@ simple_root_mac() {
     for name in fd/1 fd/2 stdin stdout stderr; do
         cp -a "/dev/$name" "$CHROOT/dev"
     done
-    for name in tty ttyp{1,2,3,4,5,6}; do
-        cp -a /dev/${name} "$CHROOT/dev"
+    for d in 1 2 3 4 5 6; do
+        cp -a "/dev/ttyp$d" "$CHROOT/dev"
     done
+    cp -a "/dev/tty" "$CHROOT/dev"
+
 
     # certs
-    cp -a /etc/ssl $CHROOT/etc/ssl
+    cp -a /etc/ssl "$CHROOT/etc/ssl"
     
     add_binary /bin/bash
     add_binary /bin/sh
@@ -322,7 +343,7 @@ simple_root() {
 
     # setup root filesystem
     for d in bin boot dev etc home lib share usr var opt run; do
-        install -d -m755 $d
+        install -d -m755 "$d"
     done
     install -d -m555 proc
     install -d -m555 sys
@@ -330,20 +351,20 @@ simple_root() {
     install -d -m1777 tmp
 
     # setup /etc and /usr/share/factory/etc
-    for file in group host.conf hosts issue motd nsswitch.conf \
-           passwd resolv.conf securetty shells profile; do
-        echo "$(eval echo "\"\$$(normalize ${file})_source\"")" > etc/$file
-        chmod 644 etc/$f
-    done
-    for file in gshadow shadow; do
-        echo "$(eval echo "\"\$$(normalize ${file})_source\"")" > etc/$file
-        chmod 600 etc/$file
-    done
+    # for file in group host.conf hosts issue motd nsswitch.conf \
+    #        passwd resolv.conf securetty shells profile; do
+    #     echo "$(eval echo "\"\$$(normalize "${file}")_source\"")" > etc/$file
+    #     chmod 644 etc/$f
+    # done
+    # for file in gshadow shadow; do
+    #     echo "$(eval echo "\"\$$(normalize "${file}")_source\"")" > etc/$file
+    #     chmod 600 "etc/$file"
+    # done
     ln -s ../proc/self/mounts etc/mtab
 
     # setup /var
     for d in cache local opt log/old lib/misc empty; do
-        install -d -m755 var/$d
+        install -d -m755 "var/$d"
     done
     install -d -m1777 var/tmp
 
@@ -352,28 +373,30 @@ simple_root() {
 
     # setup /usr hierarchy
     for d in bin include lib share/misc src; do
-        install -d -m755 usr/$d
+        install -d -m755 "usr/$d"
     done
-    for d in {1..8}; do
-        install -d -m755 usr/share/man/man$d
+    for d in 1 2 3 4 5 6 7 8; do
+        install -d -m755 "usr/share/man/man$d"
     done
 
     cd -
 
 
     for name in null zero full random urandom kmsg tty ptmx fuse; do
-        cp -a /dev/$name "$CHROOT/dev"
+        cp -a "/dev/$name" "$CHROOT/dev"
     done
     for name in fd stdin stdout stderr; do
-        cp -a /dev/$name "$CHROOT/dev"
+        cp -a "/dev/$name" "$CHROOT/dev"
     done
     for name in tty vcs vcsa; do
-        cp -a /dev/${name}{1,2,3,4,5,6} "$CHROOT/dev"
+        for d in 1 2 3 4 5 6; do
+            cp -a "/dev/${name}$d" "$CHROOT/dev"
+        done
     done
 
     mkdir "$CHROOT/etc/pam.d"
     for file in /etc/pam.d/*; do
-        cp -a $file "$CHROOT/$file"
+        cp -a "$file" "$CHROOT/$file"
     done
 
     # chroot_add_mount proc "$CHROOT/proc" -t proc -o nosuid,noexec,nodev
@@ -394,7 +417,7 @@ simple_root() {
 
     # TODO: nix
     # certs
-    cp -a /etc/ssl $CHROOT/etc/ssl
+    cp -a /etc/ssl "$CHROOT/etc/ssl"
 
     # chroot_add_mount /bin "$1/bin" --bind -o ro
     # chroot_add_mount /lib "$1/lib" --bind -o ro
@@ -423,16 +446,17 @@ degrade
 3. leave /bin/tini, this will umount inner root
 4. stop root.service, this will umount outer root, and delete root
 "
+x=$x
 
 
 _exitrootdir() {
     if [ -n "${sleeppid:-}" ]; then
-        kill -SIGTERM $sleeppid
-        if mount | cut -f3 -d" " | grep $CHROOT; then
-            mount | cut -f3 -d" " | grep $CHROOT | sort -r | xargs umount || true
+        kill -SIGTERM "$sleeppid"
+        if mount | cut -f3 -d" " | grep "$CHROOT"; then
+            mount | cut -f3 -d" " | grep "$CHROOT" | sort -r | xargs umount || true
         fi
-        if ! mount | cut -f3 -d" " | grep $CHROOT; then
-            rm -rf $CHROOT
+        if ! mount | cut -f3 -d" " | grep "$CHROOT"; then
+            rm -rf "$CHROOT"
         else
             error "umount recursive fail, $CHROOT is not removed."
         fi
@@ -443,16 +467,16 @@ _exitrootdir() {
 }
 
 mkchroot() {
-    mkdir -p $CHROOT
+    mkdir -p "$CHROOT"
     if [ -n "${CHROOT_TEMPLATE:-}" ]; then
-        cp -a $CHROOT_TEMPLATE/* $CHROOT
+        cp -a "$CHROOT_TEMPLATE"/* "$CHROOT"
     fi
     case $(uname) in
         Linux)      simple_root;;
         Darwin)     simple_root_mac;;
     esac
     for bin in ${CHROOT_BINS:-}; do
-        add_binary $bin
+        add_binary "$bin"
     done
 }
 
@@ -478,7 +502,7 @@ delayinit() {
 
     # echo delayinit
     pid="$1"
-    while read pmpid; do
+    while read -r pmpid; do
         pipepid=$pmpid
     done < "$OUTER_PIPE"
     if [ "$pid" != "$pipepid" ]; then
@@ -491,10 +515,10 @@ delayinit() {
     case $uname_cached in
         Linux)
             if [ -n "${JAIL:-}" ]; then
-                printf "0:0:10000\n" > /etc/subuid
-                printf "0:0:10000\n" > /etc/subgid
-                newuidmap $pid 0 0 1  1 3001 3000 || echo "newuidmap $pid faild"
-                newgidmap $pid 0 0 1  1 3001 3000 || echo "newgidmap $pid faild"
+                printf "0:0:10000\\n" > /etc/subuid
+                printf "0:0:10000\\n" > /etc/subgid
+                newuidmap "$pid" 0 0 1  1 3001 3000 || echo "newuidmap $pid faild"
+                newgidmap "$pid" 0 0 1  1 3001 3000 || echo "newgidmap $pid faild"
                 # MOUNT_CMD="enter $pid mount"
             fi
             ;;
@@ -502,7 +526,7 @@ delayinit() {
 
     # mount
     while read -r src mount_point fstype option; do
-        $MOUNT_CMD -o $option -t $fstype $src $mount_point
+        $MOUNT_CMD -o "$option" -t "$fstype" "$src" "$mount_point"
     done < /dev/null
 
     # rm "$OUTER_PIPE"
@@ -525,7 +549,7 @@ dosuspend() {
     echo $$ > "$PIPE_PATH"
     count=0
     while [ -e "$PIPE_PATH" ]; do
-        count=$(($count + 1))
+        count=$((count + 1))
         if [ $count -gt $timeout_sec ]; then
             return 1
         fi
@@ -550,7 +574,7 @@ install_launcher() {
         INNER_SCRIPT=$LAUNCHER_ROOT/launcher
     fi
     mkfifo -m 600 "$OUTER_PIPE"
-    chown ${EXEC_USER:-$USER}  "$OUTER_PIPE"
+    chown "${EXEC_USER:-$USER}" "$OUTER_PIPE"
 
     # exec.cwd
     # exec.umask
@@ -614,22 +638,27 @@ _redirect_stdio() {
 
 
 start_with_namespace() {
-    user=${EXEC_USER:-nobody}
+    
 
     # exec unshare --ipc --uts --cgroup --net --user --pid --mount \
     #     chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START $(_stdio_txt)
     # (
         hascmd setsid && setsid
         _redirect_stdio
-        exec unshare --ipc --uts --cgroup --net --user --pid --mount \
-            chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+
+        # exec unshare --ipc --uts --cgroup --net --user --pid --mount \
+        #     chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+        user=${EXEC_USER:-nobody} \
+        INNER_SCRIPT=$INNER_SCRIPT \
+            eval exec unshare --ipc --uts --cgroup --net --user --pid --mount \
+            chroot --userspec=\$user:\$user \"\$CHROOT\" /bin/sh \"\$INNER_SCRIPT\" "$EXEC_START" &
         # [ -n "${WRITE_PIDFILE:-}" ] && echo $! > $PIDFILE
         PID=$!
     # ) &
 }
 
 start_with_chroot() {
-    user=${EXEC_USER:-nobody}
+    
     
     # sh -c '(exec chroot --userspec='$user:$user' "'"$CHROOT"'" \
     #         /bin/sh "'"$INNER_SCRIPT"'" '"$EXEC_START $(_stdio_txt)"' &
@@ -637,7 +666,11 @@ start_with_chroot() {
     # (
         hascmd setsid && setsid
         _redirect_stdio
-        exec chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+
+        # exec chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+        user=${EXEC_USER:-nobody} \
+        INNER_SCRIPT=$INNER_SCRIPT \
+            eval exec chroot --userspec=\$user:\$user \"\$CHROOT\" /bin/sh \"\$INNER_SCRIPT\" "$EXEC_START" &
         # [ -n "${WRITE_PIDFILE:-}" ] && echo $! > $PIDFILE
         PID=$!
     # ) &
@@ -645,7 +678,7 @@ start_with_chroot() {
 }
 
 start_switch_user() {
-    user=${EXEC_USER:-nobody}
+    
 
     # (
         hascmd setsid && setsid
@@ -653,7 +686,11 @@ start_switch_user() {
         # echo su - -m $user "$INNER_SCRIPT" $EXEC_START 
         # exec su - -m $user "$INNER_SCRIPT" $EXEC_START &
         # exec sudo -u $user /bin/sh "$INNER_SCRIPT" $EXEC_START &
-        exec chroot --userspec=$user:$user "/" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+
+        # exec chroot --userspec=$user:$user "/" /bin/sh "$INNER_SCRIPT" $EXEC_START &
+        user=${EXEC_USER:-nobody} \
+        INNER_SCRIPT=$INNER_SCRIPT \
+            eval exec chroot --userspec=\$user:\$user / /bin/sh \"\$INNER_SCRIPT\" "$EXEC_START" &
         # [ -n "${WRITE_PIDFILE:-}" ] && echo $! > $PIDFILE
         PID=$!
     # ) &
@@ -662,7 +699,9 @@ start_switch_user() {
 start_normal() {
     hascmd setsid && setsid
     _redirect_stdio
-    exec /bin/sh "$INNER_SCRIPT" $EXEC_START
+    # exec /bin/sh "$INNER_SCRIPT" $EXEC_START
+    INNER_SCRIPT=$INNER_SCRIPT \
+        eval exec /bin/sh \"\$INNER_SCRIPT\" "$EXEC_START"
 }
 
 start_common() {
@@ -708,7 +747,7 @@ launch_subprocess() {
     if delayinit "$PID"; then
         rm -rf "${PIDFILE%/*}"
     else
-        kill -9 $pipepid
+        kill -9 "$pipepid"
         rm -rf "${PIDFILE%/*}"
         return 1
     fi
@@ -755,11 +794,12 @@ startns() {
 }
 
 selfhost() {
-    contname="$(basename $1)"
+    contname="$(basename "$1")"
     CHROOT=/var/cont/$contname/root
 
     serverootdir &
     servepid=$!
+    # shellcheck disable=2064
     trap "kill -SIGTERM $servepid" EXIT
     sleep 5
     startns

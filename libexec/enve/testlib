@@ -1,0 +1,402 @@
+#!/usr/bin/env bash
+
+if [ -n "${HAVE_ENVE_TESTLIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_TESTLIB=1
+
+# shellcheck source=libexec/enve/urlutils
+. "$ENVE_HOME/enve/urlutils"
+
+
+harness() {
+    if [ -n "${CACHED:-}" ]; then
+        logfile="$CACHED/test.log"
+        statusfile="$CACHED/status"
+    else
+        logfile=$(mktemp)
+        statusfile=$(mktemp)
+    fi
+
+    harness_exec() {
+        # for cmd in "$@"; do
+        # retcodes=
+        harness_exec_cnt=0
+        while [ $# -ge 2 ]; do
+            testname=$1
+            cmd=$2
+            shift 2
+            {
+                printf '# RUN %s: %s\n' "$testname" "$cmd"
+                eval "$cmd"
+                # retcodes="$retcodes${retcodes:+ }$?"
+            } | tee "${logfile%.log}-$testname.log" &
+            pids="$pids${pids:+ }$!"
+            harness_exec_cnt=$((harness_exec_cnt + 1))
+        done
+    }
+
+    harness_waitall() {
+        retcodes=
+        while [ $# -ge 2 ]; do
+            shift 2
+            pid=${pids%% *}
+            pids=${pids#* }
+            wait $pid
+            ret=$?
+            retcodes="$retcodes${retcodes:+ }$ret"
+        done
+    }
+
+    {
+        harness_exec "$@"
+        harness_waitall "$@"
+        echo "# RUN - command exit code check"
+        echo "1..$harness_exec_cnt"
+        cnt=1
+        while [ $# -ge 2 ]; do
+            testname=$1
+            cmd=$2
+            shift 2
+            ret=${retcodes%% *}
+            retcodes=${retcodes#* }
+            if [ "$ret" -eq 0 ]; then
+                printf 'ok %d %s: %s\n' "$cnt" "$testname" "$cmd"
+            else
+                printf 'not ok %d %s(%d): %s\n' "$cnt" "$testname" "$ret" "$cmd"
+            fi
+            cnt=$((cnt + 1))
+        done
+    } | tee "$logfile" | {
+        total=0
+        success=0
+        failure=0
+        skipped=0
+
+        getmark() {
+            mark=${line#ok }
+            junk=${mark%%[!0-9]*}
+            if [ -n "$junk" ]; then
+                mark=${mark#"$junk" }
+            fi
+            if [ "${#mark}" -gt 40 ]; then
+                junk=${mark#????????????????????????????????????????}
+                mark="${mark%"$junk"}..."
+            fi
+        }
+
+        printf "waiting..."
+        printf '' > "$logfile"
+        printf '' > "$statusfile"
+
+        while read -r line; do
+            comment=${line#*\#}
+            line=${line%%\#*}
+            junk=${line##*[![:space:]]}
+            line=${line%"$junk"}
+            number=${line#1..}
+            mark=
+            if [ -n "$number" ] && [ -z "${number##[0-9]*}" ]; then
+                total=$((total + number))
+                mark="starting new test"
+            elif [ "${line#ok }" != "$line" ]; then
+                success=$((success + 1))
+                getmark
+            elif [ "${line#not ok }" != "$line" ]; then
+                case $comment in
+                    ' '[sS][kK][iI][pP]*)   skipped=$((skipped + 1)) ;;
+                    [sS][kK][iI][pP]*)      skipped=$((skipped + 1)) ;;
+                    *)                      failure=$((failure + 1)) ;;
+                esac
+                getmark
+            fi
+            if [ -n "$mark" ]; then
+                printf '\r[%3d/%3d] %-43s (failure: %3d, skipped: %3d)' \
+                    "$((success + failure + skipped))" "$total" "$mark" "$failure" "$skipped" 
+            fi
+        done
+        echo
+        echo "write output to $CACHED"
+        if [ $((success + skipped)) -eq "$total" ]; then
+            printf 'success %d/%d/%d\n' \
+                "$((failure + skipped))" "$skipped" "$total" > "$statusfile"
+        else
+            printf 'failure %d/%d/%d\n' \
+                "$((failure + skipped))" "$skipped" "$total" > "$statusfile"
+            cat "$logfile"
+        fi
+        echo
+        printf '%d tests, %d failures, %d skipped, %d missing\n' \
+            "$total" "$failure" "$skipped" "$((total - success - failure - skipped))"
+    }
+}
+
+do_harness() {
+    url=$1
+    commit=$2
+    setname=$3
+    roles=${4:-}
+
+    harness_text() {
+        echo $url
+        echo $commit
+        echo $setname
+    }
+    harness_make() {
+        thedir=$(
+            CACHED='' fetch "git+$url#$commit" %cache dir
+        )
+        . "$ENVE_HOME/enve/envelib"\
+        ENVE_TEST_OUTPUT=$CACHED \
+        ENVE_ROLES="$setname${roles:+,}${roles}" \
+        ENVE_PROFILE="$thedir/enve.ini" \
+        ENVE_CONFIG="$(out_var_fast test.ci true)" \
+             fire test || true
+
+    }
+    dest='' title=$setname catalog=testset cache_path "status" harness_text harness_make "" || {
+        _error mygod
+        return 1
+    }
+    cat $cached_path
+}
+
+_tw1='\t'
+_tw2='\t\t'
+_tw3='\t\t\t'
+_tw4='\t\t\t\t'
+_tw5='\t\t\t\t\t'
+_tw6='\t\t\t\t\t\t'
+_tw7='\t\t\t\t\t\t\t'
+_tw8='\t\t\t\t\t\t\t\t'
+
+_st27='???????????????????????????'
+
+shorten() {
+    eval junk=\${text#\"\${_st$1}\"}
+    text="${text%"$junk"}"
+}
+
+tablize() {
+    widthtab=$1
+    widthmax=$(($widthtab * 8))
+
+    if [ ${#text} -ge $widthmax ]; then
+        shorten 27
+        text="$text ... "
+    fi
+    eval text=\"\${text}\${_tw$(( (widthmax - ${#text}) / 8 + 1 ))}\"
+
+    #     text="$text ... $tab"
+    # elif [ "${#branch}" -ge 24 ]; then
+    #     sets="$branch$tab"
+    # elif [ "${#branch}" -ge 16 ]; then
+    #     sets="$branch$tab$tab"
+    # elif [ "${#branch}" -ge 8 ]; then
+    #     sets="$branch$tab$tab$tab"
+    # else
+    #     sets="$branch$tab$tab$tab$tab"
+    # fi
+}
+
+# do_test
+# harness x do_lint y do_test
+
+testsets() {
+    url=$1
+    branch=${2:-master}
+    dest=$(
+        fetch "git+$url#$branch" %cache dir
+    )
+    . "$ENVE_HOME/enve/envelib"
+    TABLE=$(parse_config "$dest/enve.ini")
+
+    # test.sets.*.branches        test commits on branch
+    # test.sets.*.limit           test only recent commits by limit number
+    # test.sets.*.after           test commits after that date
+    # echo "$TABLE" >&2
+
+    gitdest=$(
+        dest='' fetch "git+$url#%all" %cache dir
+    )
+    # echo "gitdest: $gitdest" >&2
+    setsdir=$(mkdtemp "$(get_tempdir)/testsets-$branch.XXXXXX")
+    commitcount=0
+    # sets=
+    the_branches=
+
+    for setname in $(table_subset "test\\.sets\\..*" | as_postfix "test.sets." | \
+                     as_rootkey | as_uniquekey); do
+        # sets="$sets${sets:+ }$setname"
+        branches=$(table_subset test.sets.$setname.branches | as_concat " ")
+        roles=$(table_subset test.sets.$setname.roles | as_concat ",")
+        limit=$(table_tail test.sets.$setname.limit)
+        after=$(table_tail test.sets.$setname.after)
+        for child_branch in $branches; do
+            if [ -z "$the_branches" ] || \
+               [ "${the_branches#* $child_branch*}" != "$the_branches" ]; then
+                the_branches="$the_branches $child_branch"
+            fi
+            # echo "child_branch: $child_branch" >&2
+            rev_list_argv="${limit:+--max-count=$limit}"
+            rev_list_argv="${rev_list_argv} ${after:+--since=\"$after\"}"
+            # (cd "$gitdest";git rev-list $rev_list_argv "$child_branch") >&2
+            # echo "git rev-list $rev_list_argv $child_branch" >&2
+            for commit in $(cd "$gitdest"; git rev-list $rev_list_argv "$child_branch"); do
+                echo "commit: $commit" >&2
+                printf "%s %s %s %s %s\\n" "$url" "$commit" "$child_branch" "$setname" "$roles" \
+                    > "$setsdir/$(printf "%06d-wait-%s.%s" "$commitcount" "$setname" "$commit")"
+                commitcount=$((commitcount + 1))
+            done
+        done
+    done
+
+    echo "$setsdir" >&2
+
+    # summary=
+    # for rev in git rev-list HEAD
+    #   cache_build
+    #     use local repo
+    #     git+file://*#* checkout to cache
+    #     run test with enve fire test, redirect(tee) stdout/stderr $CACHED/log
+    #     if success set $CACHED/state to "passed" else set to "failed"
+    #   summary=...
+    # print summary
+
+    worker_exec() {
+        MAX_WORKER=1
+        worker_exec_cnt=1
+        while [ "$worker_exec_cnt" -le "$MAX_WORKER" ]; do
+            case_worker &
+            pids="$pids${pids:+ }$!"
+            worker_exec_cnt=$((worker_exec_cnt + 1))
+        done
+    }
+
+    harness_waitall() {
+        retcodes=
+        worker_wait_cnt=1
+        while [ "$worker_wait_cnt" -le "$MAX_WORKER" ]; do
+            pid=${pids%% *}
+            pids=${pids#* }
+            wait $pid
+            ret=$?
+            retcodes="$retcodes${retcodes:+ }$ret"
+            worker_wait_cnt=$((worker_wait_cnt + 1))
+        done
+    }
+
+    pids=
+    worker_exec
+    harness_waitall
+
+    C0=$(printf '\033[0m')
+    C1=$(printf '\033[33m')
+    Cs=$(printf '\033[32m')
+    Cf=$(printf '\033[31m')
+
+    for branch in $the_branches; do
+        echo
+        if [ ${#branch} -ge 32 ]; then
+            junk=${branch#???????????????????????????}
+            sets="${branch%"$junk"} ... $tab"
+        elif [ "${#branch}" -ge 24 ]; then
+            sets="$branch$tab"
+        elif [ "${#branch}" -ge 16 ]; then
+            sets="$branch$tab$tab"
+        elif [ "${#branch}" -ge 8 ]; then
+            sets="$branch$tab$tab$tab"
+        else
+            sets="$branch$tab$tab$tab$tab"
+        fi
+        lines=
+        while read -r commit comment; do
+            if [ "${#comment}" -ge 24 ]; then
+                junk=${comment#???????????????????}
+                comment="${comment%"$junk"} ... $tab"
+            elif [ "${#comment}" -ge 16 ]; then
+                comment="$comment$tab"
+            elif [ "${#comment}" -ge 8 ]; then
+                comment="$comment$tab$tab"
+            else
+                comment="$comment$tab$tab$tab"
+            fi
+            lines="$lines$C1${commit%?????????????????????????????????}$C0$tab$comment"
+            for commitfile in $setsdir/*-done-*.$commit; do
+                if [ "$commitfile" != "$setsdir/*-done-*.$commit" ]; then
+                    {
+                        read -r url commit branch setname
+                        read -r start pid
+                        read -r end statusfile
+                        read -r state result < "$statusfile"
+                        if [ -z "$sets" ] || [ "${sets#*$tab$setname*}" ]; then
+                            sets="${sets}$tab$setname"
+                        fi
+                        IFS=/ read -r failure skip total <<EOF
+$result
+EOF
+                        if [ "$failure" -eq 0 ]; then
+                            lines="$lines$tab$Cs$result$C0"
+                        else
+                            lines="$lines$tab$Cf$result$C0"
+                        fi
+                    } < "$commitfile"
+                fi
+            done
+            lines="$lines$newl"
+        done <<EOF
+$(cd "$gitdest"; git rev-list --pretty=oneline "$branch")
+EOF
+        echo "$sets$newl$lines"
+    done
+}
+
+
+case_worker() {
+    worker_loop_cnt=0
+    while [ "$worker_loop_cnt" -le 100 ]; do
+        num=
+        found=1
+        for tset in "$setsdir"/*-wait-*; do
+            tset=${tset##*/}
+            if [ "$tset" = "*-wait-*" ]; then
+                found=
+                break
+            fi
+            num=${tset%-wait-*}
+            hashpart=${tset#*-wait-}
+            setname=${hashpart%.*}
+            commit=${hashpart#*.}
+            break
+        done
+        if [ -z "$found" ]; then
+            break
+        fi
+        # if [ -z "$num" ]; then
+        #     break
+        # fi
+
+        # echo "setsdir:$setsdir" >&2
+        # echo "num:$num" >&2
+        # echo "hashid:$hashid" >&2
+        private="$setsdir/$num-$$-$setname.$commit"
+        if mv "$setsdir/$tset" "$private"; then
+            read -r url commit branch setname roles < "$private"
+            # touch "$private"
+            # echo "url:$url" >&2
+            # echo "commit:$commit" >&2
+            # echo "branch:$branch" >&2
+            # echo "casename:$casename" >&2
+            echo "$(date +%s) $$" >> "$private"
+            commit='' do_harness "$url" "$commit#$branch" "$setname" "$roles" >/dev/null
+            echo "$(date +%s) $cached_path" >> "$private"
+            mv "$private" "$setsdir/$num-done-$setname.$commit"
+        fi
+        worker_loop_cnt=$((worker_loop_cnt + 1))
+    done
+}
+
+workflow_runner() {
+    :
+}
+

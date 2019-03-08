@@ -1,25 +1,15 @@
 #!/usr/bin/env bats
 
 
-# EVNE_EXEC="$(readlink -f "./enve")"
+load common
 
 setup() {
-    mkdir -p $BATS_TMPDIR/cmds
-
-    for func in table_tail table_subset table_exclude \
-                as_postfix as_rootkey as_value as_uniquekey as_concat \
-                out_var \
-                fire_chain \
-                parse_config; do
-        cat > "$BATS_TMPDIR/cmds/$func" <<EOF
-set -euo pipefail
-ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"
-. "\$ENVE_HOME/enve/envelib"
-$func "\$@"
-EOF
-    done
-    chmod 755 $BATS_TMPDIR/cmds/*
-    export PATH="$BATS_TMPDIR/cmds:$PATH"
+    mkstab ../libexec/enve/envelib \
+        table_tail table_subset table_exclude value_substi table_substi \
+        as_postfix as_rootkey as_value as_uniquekey as_concat \
+        out_var \
+        fire_chain \
+        parse_config
 
     tab="$(printf '\tx')"
     tab="${tab%x}"
@@ -86,38 +76,78 @@ EOF
 #     )
 # }
 
-# @test "undefined command" {
-#     ! (
-#         . "$EVNE_EXEC" UNDEFINED_COMMAND
-#     )
+
+
+# @test "fire_chain" {
+#     (
+#     cat <<'EOF'
+#     fire() {
+#         target=$1
+#         case $target in
+#             run)    exec bash -c "echo '$ENVE_PROFILE@$ENVE_ROLES'" ;;
+#             build)  exec bash -c "echo '$(dirname ${ENVE_PROFILE})_DEF'" ;;
+#         esac
+#     }
+#     locate_project() {
+#         echo "${1}_LOC"
+#     }
+# EOF
+#     cat $BATS_TMPDIR/cmds/fire_chain
+#     ) > $BATS_TMPDIR/cmds/fire_chain1
+#     chmod 755 $BATS_TMPDIR/cmds/fire_chain1
+
+#     echo "OK" >&2
+#     rm -rf /tmp/fire_chain
+#     mkdir -p /tmp/fire_chain/{ABC_LOC,ABC_LOC_DEF_LOC}
+#     cd /tmp/fire_chain
+#     touch {ABC_LOC,ABC_LOC_DEF_LOC}/enve.ini
+#     [ "$(fire_chain1 "ABC!build!run@R1" fire locate_project)" = "ABC_LOC_DEF_LOC/enve.ini@R1" ]
 # }
 
-@test "fire_chain" {
-    (
-    cat <<'EOF'
-    fire() {
-        target=$1
-        case $target in
-            run)    exec bash -c "echo '$ENVE_PROFILE@$ENVE_ROLES'" ;;
-            build)  exec bash -c "echo '$(dirname ${ENVE_PROFILE})_DEF'" ;;
-        esac
-    }
-    locate_project() {
-        echo "${1}_LOC"
-    }
-EOF
-    cat $BATS_TMPDIR/cmds/fire_chain
-    ) > $BATS_TMPDIR/cmds/fire_chain1
-    chmod 755 $BATS_TMPDIR/cmds/fire_chain1
 
-    echo "OK" >&2
-    rm -rf /tmp/fire_chain
-    mkdir -p /tmp/fire_chain/{ABC_LOC,ABC_LOC_DEF_LOC}
-    cd /tmp/fire_chain
-    touch {ABC_LOC,ABC_LOC_DEF_LOC}/enve.ini
-    [ "$(fire_chain1 "ABC!build!run@R1" fire locate_project)" = "ABC_LOC_DEF_LOC/enve.ini@R1" ]
+@test "value_substi" {
+    [ "$(a=1  _value='3${a}4' value_substi nonfast)" = "314" ]
+    [ "$(a=1  _value='3\${a}4' value_substi nonfast)" = '3${a}4' ]
+    [ "$(_a=1 _value='3${_a}4' value_substi nonfast)" = '3${_a}4' ]
+    [ "$(a=1  _value='${a}' value_substi nonfast)" = "1" ]
+    [ "$(a=1  _value='3${a}' value_substi nonfast)" = "31" ]
+    [ "$(a=1  _value='${a}4' value_substi nonfast)" = "14" ]
+    [ "$(a=1  _value='\${a}' value_substi nonfast)" = '${a}' ]
+
+    [ "$(a=1      _value='3${a}${a}4' value_substi nonfast)" = '3114' ]
+    [ "$(a=1 b=2  _value='3${a}${b}4' value_substi nonfast)" = '3124' ]
+
+    [ "$(a=1  _value='$a' value_substi nonfast)" = '$a' ]
+    [ "$(a=1  _value='${a' value_substi nonfast)" = '${a' ]
+    [ "$(a=1  _value='$a}' value_substi nonfast)" = '$a}' ]
+    [ "$(a=1  _value='\${a' value_substi nonfast)" = '\${a' ]
+    ! a=1  _value='${notExist}' value_substi 
+
+    [ "$(a=1  _value='3${c:-5"$a"6}4' value_substi nonfast)" = '35164' ]
+    
+    ! a=1  _value='3${c:-5"$(echo x)"6}4' value_substi nonfast
+    ! a=1  _value='3${$(echo x)}4' value_substi nonfast
+    
+    [ "$(PASSVARS="a$newl" a=1  _value='3${a}4' value_substi nonfast)" = '3'\''"${a}"'\''4' ]
+
+
 }
 
+@test "table_substi" {
+    TABLE="$(
+    out_var AA '3${a}4'
+    out_var BB '3${b}\${a}4'
+    )"
+    CONTEXT="$(
+    out_var a 1
+    out_var b '2${a}'
+    )"
+    
+    [ "$(TABLE="$TABLE" table_substi "$CONTEXT")" = "$(
+        out_var AA '314'
+        out_var BB '321${a}4'
+    )" ]
+}
 
 @test "tabels 1" {
     TABLE="$(
@@ -153,24 +183,37 @@ is=not true
 
 [my.name]
 is=adam
-are=family
+are@select1@@,,@=family1
+are,select1,select2=family2
+
+not@x=1
+not@select1@x=1
+not@x,y=1
+not,x,y=1
+not,x,y.are=1
 
 [list]
 a
 b
 
+[not@x]
+not me
+
 # not me
 EOF
-    TABLE="$(parse_config "/tmp/test_prj1/enve.ini")"
+    TABLE=$(roles=select1,select2 parse_config "/tmp/test_prj1/enve.ini")
+    TABLE=$(echo "$TABLE" | grep -E -v -e "^VAR${tab}enve\.configs${tab}" -e "^VAR${tab}enve\.roles${tab}")
+
     echo "$TABLE" >&2
     [ "$TABLE" = "$(printf %s%s%s%s%s%s%s \
+        "VAR${tab}layout.root${tab}/private/tmp/test_prj1${newl}" \
         "VAR${tab}this.is${tab}not true${newl}" \
         "VAR${tab}my.name.is${tab}adam${newl}" \
-        "VAR${tab}my.name.are${tab}family${newl}" \
+        "VAR${tab}my.name.are${tab}family1${newl}" \
+        "VAR${tab}my.name.are${tab}family2${newl}" \
         "VAR${tab}list${tab}a${newl}" \
         "VAR${tab}list${tab}b${newl}" \
-        "VAR${tab}enve.bound${tab}/private/tmp/test_prj1/enve.ini${newl}" \
-        "VAR${tab}layout.root${tab}/private/tmp/test_prj1"
+        "VAR${tab}bound${tab}/private/tmp/test_prj1/enve.ini"
     )" ]
 }
 
@@ -187,13 +230,16 @@ a= \
 b= \\
 
 EOF
-    TABLE="$(parse_config "/tmp/test_prj1/enve.ini")"
+    TABLE=$(parse_config "/tmp/test_prj1/enve.ini")
+    TABLE=$(echo "$TABLE" | grep -E -v -e "^VAR${tab}enve\.configs${tab}" -e "^VAR${tab}enve\.roles${tab}")
+
     echo "$TABLE" >&2
     [ "$TABLE" = "$(printf %s%s%s%s \
+        "VAR${tab}layout.root${tab}/private/tmp/test_prj1${newl}" \
         "VAR${tab}long.a${tab} 1 2${newl}" \
         "VAR${tab}long.b${tab} \\${newl}" \
-        "VAR${tab}enve.bound${tab}/private/tmp/test_prj1/enve.ini${newl}" \
-        "VAR${tab}layout.root${tab}/private/tmp/test_prj1"
+        "VAR${tab}bound${tab}/private/tmp/test_prj1/enve.ini" \
+        
     )" ]
 }
 

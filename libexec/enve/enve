@@ -1,36 +1,58 @@
+#!/usr/local/bin/dash
+#!/bin/sh
+
 #!/usr/bin/env bash
+
+# shellcheck shell=sh disable=2086 disable=2031
+true
+
+
+# tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
+# tm=${tm#?????}
+# tm=${tm%${tm#????????}}
+# echo "$tm"
+# unset tm
+
 
 # __NAME__=enve
 # __VERSION__=0.1.0
-# __REPO__=
+# __REPO__=https://github.com/ranlempow/enve.git
 
-
-tab="$(printf '\tx')"
-tab="${tab%x}"
-feed="$(printf '\fx')"
-feed="${feed%x}"
-vtab="$(printf '\vx')"
-vtab="${vtab%x}"
-newl="$(printf '\nx')"
-newl="${newl%x}"
 
 if [ -z "${ENVE_HOME:-}" ]; then
-    if [ -L "$0" ]; then
-        ENVE_HOME="$(dirname "$(readlink "$0")")"
-    else
-        ENVE_HOME="$(dirname "$0")"
-    fi
+    # if [ -L "$0" ]; then
+    #     ENVE_HOME="$(dirname "$(readlink "$0")")"
+    # else
+    #     # echo "$0"
+    #     # echo "$(dirname $0)"
+    #     ENVE_HOME="$(dirname "$0")"
+    # fi
+    echo "fatal: ENVE_HOME not set." >&2
+    exit 1
+fi
+ENVE_PROGRAM=enve/enve
+
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+settrace
+
+
+if [ -n "${ENVE_REQ_VERSION:-}" ] || [ -n "${ENVE_REQ_SHELL:-}" ]; then
+    
+    # shellcheck source=libexec/enve/bootlib
+    . "$ENVE_HOME/enve/bootlib"    
+    reexec_if_req_not_match "${ENVE_REQ_VERSION:-}" "${ENVE_REQ_SHELL:-}" "$@"
+# else
+#     # shellcheck source=base
+#     . "$ENVE_HOME/enve/base"
+#     . "$ENVE_HOME/enve/envelib"
 fi
 
-
-define_functions() {
-
-    # echo "ENVE_HOME: $ENVE_HOME" >&2
-    . "$ENVE_HOME/enve/base"
-    . "$ENVE_HOME/enve/envelib"
-    # . "$(dirname $0)/libexec/enve/pathutils"
-    
-}
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/cachelib
+# . "$ENVE_HOME/enve/cachelib"
 
 
 true '
@@ -278,61 +300,6 @@ parse_args
 
 
 
-exec_loaders() {
-    (
-    set -euo pipefail
-    if [ "$(table_subset "core.no_load_core" | as_value)" = "yes" ]; then
-        return 0
-    fi
-    next_loaders="${module_paths}"
-    module_loaded=""
-
-    while [ -n "$next_loaders" ]; do
-        loader_path="${next_loaders%%,*}"
-        next_loaders="${next_loaders#*,}"
-
-        _trace "loader_path:   $loader_path"
-        _trace "module_loaded: $module_loaded"
-        _trace "next_loaders:  $next_loaders"
-
-        if [ -x "$loader_path/enve.loader" ]; then
-            if ! modules="$(echo "$TABLE" | ENVE_PROFILE="$loader_path/enve.ini" \
-                                            fire loader "$loader_path/enve.loader" "$0")"; then
-                _error "loader execute failed"
-                return 1
-            fi
-            while read -r module; do
-                module="$(canonicalize_symlinks "$module")"
-                if [[ "${module_loaded}" != *${module},* ]]; then
-                    next_loaders="${next_loaders}${module},"
-                    module_loaded="${module_loaded}${module},"
-                    echo "$module"
-                    _debug "module '$module' found"
-                else
-                    _debug "module '$module' already loaded"
-                fi
-            done <<< "$modules"
-        fi
-    done
-    )
-}
-
-resolve() {
-    if [ "$(table_subset "core.no_load_core" | as_value)" = "yes" ]; then
-        return 0
-    fi
-    _trace "module_paths $module_paths"
-    while read -r module_path; do
-        if [ -x "$module_path/enve.module" ]; then
-            if ! TABLE="$(echo "$TABLE" | ENVE_PROFILE="$module_path/enve.ini" \
-                                          fire module "$module_path/enve.module" "$0")"; then
-                _error "module execute error at $module_path"
-                return 1
-            fi
-        fi
-    done <<< "$(echo "$module_paths" | tac)"
-    echo "$TABLE"
-}
 
 
 print_help() {
@@ -354,329 +321,57 @@ print_help() {
     echo "    boot                  enter a default shell environment"
 }
 
-# EXTRA_CENVE_PROFILE: user specficed config files, use as import at beginning
-
-get_rcfile_from_profiles_nocache() {
-    # input:
-    #   ENVE_PROFILE
-    #   ENVE_ROLES
-    #   ENVE_CONFIG
-    #   RCFILE_PATH
-    # output:
-    #   boundfiles
-    # sideeffect:
-    #   write $RCFILE_PATH
-
-
-    CONF_TABLE="$(ENVE_PROFILE="$ENVE_PROFILE" \
-                  ENVE_ROLES="$ENVE_ROLES" \
-                  ENVE_CONFIG="$ENVE_CONFIG" \
-                  enve_parse_config
-                  out_var core.target $target)" || {
-        _error "parse_config failed"
-        return 1
-    }
-    # CONF_TABLE="$(echo "$CONF_TABLE"; out_var core.target $target)"
-    _trace "=============$newl$CONF_TABLE"
-
-    module_paths="$(TABLE="$CONF_TABLE"
-                    module_paths="$ENVE_HOME/enve,"
-                    exec_loaders)" || {
-        _error "exec_loaders failed"
-        return 1
-    }
-    _trace "module_paths_loaded: $module_paths" >&2
-    TABLE="$(TABLE="$CONF_TABLE" module_paths="$module_paths" resolve
-             out_var bound "$(resolve_symlinks "$ENVE_HOME/../enve")"
-             out_var bound "$(resolve_symlinks "$ENVE_HOME/enve")"
-            )" || {
-        _error "resolve failed"
-        return 1
-    }
-    _debug "=== resolve ???-$target ===$newl$TABLE"
-
-    boundfiles="$(table_subset bound | as_value | sort -u)"
-    TABLE="$(echo "$TABLE" | grep -E -v "^VAR${tab}bound${tab}")"
-    echo "$(TREXEC="$(command -v tr)" UNAMEEXEC="$(command -v uname)" \
-            execute_envdef "$TABLE" "$target")" > "$RCFILE_PATH" || {
-        _error "execute_envdef failed"
-        return 1            
-    }
-    chmod 755 $RCFILE_PATH
-    echo "$boundfiles"
-}
-
-
-get_rcfile_from_profiles() {
-    # input:
-    #   ENVE_PROFILE
-    #   ENVE_ROLES
-    #   ENVE_CONFIG
-    # output:
-    #   rcfile path
-    
-
-    RCFILE_PATH=
-
-    if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
-        ENVE_CACHE_DIR="$(get_cachedir)"
-        if [ ! -d "$ENVE_CACHE_DIR/boundfiles" ]; then
-            mkdir -p "$ENVE_CACHE_DIR/boundfiles"
-        fi
-        if [ ! -d "$ENVE_CACHE_DIR/rcfiles" ]; then
-            mkdir -p "$ENVE_CACHE_DIR/rcfiles"
-        fi
-        profile_hash="$(hashstr << EOF
-$ENVE_ROLES
-$ENVE_CONFIG
-$(files_stats_contents $(
-    for file in $(IFS=','; echo $ENVE_PROFILE); do
-        canonicalize_symlinks "$file"
-    done
-))
-EOF
-)"
-        if [ -f "$ENVE_CACHE_DIR/boundfiles/$profile_hash.files" ]; then
-            _trace "profile: $ENVE_PROFILE"
-            _trace "read from: $ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
-            boundfiles="$(cat "$ENVE_CACHE_DIR/boundfiles/$profile_hash.files")"
-            _trace "-- boundfiles --$newl$boundfiles"
-            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
-            if [ "$boundhashes" = "$(cat $ENVE_CACHE_DIR/boundfiles/$profile_hash.hashes)" ]; then
-                RCFILE_PATH="$(cat $ENVE_CACHE_DIR/boundfiles/$profile_hash.rcfile 2>/dev/null || true)"
-            fi
-        fi
-        _debug "cached RCFILE_PATH: ${RCFILE_PATH:-none}"
-    fi
-    
-
-    if [ ! -f "$RCFILE_PATH" ]; then
-        if ! rcfile="$(mkstemp ${TMPDIR:-/tmp}/rcfile.XXXXXX)"; then
-            _error "failed to create tempfile"
-        fi
-        boundfiles="$(ENVE_PROFILE="$ENVE_PROFILE" \
-                     ENVE_ROLES="$ENVE_ROLES" \
-                     ENVE_CONFIG="$ENVE_CONFIG" \
-                     RCFILE_PATH="$rcfile" \
-                     get_rcfile_from_profiles_nocache)"
-
-        if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
-            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
-            cached_rcfile="$ENVE_CACHE_DIR/rcfiles/rcfile-$boundhashes-$target"
-            if ! mv "$rcfile" "$cached_rcfile"; then
-                _error "failed to write rcfile"
-            fi
-            
-            _trace "module_paths: $module_paths"
-            _trace "profile: $ENVE_PROFILE"
-            _trace "write to: $ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
-            _trace "-- boundfiles (write) --  "
-            _trace "$boundfiles"
-            echo "$boundfiles" > "$ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
-            echo "$boundhashes" > "$ENVE_CACHE_DIR/boundfiles/$profile_hash.hashes"
-            echo "$cached_rcfile" > "$ENVE_CACHE_DIR/boundfiles/$profile_hash.rcfile"
-            rcfile="$cached_rcfile"
-        fi
-        RCFILE_PATH="$rcfile"
-    fi
-    echo "$RCFILE_PATH"
-}
-
-
-get_rcfile_from_profiles_usecache() {
-    # input:
-    #   ENVE_PROFILE
-    #   ENVE_ROLES
-    #   ENVE_CONFIG
-    # output:
-    #   rcfile path
-    
-    mkrcfile() {
-        if ! tmprcfile="$(mkstemp ${TMPDIR:-/tmp}/rcfile.XXXXXX)"; then
-            _error "failed to create tempfile"
-            return 1
-        fi
-        boundfiles="$(ENVE_PROFILE="$ENVE_PROFILE" \
-                 ENVE_ROLES="$ENVE_ROLES" \
-                 ENVE_CONFIG="$ENVE_CONFIG" \
-                 RCFILE_PATH="$tmprcfile" \
-                 get_rcfile_from_profiles_nocache)"
-
-        if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
-            cached_rcfile="$(catalog=rcfile cache_add "$tmprcfile")"
-            rm $tmprcfile
-        else
-            cached_rcfile="$tmprcfile"
-        fi
-    }
-
-    if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
-        p_text() {
-            echo $ENVE_ROLES
-            echo $ENVE_CONFIG
-            files_stats_contents $(
-                for file in $(IFS=','; echo $ENVE_PROFILE); do
-                    canonicalize_symlinks "$file"
-                done)
-        }
-        p_vaild() {
-            boundfiles="$(cat "$CACHED/boundfiles")"
-            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
-            [ "$boundhashes" = "$(cat "$CACHED/hashes")" ]
-        }
-        p_make() {
-            mkdir "$CACHED"
-            mkrcfile
-            boundhashes="$(files_stats_contents $boundfiles | hashstr)"
-            _trace "module_paths: $module_paths"
-            _trace "profile: $ENVE_PROFILE"
-            _trace "write to: $ENVE_CACHE_DIR/boundfiles/$profile_hash.files"
-            _trace "-- boundfiles (write) --  "
-            _trace "$boundfiles"
-            echo "$boundfiles" > "$CACHED/boundfiles"
-            echo "$boundhashes" > "$CACHED/hashes"
-            echo "$cached_rcfile" > "$CACHED/rcfile"
-        }
-        RCFILE_PATH="$(catalog=boundfile cache_cat ./rcfile p_text p_make p_vaild)"
-    else
-        mkrcfile
-        RCFILE_PATH="$cached_rcfile"
-    fi
-    echo "$RCFILE_PATH"
-}
-
-
-
-
-fire() {
-    target=$1
-    shift
-    ENVE_ROLES="${target},${ENVE_ROLES}"
-    ENVE_FIRE_DEPTH="$((${ENVE_FIRE_DEPTH:--1} + 1))"
-    
-    LOGTYPE=fire trace "level $ENVE_FIRE_DEPTH $target $@"
-
-    RCFILE_PATH="$(get_rcfile_from_profiles)"
-    if [ -z "$RCFILE_PATH" ]; then
-        return 1
-    fi
-
-    shell_line="$(grep '; export SHELL' $RCFILE_PATH)"
-    eval $shell_line
-    _debug "SHELL: $SHELL"
-
-    # get bypassed variable list
-    bypass_line="$(grep '; export BYPASS' $RCFILE_PATH | tail -n 1)"
-    eval $bypass_line
-
-    bypass_envs="'ENVE_FIRE_DEPTH=$ENVE_FIRE_DEPTH'"
-    if [ -n "${BYPASS:-}" ]; then
-        bypass_envs="$bypass_envs $(
-            IFS=':'
-            for var in $BYPASS; do
-                if [ -n "$var" ]; then
-                    # printf "%s" "'$var=$(eval echo "\${$var:-}")' "
-                    eval printf "'%s=%s' " "$var" "\$(quote "\${$var\:-}")"
-                fi
-            done
-        )"
-    fi
-    _debug "bypass_envs: $bypass_envs"
-    _debug "rcfile: $RCFILE_PATH"
-
-    case $target in
-        run)
-                # exec env - $bypass_envs bash "$RCFILE_PATH" "$@"
-                args=$(save "$@")
-                eval exec env -i $bypass_envs sh \"\$RCFILE_PATH\" $args
-            ;;
-        loader|module)
-                exec sh "$RCFILE_PATH" "$@"
-            ;;
-        shell)
-                # shell="$(table_tail SHELL)"
-                shell=${shell:-$SHELL}
-
-                # posix mode
-                # ENV=$PWD/e zsh -c 'exec -a sh zsh "$@"' "$@"
-                # ENV=$PWD/e bash --posix
-                # ksh/bash POSIXLY_CORRECT=YES
-
-                case $(basename $shell) in
-                    dash|ash|ksh|sh)
-                            rc_arg=
-                            rc_env=ENV
-                        ;;
-                    zsh)
-                            rc_arg=--rcs
-                        ;;
-                    bash)
-                            rc_arg=--rcfile
-                        ;;
-                    *)
-                            echo "unsuported shell $shell" >&2
-                            exit 1
-                        ;;
-                esac
-                eval exec env -i $bypass_setup ${rc_env:+$rc_env=$rcfile} $shell ${rc_arg:+$rc_arg $RCFILE_PATH} -i
-            ;;
-        build)
-            ;;
-        install)
-            ;;
-        deploy)
-                # handle only simple case.
-                # for complex case, use a environment to run more script
-            ;;
-    esac
-}
-
-
 
 ENVE_PROFILE=
 ENVE_CONFIG=
 ENVE_ROLES=
 
 # echo "args: $@" >&2
-cmd=''
+cmd=
 
 while [ -n "${1:-}" ]; do
     case $1 in
         -f|--file)
                 case ${2:-} in -*|'')
-                    echo "you must supply a file path" >&2
-                    exit 1 ;; esac
+                    die "you must supply a file path" ;; esac
                 ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$2"
                 shift 2
             ;;
         -c|--config)
                 case ${2:-} in
                     -*)
-                            echo "you must supply a vaild key-value pair" >&2
-                            exit 1
+                            die "you must supply a vaild key-value pair"
                         ;;
-                    ?*=*) ;;
+                    +*=*)
+                            ctype=LIST
+                        ;;
+                    ?*=*)
+                            ctype=VAR
+                        ;;
                     *)
-                            echo "you must supply a vaild key-value pair" >&2
-                            exit 1
+                            die "you must supply a vaild key-value pair"
+                        ;;
                 esac
                 key="${2##=*}"
                 value="${2%*=}"
-                ENVE_CONFIG="$(printf "%s${ENVE_CONFIG:+\n}VAR\t%s\t%s" "${ENVE_CONFIG:-}" "$key" "$value")"
+                ENVE_CONFIG="$(printf "%s${ENVE_CONFIG:+\n}${ctype}\\t%s\\t%s" \
+                                      "${ENVE_CONFIG:-}" "$key" "$value")"
                 shift 2
             ;;
         -r|--role)
                 case ${2:-} in -*|'')
-                    echo "you must supply a role" >&2
-                    exit 1 ;; esac
+                    die "you must supply a role" ;; esac
                 ENVE_ROLES="${ENVE_ROLES:-}${ENVE_ROLES:+,}$2"
                 shift 2
             ;;
-        -*)
-                echo "unknown option: $1" >&2
-                exit 1
+        -p|--procedure)
             ;;
-        noop|define|run|launchrun)
+        -t|--target)
+            ;;
+        -*)
+                die "unknown option: $1"
+            ;;
+        noop|define|run|launchrun|test)
                 cmd=$1
                 shift
                 break
@@ -684,7 +379,7 @@ while [ -n "${1:-}" ]; do
         shell|launch)
                 cmd=$1
                 shift
-                if [ -n "$1" ]; then
+                if [ -n "${1:-}" ]; then
                     ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
                     shift
                 fi
@@ -692,14 +387,14 @@ while [ -n "${1:-}" ]; do
             ;;
         boot)
                 shift
-                ENVE_PROFILE="$ENVE_HOME/script/boot/enve.ini"
+                ENVE_PROFILE="$ENVE_HOME/enve/script/boot/enve.ini"
                 cmd=shell
                 break
             ;;
         auto)
                 cmd=auto
                 shift
-                if [ -n "$1" ]; then
+                if [ -n "${1:-}" ]; then
                     ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
                     shift
                 fi
@@ -708,14 +403,19 @@ while [ -n "${1:-}" ]; do
                 if [ "$cmd" = "auto" ]; then
                     break
                 else
-                    echo "unknown command: $1" >&2
+                    _error "unknown command: $1"
                     print_help >&2
-                    exit 1    
+                    die
                 fi
             ;;
         
     esac
 done
+
+if [ "$cmd" = "define" ]; then
+    return
+fi
+
 
 ENVE_PROFILE="${ENVE_EXTRA_PROFILE:-}${ENVE_EXTRA_PROFILE:+,}${ENVE_PROFILE}"
 ENVE_CONFIG="${ENVE_EXTRA_CONFIG:-}${ENVE_EXTRA_CONFIG:+$newl}${ENVE_CONFIG}"
@@ -725,46 +425,42 @@ export ENVE_EXTRA_PROFILE=
 export ENVE_EXTRA_CONFIG=
 export ENVE_EXTRA_ROLES=
 
+# TODO: use "'"
 launch_prefix="ENVE_EXTRA_PROFILE=\"$ENVE_PROFILE\" ENVE_EXTRA_CONFIG=\"$ENVE_EXTRA_ROLES\" ENVE_ROLES=\"$ENVE_ROLES\""
+
+
 
 case $cmd in
     noop)
         ;;
-    define)
-            define_functions
-            return
-        ;;
     auto)
-            define_functions
             if [ $# -eq 0 ]; then
-                fire shell
+                enve_fire shell
             else
-                fire run "$@"
+                enve_fire run "$@"
             fi
         ;;
     run)
-            define_functions
-            fire run "$@"
+            enve_fire run "$@"
         ;;
     shell)
-            define_functions
-            fire shell
+            enve_fire shell
+        ;;
+    test)
+            enve_fire test
         ;;
     launch)
-            define_functions
-            exec "$ENVE_HOME/script/term.applescript" "$launch_prefix \"$0\" shell"
+            exec "$ENVE_HOME/enve/script/term.applescript" "$launch_prefix \"$0\" shell"
         ;;
     launchrun)
-            define_functions
-            exec "$ENVE_HOME/script/term.applescript" "$launch_prefix \"$0\" run $@"
+            exec "$ENVE_HOME/enve/script/term.applescript" "$launch_prefix \"$0\" run $*"
         ;;
     bootstrap)
-            define_functions
-            exec "$ENVE_HOME/script/install_nix.sh"
+            exec "$ENVE_HOME/enve/script/install_nix.sh"
         ;;
     '')
             print_help >&2
-            exit 1
+            die
         ;;
 esac
 

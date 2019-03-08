@@ -4,6 +4,9 @@ set -euo pipefail
 
 echo IN $0 >&2
 
+# TODO: python36Packages.tkinter
+# TODO: dash^=^=0.38.0
+
 prepare_hashstore() {
     path="$1"
     if [ -z "$path" ] || [ "$path" = "/" ]; then
@@ -42,7 +45,9 @@ create_env() {
     echo $pipc_exec --rebuild --verbose "$reqinfile" >&2
     echo pip-compile version: $($pipc_exec --version) >&2
     # echo pip version: $(pip --version) >&2
+    # echo "which $(which python)" >&2
     # echo setuptools version: $(python -c "import setuptools; print(setuptools.__version__)") >&2
+
 
     "$pipc_exec" --rebuild --verbose "$reqinfile" >&2
     # echo "xxxxxxxxxxx" >&2
@@ -55,6 +60,7 @@ create_env() {
         prepare_hashstore "$hash_store"
         # ${python_exec} -m virtualenv "$PYVENV_TMP/venvs/$reqhash"
         "$venv_exec" "$hash_store" >&2
+        # $hash_store/bin/python -m pip install --upgrade setuptools >&2
         $hash_store/bin/python -m pip install -r "$reqfile" >&2
         commit_hashstore "$hash_store"
     fi
@@ -63,7 +69,7 @@ create_env() {
 
 resolve_python() {
     TABLE=$(cat "${configfile:--}")
-    echo "$TABLE"
+    
     PYVENV_TMP="$HOME/.cache/enve/python-pyvenv"
     mkdir -p "$PYVENV_TMP"
 
@@ -85,11 +91,16 @@ resolve_python() {
 
     pipc_ver="$(table_tail "python\.stage2\.pip-tools" || true )"
     venv_ver="$(table_tail "python\.stage2\.virtualenv" || true )"
-    echo "$TABLE" >&2
-    echo "pipc_ver: $pipc_ver" >&2
+    # echo "$TABLE" >&2
+    # echo "pipc_ver: $pipc_ver" >&2
 
     if [ -n "$pipc_ver" ] || [ -n "$venv_ver" ]; then
         reqhash2=$(create_env 2 "$pipc_exec" "$venv_exec" "pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
+        pipc_exec="$PYVENV_TMP/venvs/$reqhash2/bin/pip-compile"
+        venv_exec="$PYVENV_TMP/venvs/$reqhash2/bin/virtualenv"
+    else
+        #TODO:
+        reqhash2=$(create_env 2 "$pipc_exec" "$venv_exec" "setuptools${newl}pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
         pipc_exec="$PYVENV_TMP/venvs/$reqhash2/bin/pip-compile"
         venv_exec="$PYVENV_TMP/venvs/$reqhash2/bin/virtualenv"
     fi
@@ -97,8 +108,10 @@ resolve_python() {
     reqhash=$(create_env 1 "$pipc_exec" "$venv_exec" \
         "$({ table_subset "python\.require\.packages" || true; } | as_value)")
 
+    out_join PATH ":"
     out_var VIRTUAL_ENV "$PYVENV_TMP/venvs/$reqhash"
     out_list PATH "$PYVENV_TMP/venvs/$reqhash/bin"
+    echo "$TABLE"
     echo "END resolve_python" >&2
 }
 

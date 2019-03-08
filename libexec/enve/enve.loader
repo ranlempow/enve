@@ -1,23 +1,37 @@
+#!/bin/sh
 #!/usr/bin/env bash
 
-set -euo pipefail
+# set -euo pipefail
 
-ENVE_HOME="$(dirname $0)/.."
+
+# ENVE_HOME="$(dirname $0)/.."
+# ENVE_HOME="${0%/*}/.."
+
+# shellcheck source=libexec/enve/base
 . "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
 . "$ENVE_HOME/enve/envelib"
+
+# shellcheck source=libexec/enve/pathutils
+. "$ENVE_HOME/enve/pathutils"
+settrace
 
 
 builtin_loader() {
-    # table_subset "module\.[[:alnum:]]*" | as_postfix "module\." | \
+    # table_subset "module\\.[[:alnum:]]*" | as_postfix "module\\." | \
     # while IFS="${tab}" read -r name value; do
     # echo "$ENVE_HOME"
-    if [ -n "$(table_subset "python\..*")" ]; then
+    if [ -n "$(table_subset "python\\..*")" ]; then
+    # if [ -n "$(table_subset "python")" ]; then
         echo "$ENVE_HOME/enve/core/pyvenv"
     fi
-    if [ -n "$(table_subset "nodejs\..*")" ]; then
+    if [ -n "$(table_subset "nodejs\\..*")" ]; then
+    # if [ -n "$(table_subset "nodejs")" ]; then
         echo "$ENVE_HOME/enve/core/nodejs"
     fi
-    if [ -n "$(table_subset "ruby\..*")" ]; then
+    if [ -n "$(table_subset "ruby\\..*")" ]; then
+    # if [ -n "$(table_subset "ruby")" ]; then
         echo "$ENVE_HOME/enve/core/ruby"
     fi
     # echo "$TABLE" >&2
@@ -41,7 +55,7 @@ builtin_loader() {
 }
 
 path_loader() {
-    table_subset "module\.[[:alnum:]]*\.path" | as_postfix "module\." | {
+    table_subset "module\\.[[:alnum:]]*\\.path" | as_postfix "module\\." | {
         while IFS="${tab}" read -r name value; do
             name="${name%.path}"
             path="$(resolve_path "$value")"
@@ -54,12 +68,14 @@ path_loader() {
 }
 
 self_loader() {
-    echo "$ENVE_HOME/enve"
+    # (
+        normalize "$ENVE_HOME/enve"
+    # )
 }
 
-echo IN $0 >&2
-TABLE="$(cat)"
+echo "IN $0" >&2
+TABLE=$(cat)
 builtin_loader
 path_loader
 self_loader
-echo OUT $0 >&2
+echo "OUT $0" >&2

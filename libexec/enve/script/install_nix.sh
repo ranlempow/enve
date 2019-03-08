@@ -1,11 +1,20 @@
+#!/bin/sh
 
 
 create_directories() {
     _sudo "to make the basic directory structure of Nix (part 1)" \
-          mkdir -pv -m 0755 /nix /nix/var /nix/var/log /nix/var/log/nix /nix/var/log/nix/drvs /nix/var/nix{,/db,/gcroots,/profiles,/temproots,/userpool}
+          mkdir -pv -m 0755 \
+            /nix /nix/var /nix/var/log /nix/var/log/nix /nix/var/log/nix/drvs \
+            /nix/var/nix/db \
+            /nix/var/nix/gcroots \
+            /nix/var/nix/profiles \
+            /nix/var/nix/temproots \
+            /nix/var/nix/userpool
 
     _sudo "to make the basic directory structure of Nix (part 2)" \
-          mkdir -pv -m 1777 /nix/var/nix/{gcroots,profiles}/per-user
+          mkdir -pv -m 1777 \
+            /nix/var/nix/gcroots/per-user \
+            /nix/var/nix/profiles/per-user
 
     _sudo "to make the basic directory structure of Nix (part 3)" \
           mkdir -pv -m 1775 /nix/store
@@ -19,7 +28,7 @@ create_directories() {
     # _sudo "to set up the root user's profile (part 2)" \
     #       mkdir -pv -m 0700 "$ROOT_HOME/.nix-defexpr"
 
-    if [ -z "$NO_SYSTEM_SETUP" ]; then
+    if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
         _sudo "to place the default nix daemon configuration (part 1)" \
               mkdir -pv -m 0555 /etc/nix
     fi
@@ -27,7 +36,9 @@ create_directories() {
 
 install_from_extracted_nix() {
     (
-        cd "$EXTRACTED_NIX_PATH"
+        if ! cd "$EXTRACTED_NIX_PATH"; then
+            failure "cannot change directory to '$EXTRACTED_NIX_PATH'"
+        fi
 
         _sudo "to copy the basic Nix files to the new store at $NIX_ROOT/store" \
               rsync -rlpt ./store/* "$NIX_ROOT/store/"
@@ -41,12 +52,19 @@ $NIX_INSTALLED_NIX.
 EOF
         fi
 
-        _sudo "to initialize the Nix Database" \
-              $NIX_INSTALLED_NIX/bin/nix-store --init --option build-users-group 30000
+        # _sudo "to initialize the Nix Database" \
+        #       $NIX_INSTALLED_NIX/bin/nix-store --init --option build-users-group 30000
 
-        cat ./.reginfo \
-            | _sudo "to load data for the first time in to the Nix Database" \
-                   "$NIX_INSTALLED_NIX/bin/nix-store" --load-db --option build-users-group 30000
+        # cat ./.reginfo \
+        #     | _sudo "to load data for the first time in to the Nix Database" \
+        #            "$NIX_INSTALLED_NIX/bin/nix-store" --load-db --option build-users-group 30000
+        # _sudo "to load data for the first time in to the Nix Database" \
+        #         "$NIX_INSTALLED_NIX/bin/nix-store" --load-db --option build-users-group 30000 \
+        #         < "./.reginfo"
+
+        _sudo "to load data for the first time in to the Nix Database" \
+                "$NIX_INSTALLED_NIX/bin/nix-store" --load-db \
+                < "./.reginfo"
 
         echo "      Just finished getting the nix database ready."
     )
@@ -56,9 +74,11 @@ EOF
 main() {
     if [ "$(uname -s)" = "Darwin" ]; then
         # shellcheck source=./install-darwin-multi-user.sh
+        # shellcheck disable=1091
         . "$EXTRACTED_NIX_PATH/install-darwin-multi-user.sh"
     elif [ "$(uname -s)" = "Linux" ] && [ -e /run/systemd/system ]; then
         # shellcheck source=./install-systemd-multi-user.sh
+        # shellcheck disable=1091
         . "$EXTRACTED_NIX_PATH/install-systemd-multi-user.sh"
     else
         failure "Sorry, I don't know what to do on $(uname)"
@@ -78,7 +98,7 @@ main() {
     #     trap finish_cleanup EXIT
     #     exit 1
     # fi
-    if [ -z "$NO_SYSTEM_SETUP" ]; then
+    if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
         create_build_group
         create_build_users
     fi
@@ -95,9 +115,10 @@ main() {
     # setup_default_profile
     new_profile=$(
     export NIX_PATH=nixpkgs=https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz
-    # NIX_PATH=nixpkgs=http://d3g5gsiof5omrk.cloudfront.net/nixpkgs/nixpkgs-18.09pre132003.13e74a838db/nixexprs.tar.xz \
-    
-    $NIX_INSTALLED_NIX/bin/nix-build --no-out-link - <<EOF
+    # NIX_PATH=nixpkgs=http://d3g5gsiof5omrk.cloudfront.net/nixpkgs/nixpkgs-18.09pre132003.13e74a838db/nixexprs.tar.xz 
+
+    NIX_SSL_CERT_FILE=$NIX_INSTALLED_CACERT/etc/ssl/certs/ca-bundle.crt \
+    sudo -E $NIX_INSTALLED_NIX/bin/nix-build --no-out-link - <<EOF
     with import <nixpkgs> { };
     buildEnv { 
       name = "user-environment";
@@ -106,12 +127,13 @@ main() {
       ];
     }
 EOF
+
     )
-    ln -s "$new_profile" /nix/var/nix/profiles/default || die "fail to link $new_profile to default profile"
+    sudo ln -s "$new_profile" /nix/var/nix/profiles/default || die "fail to link $new_profile to default profile"
     echo "link $new_profile to default profile"
 
     
-    if [ -z "$NO_SYSTEM_SETUP" ]; then
+    if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
         place_nix_configuration
         poly_configure_nix_daemon_service
     fi
@@ -121,7 +143,7 @@ EOF
 
 
 
-function install_nix() {
+install_nix() {
 
     if [ -n "$BOOTNIX_TEST" ]; then
         dd if=/dev/zero of=/run/cacheimage bs=1M count=256
@@ -136,21 +158,38 @@ function install_nix() {
         # tmpDir=/root/.cache/tmp
     fi
 
+    # curl https://nixos.org/nix/install
     curl https://nixos.org/nix/install > "$tmpDir/nix-get.sh"
     chmod 755 "$tmpDir/nix-get.sh"
 
     # hack to nix-get.sh
-    sed -i -e 's#script=.*# echo "$unpack"/*/install ; exit 0#' -e 's#trap cleanup.*##' "$tmpDir/nix-get.sh"
+    # sed -i -e 's#script=.*# echo "$unpack"/*/install ; exit 0#' -e 's#trap cleanup.*##' "$tmpDir/nix-get.sh"
+    sed -i -e 's#script=.*# echo "$unpack"/*/install ; exit 0#' "$tmpDir/nix-get.sh"
+    sed -i -e 's#trap cleanup.*##' "$tmpDir/nix-get.sh"
+    
     install_script="$($tmpDir/nix-get.sh | tail -n 1)"
 
     multi_install_script="$(dirname "$install_script")/install-multi-user"
     sed -i -e 's#readonly NIX_USER_COUNT="32"#readonly NIX_USER_COUNT="4"#' "$multi_install_script"
+    # sed -i -e 's#readonly NIX_INSTALLED_CACERT=#NIX_INSTALLED_CACERT=#' "$multi_install_script"
     sed -i -e 's#^main$##' "$multi_install_script"
-    echo "$(declare -f create_directories)" >> "$multi_install_script"
-    # echo "$(declare -f install_from_extracted_nix)" >> "$multi_install_script"
-    echo "$(declare -f main)" >> "$multi_install_script"
-    echo "main" >> "$multi_install_script"
     
+    {
+        # echo "$(declare -f create_directories)" >> "$multi_install_script"
+        
+        type create_directories | tail -n +2
+        # TODO: remove this
+        # type install_from_extracted_nix | tail -n +2
+        
+        # TODO: remove this
+        type poly_configure_nix_daemon_service | tail -n +2
+
+        # echo "$(declare -f install_from_extracted_nix)" >> "$multi_install_script"
+        # echo "$(declare -f main)" >> "$multi_install_script"
+        type main | tail -n +2
+        echo "main"
+    } >> "$multi_install_script"
+
     # to fix: error: the group 'nixbld' specified in 'build-users-group' does not exist 
     mkdir $tmpDir/nixconf
     echo "build-users-group =
@@ -162,6 +201,46 @@ function install_nix() {
 
 }
 
+# TODO: remove this after nix fix the bug
+poly_configure_nix_daemon_service() {
+    # _sudo "to set up the nix-daemon as a LaunchDaemon" \
+    #       ln -sfn "/nix/var/nix/profiles/default$PLIST_DEST" "$PLIST_DEST"
+
+    # reference: https://github.com/NixOS/nix/issues/2523
+    _sudo sudo cat > "/Library/LaunchDaemons/org.nixos.nix-daemon.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>org.nixos.nix-daemon</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+           <key>OBJC_DISABLE_INITIALIZE_FORK_SAFETY</key>
+           <string>YES</string>
+    </dict>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>Program</key>
+    <string>/nix/store/1jz25hcma179wbpi56blgajw47n5kgqd-nix-2.2.1/bin/nix-daemon</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/nix-daemon.log</string>
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+  </dict>
+</plist>
+EOF
+    _sudo chown root:30000 "/Library/LaunchDaemons/org.nixos.nix-daemon.plist"
+    _sudo chmod 444 "/Library/LaunchDaemons/org.nixos.nix-daemon.plist"
+    _sudo "to load the LaunchDaemon plist for nix-daemon" \
+          launchctl load /Library/LaunchDaemons/org.nixos.nix-daemon.plist
+
+    _sudo "to start the nix-daemon" \
+          launchctl start org.nixos.nix-daemon
+
+}
 
 
 linux_runtime() {
@@ -243,7 +322,7 @@ oops() {
 }
 
 tmpDir="$(mktemp -d -t nix-bootstrap.XXXXXXXXXX || \
-          oops "Can\'t create temporary directory")"
+          oops "Can\\'t create temporary directory")"
 cleanup() {
     rm -rf "$tmpDir"
 }

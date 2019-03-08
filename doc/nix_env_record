@@ -1,0 +1,67 @@
+building '/nix/store/mm62di2vvgkrwkfncqh3nggk73r29hyw-y.drv'...
+/private/tmp/nix-build-y.drv-0
+total 12
+drwx------  5 nixbld1 nixbld  170 Jul 31 14:49 .
+drwxrwxrwt 15 root    wheel   510 Jul 31 14:49 ..
+-rw-r--r--  1 nixbld1 nixbld   79 Jul 31 14:49 .attr-0
+-rw-r--r--  1 nixbld1 nixbld   42 Jul 31 14:49 .sandbox.sb
+-rw-r--r--  1 nixbld1 nixbld 3362 Jul 31 14:49 env-vars
+===.attr-0===
+pwd; ls -al; for f in $(ls -A); do echo ===$f===; cat $f; echo; done ; ls -al /
+===.sandbox.sb===
+(version 1)
+(import "sandbox-minimal.sb")
+
+===env-vars===
+declare -x CMAKE_OSX_ARCHITECTURES="x86_64"
+declare -x CONFIG_SHELL="/nix/store/9zzzkrbdwl16873ny0llgbypa0z6vcvf-bash-4.4-p12/bin/bash"
+declare -x HOME="/homeless-shelter"
+declare -x MACOSX_DEPLOYMENT_TARGET="10.10"
+declare -x NIX_BUILD_CORES="1"
+declare -x NIX_BUILD_TOP="/private/tmp/nix-build-y.drv-0"
+declare -x NIX_COREFOUNDATION_RPATH="/nix/store/pk7vlx074crz00wkvllxp0b0lgj01949-CF-osx-10.10.5/Library/Frameworks"
+declare -x NIX_CXXSTDLIB_COMPILE=" -isystem /nix/store/5rcj30y3z918ws9m4jbz02p8lc274sip-libc++-4.0.1/include/c++/v1"
+declare -x NIX_CXXSTDLIB_LINK=" -stdlib=libc++"
+declare -x NIX_ENFORCE_NO_NATIVE="1"
+declare -x NIX_ENFORCE_PURITY="1"
+declare -x NIX_IGNORE_LD_THROUGH_GCC="1"
+declare -x NIX_INDENT_MAKE="1"
+declare -x NIX_LDFLAGS="-rpath /nix/store/bs222m5ynm5jwdpcy1x9z4dvz4kab5hr-y/lib "
+declare -x NIX_LOG_FD="2"
+declare -x NIX_STORE="/nix/store"
+declare -x OLDPWD
+declare -x PATH="/nix/store/f1frq7rdqxw1zbmch7n9ij3zsq8saqlz-coreutils-8.28/bin:/nix/store/vwwr8ddmchbf03qfrz2r57y4wihv6g5p-findutils-4.6.0/bin:/nix/store/wkj3kp971fg9wx3rqc0lcmah19nwncin-diffutils-3.6/bin:/nix/store/273cz82qwk97ila96qddcpw9l1z3xwvm-gnused-4.4/bin:/nix/store/ndk5lccimdbppy1bqvcisihkyx5na7h6-gnugrep-3.1/bin:/nix/store/xrk8lpaj4ik0c17iz3x10l0xx4b855wn-gawk-4.1.4/bin:/nix/store/c9jzz3b0g2cw3lm1zf20fbxkxcmgiyxi-gnutar-1.29/bin:/nix/store/8lflfcqp5cdnzbwgdzynfnjv665nrhm2-gzip-1.8/bin:/nix/store/ng685p27mgd3w1pd84nid4qr68lxvwcq-bzip2-1.0.6.0.1-bin/bin:/nix/store/dmwg0sxhv6ffprvq39fn0xs1wiiwsfsg-gnumake-4.2.1/bin:/nix/store/9zzzkrbdwl16873ny0llgbypa0z6vcvf-bash-4.4-p12/bin:/nix/store/vpmfaszxxhq3ai4nhnpm5x7cycpnvycr-patch-2.7.5/bin:/nix/store/lysd6il7rphpnwk7sjzn7mrldx6gl135-xz-5.2.3-bin/bin"
+declare -x PATH_LOCALE="/nix/store/xpbn3r5xjp24pxii350cfns44gpmdgn9-adv_cmds-osx-10.5.8-locale/share/locale"
+declare -x PWD="/private/tmp/nix-build-y.drv-0"
+declare -x SDKROOT=""
+declare -x SHELL="/nix/store/9zzzkrbdwl16873ny0llgbypa0z6vcvf-bash-4.4-p12/bin/bash"
+declare -x SHLVL="1"
+declare -x SOURCE_DATE_EPOCH="1"
+declare -x SSL_CERT_FILE="/no-cert-file.crt"
+declare -x TEMP="/private/tmp/nix-build-y.drv-0"
+declare -x TEMPDIR="/private/tmp/nix-build-y.drv-0"
+declare -x TMP="/private/tmp/nix-build-y.drv-0"
+declare -x TMPDIR="/private/tmp/nix-build-y.drv-0"
+declare -x TZ="UTC"
+declare -x __impureHostDeps="/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation /dev/zero /dev/random /dev/urandom /bin/sh"
+declare -x __propagatedImpureHostDeps=""
+declare -x __propagatedSandboxProfile=""
+declare -x __sandboxProfile="(allow file-read* (literal \"/usr/lib/libncurses.5.4.dylib\"))
+(import \"/nix/store/z347hsajryw593h802ggb63lbr3gpv2b-standard-sandbox.sb\")
+"
+declare -x buildCommandPath="/private/tmp/nix-build-y.drv-0/.attr-0"
+declare -x buildInputs=""
+declare -x builder="/nix/store/9zzzkrbdwl16873ny0llgbypa0z6vcvf-bash-4.4-p12/bin/bash"
+declare -x configureFlags=""
+declare -x gl_cv_func_getcwd_abort_bug="no"
+declare -x name="y"
+declare -x nativeBuildInputs=""
+declare -x out="/nix/store/bs222m5ynm5jwdpcy1x9z4dvz4kab5hr-y"
+declare -x passAsFile="buildCommand"
+declare -x propagatedBuildInputs=""
+declare -x propagatedNativeBuildInputs=""
+declare -x shell="/nix/store/9zzzkrbdwl16873ny0llgbypa0z6vcvf-bash-4.4-p12/bin/bash"
+declare -x stdenv="/nix/store/ndxx2r9a3ymmikrsnw3xv8dnrx45d9r4-stdenv-darwin"
+declare -x system="x86_64-darwin"
+
+

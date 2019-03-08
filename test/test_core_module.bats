@@ -1,7 +1,22 @@
 #!/usr/bin/env bats
 
-BATS_TEST_SKIPPED=
-EVNE_EXEC="$(readlink -f "./enve")"
+load common
+
+
+setup() {
+    mkstab ../libexec/enve/findutils \
+        fnmatch fnmatch_pathname_transform \
+        make_gitignore_filter gitignore_filter \
+        files_stats files_stats_contents
+    mkstab ../libexec/enve/enve.module \
+        resolve_first resolve_basic resolve_command resolve_terminal \
+        resolve_prompt resolve_nix resolve_macos \
+        filter_kv_in_table
+
+    mkstab ../libexec/enve/envelib \
+        table_subset out_var table_tail
+}
+
 
 
 @test "core module - test mktemp" {
@@ -10,87 +25,79 @@ EVNE_EXEC="$(readlink -f "./enve")"
 }
 
 @test "core module - basic load" {
-    . ./enve.module "$EVNE_EXEC" test
     [ -n "$(echo "" | resolve_first)" ]
 }
 
 @test "core module - resolve_first" {
-    . ./enve.module "$EVNE_EXEC" test
-    TABLE="$(echo "" | resolve_first)"
-    table_subset HOME >/dev/null
-    table_subset USER >/dev/null
-    table_subset TERM >/dev/null
-    table_subset TMPDIR >/dev/null
+    export TABLE="$(echo "" | resolve_first)"
+    [ -n "$(table_subset HOME)" ]
+    [ -n "$(table_subset USER)" ]
+    [ -n "$(table_subset TERM)" ]
+    [ -n "$(table_subset TMPDIR)" ]
 }
 
 @test "core module - resolve_basic" {
-    . ./enve.module "$EVNE_EXEC" test
-    TABLE="$(echo "" | resolve_basic)"
+    export TABLE="$(echo "" | resolve_basic)"
 }
 
 @test "core module - resolve_command" {
-    . ./enve.module "$EVNE_EXEC" test
-    TABLE="$(echo "$(out_var cmd.mycmd 'echo x')" | resolve_command)"
+    export TABLE="$(echo "$(out_var cmd.mycmd 'echo x')" | resolve_command)"
     cmddir="$(table_tail PATH LIST)"
     [ -x "$cmddir/mycmd" ]
     [ "$(cat $cmddir/mycmd)" = "echo x" ]
 }
 
 @test "core module - resolve_terminal" {
-    . ./enve.module "$EVNE_EXEC" test
-    TABLE="$(echo "$(
+    export TABLE="$(echo "$(
         out_var core.target shell
         out_var terminal.size 200x300
         out_var terminal.theme xyz
     )" | resolve_terminal)"
-    table_subset TERMSIZE >/dev/null
-    table_subset TERMTHEME >/dev/null
+    [ -n "$(table_subset TERMSIZE)" ]
+    [ -n "$(table_subset TERMTHEME)" ]
 }
 
 @test "core module - resolve_prompt" {
     # TODO: rename ENV_ROOT
-    . ./enve.module "$EVNE_EXEC" test
-    TABLE="$(echo "$(
+    export TABLE="$(echo "$(
         out_var core.target shell
         out_var ENV_ROOT $ENV_ROOT
     )" | resolve_prompt)"
     
-    table_subset git-completion SRC >/dev/null
-    table_subset git-prompt SRC >/dev/null
-    table_subset bash_completion SRC >/dev/null
-    
-    table_subset ENVE_BASHOPTS JOIN >/dev/null
-    table_subset ENVE_SHELLOPTS JOIN >/dev/null
+    [ -n "$(table_subset git-completion SRC)" ]
+    [ -n "$(table_subset git-prompt SRC)" ]
+    [ -n "$(table_subset bash_completion SRC)" ]
+
+    [ -n "$(table_subset ENVE_BASHOPTS JOIN)" ]
+    [ -n "$(table_subset ENVE_SHELLOPTS JOIN)" ]
+
 }
 
 @test "core module - resolve_nix" {
-    . ./enve.module "$EVNE_EXEC" test
-    # TABLE="$(echo "$(
-    #     out_var enve.no_nix true
-    # )" | resolve_nix)"
+    TABLE="$(echo "$(
+        out_var enve.no_nix true
+    )" | resolve_nix)"
 
+    # TODO: need a effect test suit
     # TABLE="$(echo "$(
     #     out_var nix.channel.url xxxx
     # )" | resolve_nix)"
-    
     # TABLE="$(echo "$(
     #     out_var nix.channel.version xxxx
     #     out_var nix.config.abc xyz
     # )" | resolve_nix)"
-    
 }
 
-@test "core module - resolve_macos" {
-    . ./enve.module "$EVNE_EXEC" test
-    TABLE="$(echo "" | resolve_macos)"
 
-    table_subset PATH LIST >/dev/null
+@test "core module - resolve_macos" {
+    export TABLE="$(echo "" | resolve_macos)"
+
+    [ -n "$(table_subset PATH LIST)" ]
 }
 
 
 @test "core module - filter_kv_in_table" {
-    . ./enve.module "$EVNE_EXEC" test
-    TABLE="$(echo "$(
+    export TABLE="$(echo "$(
         out_var showthis     abc
         out_var not.showthis bcd
     )" | filter_kv_in_table)"
