@@ -1,77 +1,196 @@
 #!/usr/bin/env bash
-set -euo pipefail
-. "$1" define
 
-echo IN $0 >&2
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
 
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/envelib"
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/cachelib"
+
+settrace
 # TODO: python36Packages.tkinter
-# TODO: dash^=^=0.38.0
 
-prepare_hashstore() {
-    path="$1"
-    if [ -z "$path" ] || [ "$path" = "/" ]; then
-        return 0
-    fi
-    if [ -e "$path.processing" ]; then
-        rm -rf "$path"
-    fi
-    touch "$path.processing"
-}
+# prepare_hashstore() {
+#     path="$1"
+#     if [ -z "$path" ] || [ "$path" = "/" ]; then
+#         return 0
+#     fi
+#     if [ -e "$path.processing" ]; then
+#         rm -rf "$path"
+#     fi
+#     touch "$path.processing"
+# }
 
-commit_hashstore() {
-    if [ -z "$path" ] || [ "$path" = "/" ]; then
-        return 0
-    fi
-    if [ -n "$path" ]; then
-        if [ -e "${path}" ]; then
-            rm -rf "$path.processing"
-        fi
-    fi
-}
+# commit_hashstore() {
+#     if [ -z "$path" ] || [ "$path" = "/" ]; then
+#         return 0
+#     fi
+#     if [ -n "$path" ]; then
+#         if [ -e "${path}" ]; then
+#             rm -rf "$path.processing"
+#         fi
+#     fi
+# }
 
-create_env() {
-    set -euo pipefail
+# create_env() {
+#     set -euo pipefail
+#     stage=$1
+#     pipc_exec="$2"
+#     venv_exec="$3"
+#     requires="$4"
+
+#     reqinfile="$PYVENV_TMP/reqfile${stage}.in"
+#     reqfile="$PYVENV_TMP/reqfile${stage}.txt"
+#     # { table_subset "python\.require\.packages" || true; } | as_value > "$reqinfile"
+#     echo "$requires" > "$reqinfile"
+#     # pip-compile --version >&2
+#     # pip-compile --help >&2
+#     echo $pipc_exec --rebuild --verbose "$reqinfile" >&2
+#     echo pip-compile version: $($pipc_exec --version) >&2
+#     echo pip version: $(pip --version) >&2
+#     echo "which $(which python)" >&2
+#     echo setuptools version: $(python -c "import setuptools; print(setuptools.__version__)") >&2
+
+
+#     "$pipc_exec" --rebuild --verbose "$reqinfile" >&2
+#     # echo "xxxxxxxxxxx" >&2
+#     # echo
+#     reqhash="$(shasum -a 256 --text "$reqfile" | awk '{ print $1 }')"
+
+#     hash_store="$PYVENV_TMP/venvs/$reqhash"
+#     mkdir -p "$PYVENV_TMP/venvs"
+#     if [ ! -e "$hash_store" ]; then
+#         prepare_hashstore "$hash_store"
+#         # ${python_exec} -m virtualenv "$PYVENV_TMP/venvs/$reqhash"
+#         "$venv_exec" "$hash_store" >&2
+#         # $hash_store/bin/python -m pip install --upgrade setuptools >&2
+#         $hash_store/bin/python -m pip install -r "$reqfile" >&2
+#         commit_hashstore "$hash_store"
+#     fi
+#     echo "$reqhash"
+# }
+
+# resolve_python() {
+#     # TABLE=$(cat "${configfile:--}")
+
+#     PYVENV_TMP="$HOME/.cache/enve/python-pyvenv"
+#     mkdir -p "$PYVENV_TMP"
+
+#     # python27 python34 python35 python36
+#     # python_ver="$(table_tail "python\.version" | as_value)" || python_ver=3.6
+#     # if [ -n "$python_ver" ]; then
+#     #     python_exec=python${python_ver/./}
+#     # else
+#     #     python_exec=python36
+#     # fi
+#     # python_exec=python
+
+#     # echo "this?" >&2
+#     # out_var "nix.packages" "${python_exec}"
+#     # out_var "nix.packages" "${python_exec}Packages.pip"
+#     # out_var "nix.packages" "${python_exec}Packages.virtualenv"
+
+#     pipc_exec="$(which pip-compile)"
+#     venv_exec="$(which virtualenv)"
+
+#     pipc_ver="$(table_tail "python\.stage2\.pip-tools" || true )"
+#     venv_ver="$(table_tail "python\.stage2\.virtualenv" || true )"
+#     # echo "$TABLE" >&2
+#     # echo "pipc_ver: $pipc_ver" >&2
+
+#     if [ -n "$pipc_ver" ] || [ -n "$venv_ver" ]; then
+#         reqhash2=$(create_env 2 "$pipc_exec" "$venv_exec" "pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
+#         pipc_exec="$PYVENV_TMP/venvs/$reqhash2/bin/pip-compile"
+#         venv_exec="$PYVENV_TMP/venvs/$reqhash2/bin/virtualenv"
+#     else
+#         #TODO:
+#         reqhash2=$(create_env 2 "$pipc_exec" "$venv_exec" "setuptools${newl}pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
+#         pipc_exec="$PYVENV_TMP/venvs/$reqhash2/bin/pip-compile"
+#         venv_exec="$PYVENV_TMP/venvs/$reqhash2/bin/virtualenv"
+#     fi
+
+#     reqhash=$(create_env 1 "$pipc_exec" "$venv_exec" \
+#         "$({ table_subset "python\.require\.packages" || true; } | as_value)")
+
+#     out_join PATH ":"
+#     out_var VIRTUAL_ENV "$PYVENV_TMP/venvs/$reqhash"
+#     out_list PATH "$PYVENV_TMP/venvs/$reqhash/bin"
+#     # echo "$TABLE"
+#     echo "END resolve_python" >&2
+# }
+
+# file_mtime_epoch() {
+#     file=$(LANG=C ls -l "$1")
+#     if [ -n "$file" ]; then
+#         # drwxr-xr-x 17 pengweiqi staff   544 Apr  1 19:57 SecLists
+#         read -r _1 _2 _3 _4 _5 m d t _9 <<EOF
+# $file
+# EOF
+#         PATH=`getconf PATH` awk 'BEGIN{srand();print srand()}'
+#     fi
+# }
+
+create_env_two() {
     stage=$1
     pipc_exec="$2"
     venv_exec="$3"
     requires="$4"
 
-    reqinfile="$PYVENV_TMP/reqfile${stage}.in"
-    reqfile="$PYVENV_TMP/reqfile${stage}.txt"
-    # { table_subset "python\.require\.packages" || true; } | as_value > "$reqinfile"
-    echo "$requires" > "$reqinfile"
-    # pip-compile --version >&2
-    # pip-compile --help >&2
-    echo $pipc_exec --rebuild --verbose "$reqinfile" >&2
-    echo pip-compile version: $($pipc_exec --version) >&2
-    # echo pip version: $(pip --version) >&2
-    # echo "which $(which python)" >&2
+    p_text() {
+        echo "$stage"
+        echo "$requires"
+        echo pip-compile version: "$($pipc_exec --version)"
+        # echo pip-compile version: "$($pipc_exec --version)" >&2
+        command -v python
+        # command -v python >&2
+    }
+    p_vaild() {
+        if [ ! -e "$CACHED/req.txt" ]; then
+            return 0
+        fi
+        # TODO: non-posix
+        current=$(date +%s)
+        last_modified=$(date -r "$CACHED/req.txt" +%s)
+        if [ $((current - last_modified)) -gt 1800 ]; then
+            return 0
+        fi
+        echo 1
+    }
+    p_make() {
+        echo "$requires" > "$CACHED/req.in"
+        "$pipc_exec" --rebuild --verbose "$CACHED/req.in" >&2
+    }
+    catalog="pyvenv-req" cache_path "req.txt" p_text p_make p_vaild
+    REQTXT=$cached_path
+    cached_path=
+    # unset cached_path
+
     # echo setuptools version: $(python -c "import setuptools; print(setuptools.__version__)") >&2
 
 
-    "$pipc_exec" --rebuild --verbose "$reqinfile" >&2
-    # echo "xxxxxxxxxxx" >&2
-    # echo
-    reqhash="$(shasum -a 256 --text "$reqfile" | awk '{ print $1 }')"
-
-    hash_store="$PYVENV_TMP/venvs/$reqhash"
-    mkdir -p "$PYVENV_TMP/venvs"
-    if [ ! -e "$hash_store" ]; then
-        prepare_hashstore "$hash_store"
-        # ${python_exec} -m virtualenv "$PYVENV_TMP/venvs/$reqhash"
-        "$venv_exec" "$hash_store" >&2
-        # $hash_store/bin/python -m pip install --upgrade setuptools >&2
-        $hash_store/bin/python -m pip install -r "$reqfile" >&2
-        commit_hashstore "$hash_store"
-    fi
-    echo "$reqhash"
+    p_text() {
+        cat "$REQTXT"
+    }
+    p_vaild() {
+        echo 1
+    }
+    p_make() {
+        "$venv_exec" "$CACHED" >&2
+        "$CACHED/bin/python" -m pip install -r "$REQTXT" >&2
+    }
+    catalog=pyvenv cache_path "." p_text p_make p_vaild "non-mv-lock"
+    echo "$cached_path"
 }
 
-resolve_python() {
-    TABLE=$(cat "${configfile:--}")
-    
-    PYVENV_TMP="$HOME/.cache/enve/python-pyvenv"
-    mkdir -p "$PYVENV_TMP"
+
+
+resolve_python_two() {
+    # TABLE=$(cat "${configfile:--}")
+
+    # PYVENV_TMP="$HOME/.cache/enve/python-pyvenv"
+    # mkdir -p "$PYVENV_TMP"
 
     # python27 python34 python35 python36
     # python_ver="$(table_tail "python\.version" | as_value)" || python_ver=3.6
@@ -86,33 +205,55 @@ resolve_python() {
     # out_var "nix.packages" "${python_exec}"
     # out_var "nix.packages" "${python_exec}Packages.pip"
     # out_var "nix.packages" "${python_exec}Packages.virtualenv"
-    pipc_exec="$(which pip-compile)"
-    venv_exec="$(which virtualenv)"
 
-    pipc_ver="$(table_tail "python\.stage2\.pip-tools" || true )"
-    venv_ver="$(table_tail "python\.stage2\.virtualenv" || true )"
     # echo "$TABLE" >&2
     # echo "pipc_ver: $pipc_ver" >&2
 
-    if [ -n "$pipc_ver" ] || [ -n "$venv_ver" ]; then
-        reqhash2=$(create_env 2 "$pipc_exec" "$venv_exec" "pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
-        pipc_exec="$PYVENV_TMP/venvs/$reqhash2/bin/pip-compile"
-        venv_exec="$PYVENV_TMP/venvs/$reqhash2/bin/virtualenv"
-    else
-        #TODO:
-        reqhash2=$(create_env 2 "$pipc_exec" "$venv_exec" "setuptools${newl}pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
-        pipc_exec="$PYVENV_TMP/venvs/$reqhash2/bin/pip-compile"
-        venv_exec="$PYVENV_TMP/venvs/$reqhash2/bin/virtualenv"
-    fi
+    # if [ -n "$pipc_ver" ] || [ -n "$venv_ver" ]; then
+    #     reqhash2=$(create_env_two 2 "$pipc_exec" "$venv_exec" "pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
+    #     pipc_exec="$reqhash2/bin/pip-compile"
+    #     venv_exec="$reqhash2/bin/virtualenv"
+    # else
+    #     #TODO:
+    #     reqhash2=$(create_env_two 2 "$pipc_exec" "$venv_exec" "setuptools${newl}pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
+    #     pipc_exec="$reqhash2/bin/pip-compile"
+    #     venv_exec="$reqhash2/bin/virtualenv"
+    # fi
 
-    reqhash=$(create_env 1 "$pipc_exec" "$venv_exec" \
-        "$({ table_subset "python\.require\.packages" || true; } | as_value)")
+    pipc_exec="$(command -v pip-compile)"
+    venv_exec="$(command -v virtualenv)"
+
+    pipc_ver="$(table_tail "python\\.stage2\\.pip-tools" || true )"
+    venv_ver="$(table_tail "python\\.stage2\\.virtualenv" || true )"
+
+    pyvenv2=$(create_env_two 2 "$pipc_exec" "$venv_exec" \
+        "setuptools${newl}pip-tools${pipc_ver:+==$pipc_ver}${newl}virtualenv${venv_ver:+==$venv_ver}")
+    pipc_exec="$pyvenv2/bin/pip-compile"
+    venv_exec="$pyvenv2/bin/virtualenv"
+
+    pyvenv1=$(create_env_two 1 "$pipc_exec" "$venv_exec" \
+        "$({ table_subset "python\\.require\\.packages" || true; } | as_value)")
 
     out_join PATH ":"
-    out_var VIRTUAL_ENV "$PYVENV_TMP/venvs/$reqhash"
-    out_list PATH "$PYVENV_TMP/venvs/$reqhash/bin"
-    echo "$TABLE"
+    out_var VIRTUAL_ENV "$pyvenv1"
+    out_list PATH "$pyvenv1/bin"
+    # echo "$TABLE"
     echo "END resolve_python" >&2
 }
 
-resolve_python
+
+# pip-compile version: pip-compile, version 3.6.0
+# pip version: pip 18.1 from /nix/store/5886g4s98amn9knjg93vn6ywxx6h3b7m-python3.7-pip-18.1/lib/python3.7/site-packages/pip (python 3.7)
+# which /nix/store/l24av2wghzip9izw7firdgvzg99rz7ab-pyvenv-env/bin/python
+
+main() {
+    info "IN $(basename $ZERO)/enve.module"
+    TABLE=$(cat)
+    [ -n "$TABLE" ] && echo "$TABLE"
+    resolve_python_two
+    info "OUT $(basename $ZERO)/enve.module"
+}
+
+if [ "${TEST:-}" != "test" ]; then
+    main
+fi

@@ -1,6 +1,153 @@
 curl --max-time 20 --head -x tanet.proxy.shu.edu.tw:3128 -L http://github.com
 
+#Finish:
+(X)在rcfile加入enve bootstrap cdoe
+(X)在rcfile加入cache invaild code
+(O)解決enve.module的錯誤處理流程
+(O)更美好的輸出格式, 尤其是pretty pring TABLE, 提示FIRE_LEVEL
+(O)gui launch, terminal launch, enve.ini click
+(O)auto find default target at enve.ini shebang
+(O)正確的跨平台shebang為 '#!/usr/bin/env enve'
+(O)進度條logging模式
+(O)terminal模式開啟時, 發生錯誤時要press enter to continue
+(O)read -p "Press enter to continue" use in many place
+(O)detect interactive more smart
+    # System-wide .bashrc file for interactive bash(1) shells.
+    if [ -z "$PS1" ]; then
+        return
+    fi
+(O)boot/enve.ini to $ENVE_HOME/evne/preset/boot.enve
+(O)project name from $PRJ_NAME.enve.ini
+(O)shell.setopt
+(O)enve boot zsh, (O)boot script to system rc
+(O)grep: empty (sub)expression
+
+
+
+#TODO tier1:
+(Go~)dictionary在程式碼中標定
+(Go~)加入更多的info, debug, warnning
+(O)kitty config, macos terminal theme
+(Going)use 'false; return 1' at error raise, subshell 要加入 settrace
+(Going)basename, dirname 使用快速版本
+
+(O)prompt & (O)title
+
+(O~isotable)dummy isolator(piso) API, 使用另外iso.table檔案傳遞訊息
+
+(O)loader回傳的module分組, 而且提供排序提示, module.$procedure
+    (O)in oh-my-zsh/enve.module/gencode set CONDA_DEFAULT_ENV to prject_name
+    (O)取消loader module傳入"$0"
+    (O)合併module所提供的boundfile
+    (O)測試與使用module_sort_after
+
+(O)multiple .module file in a module dir, share same enve.ini
+
+(X)enve clone介面, 先放在urlutils
+(O)is_url
+    inherit, import, with lazy, 延後到resolve前期執行
+    -c也延後到resolve前期執行
+    -c順序有影響, 在-f之前為提供預設值, 在-f之後為覆蓋
+    這個順序在import, include, 也會採用相同的做法
+    利用ENVE_CONFIG_PRE_XXX, ENVE_CONFIG_XXX影響環境中的子環境
+
+
+(O)新增SEC變數類型, 這些變數不會寫入rcfile, 每次都要重新求值, sec.variable
+
+(O)定義procedure與target之間的關係
+    (O)procedure序列, 各種procedure target
+    (Go~)在config指定網路檔案下載到cache或特定資料夾
+    (O)pyenve (O)ruby (O)nodejs 要使用cache
+    制度化/out/$prjname, $PRJ_OUT
+    makefile試做
+    (contribute)xcode, android, cmake
+
+build.version|build.tag 可以自訂輸出的資料夾名稱, 也可以達成多輸出
+
+提供範例
+    python+cython+c, 建造雙輸出範例
+    curl-client+nodejs-server+mongodb+aws, 伺服器開發環境範例, 雙部署
+    android+ios, 手機開發環境範例
+    簡單的ci範例
+
+move enve project to projects
+
+
+#TODO:
+(X)change enve.ini to project.enve
+tutor framework
+sshd ForceCommand, SSH_ORIGINAL_COMMAND
+example/remake/remake.enve.ini
+
+meta.*, meta模式, restrict模式(meta.restrict), meta.offline(no curl)
+meta.$subprogram.version
+meta.independant(不會include使用者預設的enve)
+
+isolator改良刪除不用的程式碼
+isolator與settle分離
+
+dfork定案與初步測試
+
+
+
+# prompt & title & hotkey & color
+bash + TERM_PROGRAM=Apple_Terminal
+bash + xterm-mintty
+bash + kitty
+(prompt-OK)bash + ssh + kitty
+zsh + TERM_PROGRAM=Apple_Terminal
+zsh + xterm-kitty
+zsh + mintty
+zsh + pure + TERM_PROGRAM=Apple_Terminal
+zsh + pure + xterm-kitty
+zsh + pure + mintty
+zsh + pure + tmux + TERM_PROGRAM=Apple_Terminal
+zsh + pure + tmux + xterm-kitty
+zsh + pure + tmux + mintty
+(hotkey-color-OK)zsh + pure + tmux + ssh + TERM_PROGRAM=Apple_Terminal
+(hotkey-color-OK)zsh + pure + tmux + ssh xterm-kitty
+zsh + pure + tmux + ssh mintty
+
+use `kitty +kitten ssh myserver`
+
+
+
+
+
+安裝mac到120G硬碟
+安裝windows 10 到120G硬碟
+
+
+#未來
+shell.welcome, 以及腳本化welcome, 與git整合
+terminal.title, 腳本化
+enve.module更名?
+nix移到core/nix, 可能兼容unix.*
+git-hook簡易整合, enve clone
+rtmux.session.$SNAME.pane.$PNAME=[enve]
+
+autojump
+oh-my-zsh local with filename https://github.com/rupa/z
+https://github.com/junegunn/fzf
+https://github.com/pre-commit/pre-commit
+
+
+
+#收尾
+more test
+統一'_info', 'info', '_log', 'log'
+偵測variable lack的問題
+預設的logging level到底要怎麼設定
+(O)change #!/bin/bash -> #!/usr/bin/env bash 或是 #/bin/sh
+(O)全面進行editorconfig檢查, 換行檢查, 字元檢查, 行尾空白檢查
+
+
 # evne特色
+
+一個基於命令列的整合開發環境
+一個套件管理器的套件管理器
+一個runc執行器(apprunner)
+一個init, 或是行程管理器, 或是資源管理器
 
 
 1.無依賴免設定安裝一應俱全
@@ -9,6 +156,8 @@ curl --max-time 20 --head -x tanet.proxy.shu.edu.tw:3128 -L http://github.com
 4.out of source operations
 5.高效能
 6.安全性
+7.可以達成Multi-stage continuous integration
+8.跨平台(windows平台)
 
 
 # 幾大重點API
@@ -65,6 +214,36 @@ repository 有安裝鎖孔
 node 必須用鑰匙才可以取得config或commit
 node 內必須安裝一個以上的鎖孔
 operator 時必須持有鑰匙才可進行 march
+
+
+# 組件
+
+runc/enve 封裝物執行器, 具有isolate功能
+
+pm 行程管理
+nodep node部署器/安裝器, 連結作業系統service
+noded pm序列發射器, plan讀取器
+march plan產生器, plan放置器
+
+
+# 關於測試 - What to test
+(這一段主要在講好的測試環境的要求, 不是很重要)
+
+Testing tools can help automate tasks such as product installation, test data creation, GUI interaction, problem detection (consider parsing or polling agents equipped with test oracles), defect logging, etc., without necessarily automating tests in an end-to-end fashion.
+
+One must keep satisfying popular requirements when thinking of test automation:
+
+1. Platform and OS independence
+2. Data driven capability (Input Data, Output Data, Metadata)
+3. Customization Reporting (DB Data Base Access, Crystal Reports)
+4. Easy debugging and logging
+5. Version control friendly – minimal binary files
+6. Extensible & Customization (Open APIs to be able to integrate with other tools)
+7. Common Driver (For example, in the Java development ecosystem, that means Ant or Maven and the popular IDEs). This enables tests to integrate with the developers' workflows.
+8. Support unattended test runs for integration with build processes and batch runs. Continuous integration servers require this.
+9. Email Notifications like bounce messages
+10. Support distributed execution environment (distributed test bed)
+11. Distributed application support (distributed SUT)
 
 
 
@@ -173,8 +352,8 @@ noop的情形: 完全使用預設setup, 或是完全沒有configfile的情形
 ## targets 各個操作的依賴關係
 
 final -> setup -> install -> settle -> checkout?
-                   |
-                   v
+                    |
+                    v
           test ->  build -> checkout
 
 
@@ -189,11 +368,21 @@ setup:    builtin   checkout build settle install
 final:
 
 ### final target
+@prod
 run:      exec      checkout build settle install setup
 module:   exec      checkout build settle install setup
+prompt:
+(prod-shell)
+
+build
+
+@test
 test:     exec      checkout build [[settle install] setup]
+
+@dev
 shell:    builtin
 execute:  exec
+(dev-run)
 
 
 
@@ -211,16 +400,48 @@ final(genrcfile(uTABLE with root))
 
 proc            cond    hash                    vaild       make
 --------------------------------------------------------------------
+execute
 final-rc        -       url|profile             rc+marks    genrcfile
   checkout      url     url|profile             -           fetch
   paser&load    -       -
-  settle        m       sub(s, pTABLE)          rootmark    settle
-  install       m       sub(i, pTABLE)+artifact installmark unpack
-    build       mins    sub(b, pTABLE)+source   artifact    fire build
-      build-rc  mbui    sub(b, pTABLE)          rc          genrcfile
-  setup         m       sub(u, pTABLE)          setupmark   setup
+  base
+  fire-setup
+    settle        m       sub(s, pTABLE)          rootmark    settle
+    install       m       sub(i, pTABLE)+artifact installmark unpack
+      fire-build       mins    sub(b, pTABLE)+source   artifact    fire build
+        build-rc  mbui    sub(b, pTABLE)          rc          genrcfile
+    setup         m       sub(u, pTABLE)          setupmark   setup
+  post
 
 
+2019最終決定版
+------------
+
+load+ = checkout + parse + load(depend module) + base
+
+fire@run|#fire@module|fire@prod-shell
+    load+
+    fire@bulid
+        load+
+        package
+        postload
+    fire@setup
+        load+
+        settle
+        install
+        post-setup
+        postload
+    reload+
+
+fire@test
+    load+
+    fire@bulid
+        load+
+    postload
+
+fire@shell|fire@termainal|fire@execute
+    load+
+    postload
 
 
 
@@ -228,8 +449,8 @@ final-rc        -       url|profile             rc+marks    genrcfile
 
 ## pm spot
 
-STOPPED - startCmd -> SCHE_START - dependOk -> STARTING - sync_or_condition
-                   -> RUNNING
+STOPPED - startCmd  -> SCHE_START - dependOk -> STARTING - sync_or_condition
+                    -> RUNNING
 
 condition:
 - pid file found
@@ -266,7 +487,7 @@ use fakeroot to make tar file
 這個store是install的預設目標路徑
 主要是提供cache性質般的儲存方式
 
-使用者必須提供 1.需求文本(作為快取用) 2.確認過期(不是必須的) 
+使用者必須提供 1.需求文本(作為快取用) 2.確認過期(不是必須的)
             3.重現方法(不是必須的) 4.catalog=any
             5.user=$USER 6.title=none 7.保密性private=
 
@@ -488,8 +709,46 @@ rootpm|jailrootpm -> chrootpm 只需要 chpd
 cfg loader會獲得指令後傳送給上層的pm master
 
 
+# enve rtmux
+remote tmux
 
-# Automated provisioning using apkovl 
+兩端都要安裝enve, 兩端要設定sshkey, 伺服端要初始化與掛載pm - rtmux
+
+每個enve server中的每個使用者都有一個專屬的tmux socket
+每個enve server都有一個專屬的sshd
+這個enve server可以用pm掛載服務, 並且hook入pm的發射執行系統
+
+sshd之中有設定ForceCommand, 來確保連線進入的初始環境
+客戶端透過 rtmux(ssh+tmux) 來進行連線
+
+rtmux_URL format:
+    URL: ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PORT}/${REMOTE_ENVE}
+    REMOTE_ENVE: REMOTE_ENVE_URL | REMOTE_ENVE_NAME
+每個部分都可以省略, 預設值會從環境變數中提取
+REMOTE_ENVE_URL=$(eval echo \$REMOTE_ENVE_URL_$REMOTE_ENVE_NAME)
+
+
+兩種模式run模式或是attached shell模式
+rtmux [option] rtmux_URL command...  這與一般的ssh連線完全相圖
+rtmux [option] rtmux_URL -t session
+
+rtmux [option] rtmux_URL ls-session
+
+(X-直接利用tmux能力)利用kitty開分頁的能力, 一次連結所有的session
+(X)rtmux [option] url attach-all
+
+傳送本地或雲端enve到遠端執行的能力, 遠端會自動加入remote的role
+rtmux [option] rtmux_URL -f enve_url
+
+在attached shell模式, 即使斷線也會繼續執行程式, 之後可以重新連線
+
+pm的關機能力會先發送SIGHUB給所有的session, 3秒之後再依照常規關機
+
+/Applications/kitty.app/Contents/MacOS/kitty +kitten ssh -p 2022 -t localhost bash -l -c 'tmux -2u new enve /Users/pengweiqi/googlesync/sync2017/doc-linux2015/devon/devon_bash/example/zsh.enve.ini shell'
+
+
+
+# Automated provisioning using apkovl
 
 This can be done by specifying apkovl= in the kernel command line
 
@@ -544,4 +803,32 @@ ovl 內可以含有機器的金鑰, 這很重要
 安裝的系統必須支援ovl
 
 
+
+
+
+1. 各專案互相獨立不影響, 所有的全域系統設定都應該是*唯讀*的
+2. 所有與專案有關的事物都應該集中在*一個*專案資料夾, 包含開發用的各種編輯器或工具的設定檔
+3. 不論專案中有多少種程式語言, 都應該集中在*一個*專案資料夾
+4. 不管任何開發平台, 開發\建造\測試\發佈的指令只會有*一種*方式
+5. 不管任何開發平台, 安裝環境與清除環境只需要*一鍵*
+6. 不管多少種發佈檔(語言,平台), 只會有*一個*版本庫
+7. 模組化的安裝工具, 開發環境, 與依賴
+
+
+1. 隔離性: 可以在一個雜亂的作業系統中展開, 而不影響其他專案.
+2. 完整性: 可以在一個空白的作業系統中展開.
+3. 整合性: 子專案?
+4. 統一性: 統一工具指令但是開放編輯器與流程
+5. 方便性: 快速安裝
+6. 單一性: 單一版本庫
+7. 模組化: (尚未計畫)
+
+
+
+軟體開發之建置風險的故事[http://rocksaying.tw/archives/11157957.html]
+=========================================
+開發環境的建置風險
+測試平台的建置風險
+套件相依性的建置風險
+部署程序的建置風險
 

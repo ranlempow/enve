@@ -10,7 +10,7 @@ NIX_PATH=nixpkgs=https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz \
 NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
 "$(readlink -f "/nix/var/nix/profiles/default")"/bin/nix-build --no-out-link - <<'EOF'
 with import <nixpkgs> { };
-buildEnv { 
+buildEnv {
   name = "user-environment";
   paths = [
     nix cacert

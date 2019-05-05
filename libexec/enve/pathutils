@@ -28,7 +28,7 @@ ensure_readlink_command() {
         ENVE_READLINK='greadlink'
     else
         ENVE_READLINK="readlink_posix"
-    fi    
+    fi
 }
 
 split_path() {
@@ -173,7 +173,7 @@ normalize() {
             for c; do
                 ret="$c/$ret"
             done
-            
+
         fi
         if [ "$nonfast" = "nonfast" ]; then
             echo "$ret"
@@ -189,7 +189,7 @@ follow_one() {
 
     if [ -L "$dst" ]; then
         # resolve_parts "$(normalize "$dst/..")" "$($ENVE_READLINK "$dst")"
-        
+
         # normalize "$dst/.." fast
         dstdir=${dst%/*}
         if [ -z "$dstdir" ]; then
@@ -228,7 +228,7 @@ resolve_parts() {
     # (resolve_parts "1/2/3" "4/5")
     #  -> (resolve_parts "1/2/3/4" "5")
     #  -> "1/2/3/4/5"
-    
+
     if [ "$infcnt" -gt 100 ]; then
         echo "too many chain of symlinks" >&2
         return 1
@@ -294,7 +294,7 @@ canonicalize_symlinks() {
 
     # example: /a/b/../c
     #
-    # 1. resolve as $(readlink /a/c)   
+    # 1. resolve as $(readlink /a/c)
     # 2. cd to /a/b/.. == /a;  resolve $(readlink c)
     #
     # but, if /a/b is a symlink to /e/f

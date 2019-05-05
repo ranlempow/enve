@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 #  Lightweight process group container
@@ -129,14 +129,14 @@ fakeroot/home/daemon 也維持正常狀態
 
 更好的做法:
 
-1. 在非開發期不要依賴$PATH, 建造後全部的執行檔參照都要是絕對路徑
-   這有時候很難達成, 因為很難確定其他依賴會怎麼呼叫$PATH中的程式
+1.  在非開發期不要依賴$PATH, 建造後全部的執行檔參照都要是絕對路徑
+    這有時候很難達成, 因為很難確定其他依賴會怎麼呼叫$PATH中的程式
 
-2. 這也包含了不要依賴/usr/bin/env, 而/bin/sh與system(3)的狀況就比較特別
-   也不能再依賴which
+2.  這也包含了不要依賴/usr/bin/env, 而/bin/sh與system(3)的狀況就比較特別
+    也不能再依賴which
 
-3. 並且把/var/cache/enve/{python-pyvenv,ruby/rubies,ruby/venvs}
-   移到/nix/store內, 這應該是容易辦到的
+3.  並且把/var/cache/enve/{python-pyvenv,ruby/rubies,ruby/venvs}
+    移到/nix/store內, 這應該是容易辦到的
 
 
 [1] https://github.com/NixOS/nixpkgs/pull/12474
@@ -153,35 +153,35 @@ fakeroot/home/daemon 也維持正常狀態
 
 樹狀圖如下:
 
-srv Deployable 
+srv Deployable
 (buildEnv)
- | 
- |- [s] applicationBuild (Copy)
- |  |
- |  |- [s] runtime dependencies
- |  |- /share/dependencies
- |
- |- /etc (Deployment config)
- |- /bin/srv1.enve      (use abspath in all the file)
- |- /etc/profile.enve   (user login shell env)
- |- [s] enve
- |- [E][s] ENV runtime dependencies
- |- [E][s] management tools
+    |
+    |- [s] applicationBuild (Copy)
+    |  |
+    |  |- [s] runtime dependencies
+    |  |- /share/dependencies
+    |
+    |- /etc (Deployment config)
+    |- /bin/srv1.enve      (use abspath in all the file)
+    |- /etc/profile.enve   (user login shell env)
+    |- [s] enve
+    |- [E][s] ENV runtime dependencies
+    |- [E][s] management tools
 
 
 pm Deployable
 (buildEnv)
- | 
- |- [s] srv Deployables
- |- /bin/srv1.enve
- |- /etc/srv/* (link from srv Deployable, or not necessary do that)
- |- /etc/secret/*
- |- /etc/service.cfg
- |- /etc/passwd (opt)
- |- /etc/profile.enve
- |- [E][s] pm
- |- [E][s] enve (maybe?)
- |- [E][s] management tools
+    |
+    |- [s] srv Deployables
+    |- /bin/srv1.enve
+    |- /etc/srv/* (link from srv Deployable, or not necessary do that)
+    |- /etc/secret/*
+    |-  /etc/service.cfg
+    |- /etc/passwd (opt)
+    |- /etc/profile.enve
+    |- [E][s] pm
+    |- [E][s] enve (maybe?)
+    |- [E][s] management tools
 
 
 pm Deployable 是一個可以熱部署, 或是可自我部署的一個目標
@@ -308,7 +308,7 @@ in
             cat "${enve_profile}" > /main.rcfile
             mkdir $out/etc
             cat "${enve_profile}" > /profile.rcfile
-            
+
             mkdir $out/share
             touch /share/deps
             echo "${enve}" >> /share/deps
@@ -323,19 +323,19 @@ in
 # DevOps整合
 
 我們來看看最後整合了什麼
-1. Container
-2. Continuous Delivery / Autodeploy / Orchestration? (Non-cluster)
-   (Rolling Update)
-   (Service Scalability)
-   (Self-healing)
-3. Automatic Build And Test
-4. Continuous Integration
-5. Dependencies/Environment/Configuration Management
-6. Environment Encapsulation
-7. Resource Provision
-   (Domain Name)
-   (Storage)
-8. Flow-based Version Control
+1.  Container
+2.  Continuous Delivery / Autodeploy / Orchestration? (Non-cluster)
+    (Rolling Update)
+    (Service Scalability)
+    (Self-healing)
+3.  Automatic Build And Test
+4.  Continuous Integration
+5.  Dependencies/Environment/Configuration Management
+6.  Environment Encapsulation
+7.  Resource Provision
+    (Domain Name)
+    (Storage)
+8.  Flow-based Version Control
 
 雖然整體的管理功能比較弱, 但是對於中小企業來說, 這樣剛好可以降低管理負擔
 
@@ -348,20 +348,20 @@ in
 而是功能上的關係圖
 
 Dependencies Management
-  ^
-  |
+    ^
+    |
 Environment Encapsulation
-  ^
-  |
+    ^
+    |
 Automatic Build And Test
-  ^
-  |
+    ^
+    |
 Flow-based Version Control
-  ^
-  |
+    ^
+    |
 Continuous Integration -> Container     -> Resource Provision
-  ^
-  |
+    ^
+    |
 Continuous Delivery    -> Configuration Management
 
 
@@ -381,19 +381,19 @@ Continuous Delivery    -> Configuration Management
 
 # RCD 唯一的要求
 
-1. 目標機器有基於x86_64且與posix相容的內核
-2. 一開始建立部署時需要一點點root權限
+1.  目標機器有基於x86_64且與posix相容的內核
+2.  一開始建立部署時需要一點點root權限
 
 
 '
 
 
 chroot_add_mount() {
-  if $MOUNT_CMD "$@"; then
-    CHROOT_ACTIVE_MOUNTS=("$2" "${CHROOT_ACTIVE_MOUNTS[@]}")
-  else
-    echo "mount failed at $2" >&2
-  fi
+    if $MOUNT_CMD "$@"; then
+        CHROOT_ACTIVE_MOUNTS=("$2" "${CHROOT_ACTIVE_MOUNTS[@]}")
+    else
+        echo "mount failed at $2" >&2
+    fi
 }
 
 CHROOT_ACTIVE_MOUNTS=()
@@ -401,7 +401,7 @@ CHROOT_ACTIVE_MOUNTS=()
 pre_unshare_setup() {
     MOUNT_CMD=${MOUNT_CMD:-mount}
     # chroot_add_mount udev "$1/dev" -t devtmpfs -o mode=0755,nosuid
-    
+
 }
 
 chroot_setup() {
@@ -445,8 +445,8 @@ chroot_setup() {
 
 
 chroot_teardown() {
-  umount "${CHROOT_ACTIVE_MOUNTS[@]}"
-  unset CHROOT_ACTIVE_MOUNTS
+    umount "${CHROOT_ACTIVE_MOUNTS[@]}"
+    unset CHROOT_ACTIVE_MOUNTS
 }
 
 passwd_source='root:x:0:0::/root:/bin/bash
@@ -535,67 +535,65 @@ normalize() {
 
 
 package() {
-  cd "$CHROOT"
+    cd "$CHROOT"
 
-  # setup root filesystem
-  for d in boot dev etc home mnt usr var opt srv/http run; do
-    install -d -m755 $d
-  done
-  install -d -m555 proc
-  install -d -m555 sys
-  install -d -m0750 root
-  install -d -m1777 tmp
+    # setup root filesystem
+    for d in boot dev etc home mnt usr var opt srv/http run; do
+        install -d -m755 $d
+    done
+    install -d -m555 proc
+    install -d -m555 sys
+    install -d -m0750 root
+    install -d -m1777 tmp
 
 
-  # setup /etc and /usr/share/factory/etc
-  for f in group host.conf hosts issue motd nsswitch.conf \
-  passwd resolv.conf securetty shells profile; do
-    # install -m644 "$srcdir"/$f etc/
-    echo "$(eval echo "\"\$$(normalize ${f})_source\"")" > etc/$f
-    chmod 644 etc/$f
-  done
-  ln -s ../proc/self/mounts etc/mtab
-  for f in gshadow shadow; do
-    # install -m600 "$srcdir"/$f etc/
-    echo "$(eval echo "\"\$$(normalize ${f})_source\"")" > etc/$f
-    chmod 600 etc/$f
-  done
+    # setup /etc and /usr/share/factory/etc
+    for f in group host.conf hosts issue motd nsswitch.conf \
+            passwd resolv.conf securetty shells profile; do
+        # install -m644 "$srcdir"/$f etc/
+        echo "$(eval echo "\"\$$(normalize ${f})_source\"")" > etc/$f
+        chmod 644 etc/$f
+    done
+    ln -s ../proc/self/mounts etc/mtab
+    for f in gshadow shadow; do
+        # install -m600 "$srcdir"/$f etc/
+        echo "$(eval echo "\"\$$(normalize ${f})_source\"")" > etc/$f
+        chmod 600 etc/$f
+    done
 
-  # setup /var
-  for d in cache local opt log/old lib/misc empty; do
-    install -d -m755 var/$d
-  done
-  install -d -m1777 var/{tmp,spool/mail}
+    # setup /var
+    for d in cache local opt log/old lib/misc empty; do
+        install -d -m755 var/$d
+    done
+    install -d -m1777 var/{tmp,spool/mail}
 
-  # allow setgid games (gid 50) to write scores
-  # install -d -m775 -g 50 var/games
-  # ln -s spool/mail var/mail
-  ln -s ../run var/run
-  ln -s ../run/lock var/lock
+    # allow setgid games (gid 50) to write scores
+    # install -d -m775 -g 50 var/games
+    # ln -s spool/mail var/mail
+    ln -s ../run var/run
+    ln -s ../run/lock var/lock
 
-  # setup /usr hierarchy
-  for d in bin include lib share/misc src; do
-    install -d -m755 usr/$d
-  done
-  for d in {1..8}; do
-    install -d -m755 usr/share/man/man$d
-  done
+    # setup /usr hierarchy
+    for d in bin include lib share/misc src; do
+        install -d -m755 usr/$d
+    done
+    for d in {1..8}; do
+        install -d -m755 usr/share/man/man$d
+    done
 
-  # add lib symlinks
-  ln -s usr/lib lib
-  CARCH=x86_64
-  [[ $CARCH = 'x86_64' ]] && {
-    ln -s usr/lib lib64
-    ln -s lib usr/lib64
-  }
+    # add lib symlinks
+    ln -s usr/lib lib
+    CARCH=x86_64
+    [[ $CARCH = 'x86_64' ]] && {
+        ln -s usr/lib lib64
+        ln -s lib usr/lib64
+    }
 
-  # add bin symlinks
-  ln -s usr/bin bin
-  ln -s usr/bin sbin
-  ln -s bin usr/sbin
-  cd -
-  
-
+    # add bin symlinks
+    ln -s usr/bin bin
+    ln -s usr/bin sbin
+    ln -s bin usr/sbin
+    cd -
 }
 
 
@@ -641,8 +639,8 @@ enter() {
 
 dochroot() {
     setpriv -dd
-    #--mount-proc=$CHROOT/proc 
-    
+    #--mount-proc=$CHROOT/proc
+
     # pre_unshare_setup "$CHROOT"
 
 
@@ -678,14 +676,14 @@ wait $(jobs -p)
     printf "0:0:10000\n" > /etc/subgid
     newuidmap $pid 0 0 1  1 3001 3000 || echo "newuidmap $pid faild"
     newgidmap $pid 0 0 1  1 3001 3000 || echo "newgidmap $pid faild"
-    
+
     # newuidmap $pid  1 3001 3000 || echo "newuidmap $pid faild"
     # newgidmap $pid  1 3001 3000 || echo "newgidmap $pid faild"
 
     # nsenter --ipc --uts --cgroup --net --user --pid --mount --target $pid chmod 755 "$CHROOT/sys/fs/cgroup"
 
     MOUNT_CMD="enter mount" chroot_setup "$CHROOT"
-    
+
     # Note however, that mounting block-based filesystems can be done only
     #    by a process that holds CAP_SYS_ADMIN in the initial user namespace.
 
@@ -704,9 +702,9 @@ main() {
 
     # pid=$({ps | grep unshare | awk '{ print $1 }';} || true)
     # kill $pid || true
-    
+
     if pid=$(ps | grep unshare | awk '{ print $1 }'); then
-      kill $pid
+        kill $pid
     fi
     delchroot
     mkchroot

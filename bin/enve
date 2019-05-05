@@ -16,11 +16,11 @@ ensure_readlink_command ()
     if [ -n "${ENVE_READLINK:-}" ]; then
         return 0;
     else
-        if command -v 'greadlink' > /dev/null; then
-            ENVE_READLINK='greadlink';
+        if command -v 'readlink' > /dev/null; then
+            ENVE_READLINK='readlink';
         else
-            if command -v 'readlink' > /dev/null; then
-                ENVE_READLINK='readlink';
+            if command -v 'greadlink' > /dev/null; then
+                ENVE_READLINK='greadlink';
             else
                 ENVE_READLINK="readlink_posix";
             fi;
@@ -62,10 +62,13 @@ resolve_symlinks ()
         _cd_target || return 1;
     done;
     if [ "$NAME" = ".." ]; then
-        echo "$(cd "$(pwd -P)/.."; echo "$(pwd)")";
+        echo "$(cd "$(pwd -P)/.."; pwd)" || { 
+            echo "cannot change directory" 1>&2;
+            return 1
+        };
     else
         if [ "$NAME" = "." ]; then
-            echo "$(pwd -P)";
+            pwd -P;
         else
             parent="$(pwd -P)";
             if [ "$parent" = "/" ]; then
@@ -76,7 +79,6 @@ resolve_symlinks ()
         fi;
     fi )
 }
-
 
 ENVE_HOME=$(resolve_symlinks "$0")
 ENVE_HOME="${ENVE_HOME%/bin/enve}/libexec"

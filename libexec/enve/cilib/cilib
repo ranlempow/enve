@@ -43,12 +43,12 @@ may have test only subset of commits by setting the filter
 
 summary=
 for rev in git rev-list HEAD
-  cache_build
-    use local repo
-    git+file://*#* checkout to cache
-    run test with enve fire test, redirect(tee) stdout/stderr $CACHED/log
-    if success set $CACHED/state to "passed" else set to "failed"
-  summary=...
+    cache_build
+        use local repo
+        git+file://*#* checkout to cache
+        run test with enve fire test, redirect(tee) stdout/stderr $CACHED/log
+        if success set $CACHED/state to "passed" else set to "failed"
+    summary=...
 print summary
 
 # timeout?
@@ -66,7 +66,7 @@ rm -rf abc
 
 if ! git clone --single-branch --branch ci "$REPO" abc; then
     git clone --depth 1 --no-checkout "$REPO" abc
-    cd abc
+    cd abc || exit
     git checkout --orphan ci
     git reset --hard
     echo X > README.md

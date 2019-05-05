@@ -1,53 +1,50 @@
-#!/usr/local/bin/dash
 #!/bin/sh
 
 #!/usr/bin/env bash
 
+#!/usr/local/bin/dash
+#!/bin/sh
+
 # shellcheck shell=sh disable=2086 disable=2031
 true
-
-
-# tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
-# tm=${tm#?????}
-# tm=${tm%${tm#????????}}
-# echo "$tm"
-# unset tm
 
 
 # __NAME__=enve
 # __VERSION__=0.1.0
 # __REPO__=https://github.com/ranlempow/enve.git
 
+if [ "${PATH##*/sbin}" = "$PATH" ]; then
+    # for /sbin/md5
+    PATH=$PATH:/sbin
+fi
+
 
 if [ -z "${ENVE_HOME:-}" ]; then
-    # if [ -L "$0" ]; then
-    #     ENVE_HOME="$(dirname "$(readlink "$0")")"
-    # else
-    #     # echo "$0"
-    #     # echo "$(dirname $0)"
-    #     ENVE_HOME="$(dirname "$0")"
-    # fi
     echo "fatal: ENVE_HOME not set." >&2
     exit 1
 fi
 ENVE_PROGRAM=enve/enve
 
-
 # shellcheck source=libexec/enve/base
 . "$ENVE_HOME/enve/base"
 settrace
 
+# shellcheck source=libexec/enve/bootlib
+. "$ENVE_HOME/enve/bootlib"
+basic_require_ensure
 
 if [ -n "${ENVE_REQ_VERSION:-}" ] || [ -n "${ENVE_REQ_SHELL:-}" ]; then
-    
-    # shellcheck source=libexec/enve/bootlib
-    . "$ENVE_HOME/enve/bootlib"    
+
+    # shellcheck source=libexec/enve/reexecutils
+    . "$ENVE_HOME/enve/reexecutils"
     reexec_if_req_not_match "${ENVE_REQ_VERSION:-}" "${ENVE_REQ_SHELL:-}" "$@"
 # else
 #     # shellcheck source=base
 #     . "$ENVE_HOME/enve/base"
 #     . "$ENVE_HOME/enve/envelib"
 fi
+
+
 
 # shellcheck source=libexec/enve/envelib
 . "$ENVE_HOME/enve/envelib"
@@ -130,7 +127,7 @@ pure config可以建構pure environment
 pure environment再加上只限於專案資料夾來源的build, 可以build出 pure installable
 pure installable -> pure runtime -> pure test
 
-                   unpure develop-env
+                    unpure develop-env
 pure source       -> pure build-env          1..*  pure installable      extra-build-config
 pure installable  -> pure installable-env    1..*  pure runtime          extra-install-config
 pure installed    -> pure runtime-env        1..*  pure test             extra-run-config
@@ -282,7 +279,7 @@ enve_main = crossplat_bootenv + parse_args + firechain
 # bootstrap process
 
 check what is the os we are running "$(system_roles)"
-    
+
 basic_require_ensure
     install basic tools if not exist
     Darwin: no
@@ -354,8 +351,8 @@ while [ -n "${1:-}" ]; do
                 esac
                 key="${2##=*}"
                 value="${2%*=}"
-                ENVE_CONFIG="$(printf "%s${ENVE_CONFIG:+\n}${ctype}\\t%s\\t%s" \
-                                      "${ENVE_CONFIG:-}" "$key" "$value")"
+                ENVE_CONFIG="$(  printf "%s${ENVE_CONFIG:+\n}${ctype}\\t%s\\t%s" \
+                                        "${ENVE_CONFIG:-}" "$key" "$value")"
                 shift 2
             ;;
         -r|--role)
@@ -376,7 +373,7 @@ while [ -n "${1:-}" ]; do
                 shift
                 break
             ;;
-        shell|launch)
+        shell|terminal|launch)
                 cmd=$1
                 shift
                 if [ -n "${1:-}" ]; then
@@ -387,7 +384,10 @@ while [ -n "${1:-}" ]; do
             ;;
         boot)
                 shift
-                ENVE_PROFILE="$ENVE_HOME/enve/script/boot/enve.ini"
+                if [ -n "${1:-}" ]; then
+                    subtype=$1
+                fi
+                ENVE_PROFILE="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
                 cmd=shell
                 break
             ;;
@@ -400,18 +400,21 @@ while [ -n "${1:-}" ]; do
                 fi
             ;;
         *)
-                if [ "$cmd" = "auto" ]; then
-                    break
+                if [ "${1##*/}" != "$1" ] || [ "${1##*.}" != "$1" ]; then
+                    cmd=auto
+                    ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                    shift
                 else
                     _error "unknown command: $1"
                     print_help >&2
                     die
                 fi
             ;;
-        
+
     esac
 done
 
+# TODO: remove this
 if [ "$cmd" = "define" ]; then
     return
 fi
@@ -425,20 +428,50 @@ export ENVE_EXTRA_PROFILE=
 export ENVE_EXTRA_CONFIG=
 export ENVE_EXTRA_ROLES=
 
-# TODO: use "'"
-launch_prefix="ENVE_EXTRA_PROFILE=\"$ENVE_PROFILE\" ENVE_EXTRA_CONFIG=\"$ENVE_EXTRA_ROLES\" ENVE_ROLES=\"$ENVE_ROLES\""
+# launch_prefix="\
+# ENVE_EXTRA_PROFILE='$ENVE_PROFILE' \
+# ENVE_EXTRA_CONFIG='$ENVE_EXTRA_ROLES' \
+# ENVE_EXTRA_ROLES='$ENVE_ROLES'\
+# "
 
+
+is_from_gui() {
+    ppp_sec=
+    pp_sec=
+
+    # shellcheck disable=2034
+    while IFS=' :' read -r week month day hour min sec year; do
+        if [ -z "$ppp_sec" ]; then
+            ppp_sec=$(( ${day##0} * 10000 + ${hour##0} * 3600 + ${min##0} * 60 + ${sec##0} ))
+        else
+            pp_sec=$(( ${day##0} * 10000 + ${hour##0} * 3600 + ${min##0} * 60 + ${sec##0} ))
+        fi
+    done <<EOF
+$(LANG=C ps -p $PPID,$$ -o lstart=)
+EOF
+
+    if [ "$((pp_sec - ppp_sec))" -le 1 ] ; then
+        return 0
+    else
+        return 1
+    fi
+}
 
 
 case $cmd in
     noop)
         ;;
     auto)
-            if [ $# -eq 0 ]; then
-                enve_fire shell
+        if [ $# -eq 0 ]; then
+            if is_from_gui; then
+                PRESS_ENTER_TO_EXIT_ERRORTRACE=1 \
+                enve_fire terminal
             else
-                enve_fire run "$@"
+                enve_fire shell
             fi
+        else
+            enve_fire run "$@"
+        fi
         ;;
     run)
             enve_fire run "$@"
@@ -449,14 +482,8 @@ case $cmd in
     test)
             enve_fire test
         ;;
-    launch)
-            exec "$ENVE_HOME/enve/script/term.applescript" "$launch_prefix \"$0\" shell"
-        ;;
-    launchrun)
-            exec "$ENVE_HOME/enve/script/term.applescript" "$launch_prefix \"$0\" run $*"
-        ;;
-    bootstrap)
-            exec "$ENVE_HOME/enve/script/install_nix.sh"
+    terminal)
+            enve_fire terminal
         ;;
     '')
             print_help >&2

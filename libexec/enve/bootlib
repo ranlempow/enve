@@ -8,68 +8,37 @@ HAVE_ENVE_BOOTLIB=1
 
 # shellcheck source=libexec/enve/envelib
 . "$ENVE_HOME/enve/base"
-# shellcheck source=libexec/enve/cachelib
-. "$ENVE_HOME/enve/cachelib"
-# shellcheck source=libexec/enve/urlutils
-. "$ENVE_HOME/enve/urlutils"
 
 
-
-# if [ ! -d "/nix/store" ]; then
-#     (
-#         echo "warning: nix is not installed on this system."
-#         echo ""
-#         echo "you should prepare the essential tools that required by enve."
-#         echo "those tools includes bash, curl, shasum, md5sum, tar, mktemp, maybe more"
-#         echo "and all tools in posix definition."
-#         echo "we recommand install nix as soon as possible with:"
-#         echo "    enve bootstrap"
-#     ) >&2
-# # elif [ -z "${ENVE_BOOTED:-}" ]; then
-# elif [ "$PATH" = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" ]; then
-#     :
-# elif false; then
-#     # if [ "$(uname)" = "Darwin" ]; then
-#         env_root=$(
-#         NIX_REMOTE=daemon \
-#         NIX_PATH=nixpkgs=http://d3g5gsiof5omrk.cloudfront.net/nixpkgs/nixpkgs-18.09pre132003.13e74a838db/nixexprs.tar.xz \
-#         NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
-#         /nix/var/nix/profiles/default/bin/nix-build --no-out-link - <<'EOF'
-#         with import <nixpkgs> { };
-#         buildEnv { 
-#           name = "gnu-environment";
-#           paths = [
-#             coreutils diffutils findutils binutils which file
-#             gnused gnugrep gawkInteractive gnutar gzip bzip2 less gettext
-#             git openssl_1_1_0 gnupatch
-#             xz unzip
-#             bashInteractive
-#             time rsync
-#             # openssh curl utillinux mktemp
-#           ];
-#         }
-# EOF
-#         )
-#         shell="$env_root/bin/bash"
-#         BOOT_PATH="$env_root/bin:$PATH"
-#     # else
-#     #     # linux platform
-#     #     shell="$(which bash)"
-#     # fi
-#     PATH="$BOOT_PATH" SHELL="$shell" ENVE_BOOTED=1 exec "$shell" "$0" "$@"
-# fi
+# TODO: is this ok?
+ENVE_BOOT_THOROUGH=true
 
 
-ENVE_DEPENDCIES="curl git openssh"   # bash
+ENVE_DEPENDCIES="curl git openssh"
+
+# shellcheck disable=2034
+PROG_curl=curl
+# shellcheck disable=2034
+PROG_git=git
+# shellcheck disable=2034
+PROG_openssh=ssh
+
+ensure_brew() {
+    if hascmd brew; then
+        return 0
+    elif /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"; then
+        return 0
+    else
+        return 1
+    fi
+}
 
 basetool_install_command() {
     kernal_name="$(uname -s)"
 
     case "$kernal_name" in
         Darwin)
-                if hascmd brew; then
-                    cmd='brew install'
-                elif /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"; then
+                if ensure_brew; then
                     cmd='brew install'
                 else
                     error "unknown package manager at $kernal_name"
@@ -122,12 +91,12 @@ basetool_install_command() {
                 return 1
             ;;
     esac
-    cmd=$cmd
+    echo "$cmd"
 }
 
 is_need_toybox() {
     { ! hascmd nc; } || \
-    { ps - 2>&1 | tail + 1 | grep BusyBox; } || \
+    { ps - 2>&1 | tail -n +1 | grep BusyBox; } || \
     { ! hascmd top; }
 }
 
@@ -141,10 +110,12 @@ basic_require_ensure() {
     if is_need_toybox; then
         deps="$deps toybox"
     fi
-    
+
     needed=
     for dep in $deps; do
-        hascmd "$dep" || needed="$needed${needed:+ }$dep"
+        if ! eval hascmd \$PROG_$dep; then
+            needed="$needed${needed:+ }$dep"
+        fi
     done
     if [ -n "$needed" ]; then
         # thoroughly boot
@@ -161,54 +132,4 @@ basic_require_ensure() {
         fi
     fi
 }
-
-_get_program_meta() {
-    programfile=$1
-    attr=$2
-    defline="$(grep "# ${attr}=" "$programfile")"
-    eval "${defline#??}"
-    eval echo \"\$"${attr}"\"
-}
-
-_get_program_meta_all() {
-    programfile=$1
-    while read -r attrdef; do
-        eval "${attrdef#?}"
-    done <<EOF
-$(grep -e "^# __[A-Z_]*__=[^; ]*$" "$programfile")
-EOF
-}
-
-reexec_if_req_not_match() {
-    reqver=$1
-    reqshell=$2
-    shift 2
-    if [ -n "${ENVE_REEXEC:-}" ]; then
-        return 0
-    fi
-
-    # curver=$(_get_program_meta "$ENVE_HOME/$ENVE_PROGRAM" __VERSION__)
-    # repo=$(_get_program_meta "$ENVE_HOME/$ENVE_PROGRAM" __REPO__)
-    _get_program_meta_all "$ENVE_HOME/$ENVE_PROGRAM"
-    if [ -n "${reqver:-}" ] && [ "$__VERSION__" != "$reqver" ]; then
-        # NEW_ENVE_HOME="$(url="$__REPO__" commit=$reqver fetch_git_commit)/libexec"
-        NEW_ENVE_HOME="$(fetch "${__REPO__}#$reqver" "%cache" "dir")/libexec"
-    else
-        NEW_ENVE_HOME=$ENVE_HOME
-    fi
-
-    curshell=$(ps -p "$$" -o comm || echo "$SHELL" )
-    NEW_SHELL=${reqshell:-$curshell}
-
-    if [ "$NEW_ENVE_HOME" != "$ENVE_HOME" ] || [ "$NEW_SHELL" != "$curshell" ]; then
-        _debug "reexec $NEW_SHELL $NEW_ENVE_HOME/$ENVE_PROGRAM"
-        ENVE_REEXEC=1 exec "$NEW_SHELL" "$NEW_ENVE_HOME/$ENVE_PROGRAM" "$@"
-    else
-        _debug "noexec $NEW_SHELL $NEW_ENVE_HOME/$ENVE_PROGRAM"
-    fi
-}
-
-# system_install_default_version() {
-#     :
-# }
 

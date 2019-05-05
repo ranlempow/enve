@@ -9,6 +9,15 @@ HAVE_ENVE_CACHELIB=1
 . "$ENVE_HOME/enve/base"
 
 
+true '
+## 使用限制
+
+如果刪除其中一個cache/$item/XXXXX
+那$item可能會產生錯誤, 但是系統不會發現這個問題, 只要cache/$item存在, 就認為$item是有效的
+因此要讓$item失效, 要把整個cache/$item資料夾刪除
+
+'
+
 # _checkperm() {
 #     targetuser=$1
 #     targetperm=$2
@@ -38,7 +47,7 @@ HAVE_ENVE_CACHELIB=1
 #         # Does the user own the file?
 #         [ $targetuser = $ck_owner ] && return 0
 #     fi
-#     return 1 
+#     return 1
 # }
 
 # _subfolder() {
@@ -77,7 +86,7 @@ path_rebuild() {
     locktype=${4:-mv}
 
     # locktype=lock
-    
+
     do_wait=1
     while [ "${do_wait:-0}" -lt 100 ]; do
         if [ ! -e "$f_path" ]; then
@@ -205,7 +214,7 @@ path_rebuild() {
             return 1
         elif [ "$result" = k ]; then
             if [ "$locktype" = "mv" ]; then
-                echo cache mv "$f_making_path" "$f_path" >&2
+                LOGTYPE=cache info mv "$f_making_path" "$f_path"
                 if [ ! -d "$f_path" ] && mv "$f_making_path" "$f_path"; then
                     return 0
                 else
@@ -256,7 +265,7 @@ cache_rebuild() {
     f_vaild=${3:-}
     locktype=${4:-mv}
 
-    
+
 
     as_cache() {
         set +e
@@ -310,7 +319,7 @@ EOF
 $to_founds
 EOF
         fi
-        
+
         _make_subfolder() {
             if [ -n "${cache_private:-}" ]; then
                 ( umask 077; mkdir "$folder" )
@@ -488,7 +497,7 @@ EOF
 # EOF
 # )
 #     fi
-    
+
 #     cd "$cachedir" || {
 #         _error "cannot cd to $cachedir"
 #         return 1

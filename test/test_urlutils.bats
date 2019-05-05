@@ -11,7 +11,7 @@ setup() {
     rm -rf "$BATS_TMPDIR/envetest"
     mkdir -p "$fixture"
     echo "This is just a test repository to work with Git commands." > "$fixture/README"
-    
+
     (
         cd "$fixture"
         zip -r "$BATS_TMPDIR/envetest/fixture.zip" . >/dev/null
@@ -20,21 +20,21 @@ setup() {
         tar -jcvf "$BATS_TMPDIR/envetest/fixture.tar.bz2" . >/dev/null
         tar -Jcvf "$BATS_TMPDIR/envetest/fixture.tar.xz" . >/dev/null
     )
-    
+
     gzip -c "$fixture/README" > "$BATS_TMPDIR/envetest/README.gz"
     bzip2 -zc "$fixture/README" > "$BATS_TMPDIR/envetest/README.bz2"
     xz -zc "$fixture/README" > "$BATS_TMPDIR/envetest/README.xz"
 }
 
 
-@test "simple unified_fetch" {
-    src="$BATS_TMPDIR/fetch_src"
-    dest="$BATS_TMPDIR/fetch_dest"
-    echo xxx > $src
-    rm -rf "$dest"
-    url=$src dl='cp "$url" "$dest"' dest=$dest decomp= keepdir= unified_fetch
-    [ "$(cat "$dest")" = "xxx" ]
-}
+# @test "simple unified_fetch" {
+#     src="$BATS_TMPDIR/fetch_src"
+#     dest="$BATS_TMPDIR/fetch_dest"
+#     echo xxx > $src
+#     rm -rf "$dest"
+#     url=$src dl='cp "$url" "$dest"' dest=$dest decomp= keepdir= unified_fetch
+#     [ "$(cat "$dest")" = "xxx" ]
+# }
 
 
 exam() {
@@ -46,7 +46,30 @@ test_fetch() {
     FETCH_DEBUG=1 parse_unified_download "$@" >&2
     dest=$(unified_fetch "$@")
     exam "$dest${EXAM:+/}${EXAM:-}"
-    
+
+}
+
+@test "expand '~'" {
+    dbg=$(FETCH_DEBUG=1 parse_unified_download "~/" "%cache" "dir")
+    [ -z "${dbg%%"url='$HOME'"*}" ]
+
+    dbg=$(FETCH_DEBUG=1 parse_unified_download "file://~/" "%cache" "dir")
+    [ -z "${dbg%%"url='$HOME'"*}" ]
+
+    dbg=$(FETCH_DEBUG=1 parse_unified_download "x/y" "%cache" "dir")
+    [ -z "${dbg%%"url='https://github.com/x/y.git'"*}" ]
+
+    dbg=$(FETCH_DEBUG=1 parse_unified_download "https://github.com/x/y.git" "%cache" "dir")
+    [ -z "${dbg%%"url='https://github.com/x/y.git'"*}" ]
+
+    dbg=$(FETCH_DEBUG=1 parse_unified_download "x/y#dev" "%cache" "dir")
+    [ -z "${dbg%%"url='https://github.com/x/y.git'"*}" ]
+
+    dbg=$(FETCH_DEBUG=1 parse_unified_download "https://github.com/x/y.git#dev" "%cache" "dir")
+    [ -z "${dbg%%"url='https://github.com/x/y.git'"*}" ]
+
+    ! FETCH_DEBUG=1 parse_unified_download "x/" "%cache" "dir"
+
 }
 
 @test "normal file" {

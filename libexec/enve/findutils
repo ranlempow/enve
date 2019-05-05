@@ -34,16 +34,35 @@ newl="${newl%x}"
 # }
 
 
+# fnmatch_pathname_transform_ere_old() {
+#     sed -E \
+#         -e 's#([\[\]\(\)\{\}\.\^\$\+\|])#\\\1#g' \
+#         -e 's#([^*]|^)\*([^*]|$)#\1[^/]+\2#g' \
+#         -e 's#/\*\*(/?)#/.*\1#g' \
+#         -e 's#\*\*/#(.+/|)#g' \
+#         -e 's#\?#[^/]#g'
+#     # -e 's#\*#[^/]+#g' \
+# }
+
+
 fnmatch_pathname_transform_ere() {
+    # fixed: grep: empty (sub)expression
+
+    # 1st line: esacpe all symbol
+    # 2nd line: single *
+    # 3rd line: double ** at subdir
+    # 4rd line: double ** at beginning
+    # 5rd line: questmark ?, represent any character
+
     sed -E \
         -e 's#([\[\]\(\)\{\}\.\^\$\+\|])#\\\1#g' \
         -e 's#([^*]|^)\*([^*]|$)#\1[^/]+\2#g' \
         -e 's#/\*\*(/?)#/.*\1#g' \
-        -e 's#\*\*/#(.+/|)#g' \
+        -e 's#\*\*/#.*#g' \
         -e 's#\?#[^/]#g'
 
-    # -e 's#\*#[^/]+#g' \
 }
+
 
 # POSIX: 2.13.1 Patterns Matching a Single Character
 # http://pubs.opengroup.org/onlinepubs/009696899/utilities/xcu_chap02.html#tag_02_13_01
@@ -140,9 +159,9 @@ EOF
             printf 'grep -E '
             genre "$positive"
         )
-        # !!!! TODO: grep: empty (sub)expression
-        echo "positive_pass: $positive_pass" >&2
-        echo "positive_fail: $positive_fail" >&2
+
+        # echo "positive_pass: $positive_pass" >&2
+        # echo "positive_fail: $positive_fail" >&2
         echo "$data" | eval "$positive_pass" || true
         if [ -n "$negative" ]; then
             negative_pass=$(
@@ -200,7 +219,7 @@ _files_stats() {
         if [ "$content" != 'content-only' ]; then
             # shellcheck disable=2012 disable=2046
             # LANG=C ls -ln $(find "$finded" ! -type d) | awk '!($2="")'
-            
+
             # shellcheck disable=2012 disable=2046
             while read -r x1 hardlink x3 x4 x5 x6 x7 x8 path; do
                 echo "$x1 - $x3 $x4 $x5 $x6 $x7 $x8 $path"

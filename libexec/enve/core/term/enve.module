@@ -1,0 +1,53 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+resolve_terminal() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    d=$(table_tail "SHELL")
+    fast_basename
+    shell=$d
+
+
+    # out_var "ENVE_SHELLOPTS" "$(table_subset "shell\\.set" | as_concat ":" || true)"
+    # out_var "ENVE_BASHOPTS" "$(table_subset "shell\\.shopt" | as_concat ":" || true)"
+    # out_var "ENVE_ZSHOPTS" "$(table_subset "shell\\.setopt" | as_concat ":" || true)"
+    if [ "$shell" != "zsh" ]; then
+        while read -r line; do
+            out_code sh "$line"
+        done < "$ZERO/prompt.sh"
+    fi
+
+    # given_shell=$(table_tail "shell")
+    # if [ -n "$given_shell" ]; then
+    #     out_var SHELL "$given_shell"
+    # fi
+}
+
+main() {
+    info "IN $(basename $ZERO)/enve.module"
+    TABLE=$(cat "${configfile:--}")
+
+    # shellcheck disable=2043
+    for proc in terminal; do
+        info "IN resolve_$proc"
+        if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+            _error "error at resolve_$proc"
+            exit 1
+        fi
+        # info "OUT resolve_$proc"
+    done
+
+    info "OUT $(basename $ZERO)/enve.module"
+    [ -n "$TABLE" ] && echo "$TABLE"
+}
+
+# if [ "${TEST:-}" != "test" ]; then
+# fi
+

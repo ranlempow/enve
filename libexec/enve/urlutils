@@ -16,6 +16,11 @@ HAVE_ENVE_URLUTILS=1
 . "$ENVE_HOME/enve/pathutils"
 
 
+enve_clone() {
+    :
+}
+
+
 parse_unified_download() {
     true '
 URL schima
@@ -34,12 +39,21 @@ autodecomp=1|0
 
 TODO: "desttype=auto" is not done yet
 
+
+output
+------
+direct [false/true]         can be access directly?
+pure [false/true/seconds]   purely or expire time
+url [string]
+dl [code]
+decomp [code]
+
 '
 
     url=$1
-    # TODO: dest is not used
     dest=$2
     desttype=$3
+    noerror=${4:-}
     autodecomp=1
     # pure=
 
@@ -101,7 +115,23 @@ TODO: "desttype=auto" is not done yet
 
     needunpack=
     path=
-    case $url in 
+    branch_commit=
+    case $url in
+        ssh://*.git#*|file://*.git#*|http://*.git#*|https://*.git#*|git@*:*.git#*)
+                if [ "$desttype" = "file" ]; then
+                    _error "git with file destination is not support"
+                    return 1
+                fi
+                branch_commit="${url#*#}"
+                url="${url%%#*}"
+            ;;
+        ssh://*.git|file://*.git|http://*.git|https://*.git|git@*:*.git)
+                if [ "$desttype" = "file" ]; then
+                    _error "git with file destination is not support"
+                    return 1
+                fi
+                branch_commit=.
+            ;;
         http://*|https://*)
                 if [ "$desttype" = "dir" ]; then
                     needunpack=1
@@ -134,82 +164,16 @@ TODO: "desttype=auto" is not done yet
                 branch_commit="${url#*#}"
                 url="${url%%#*}"
                 url=${url#git+}
-                if [ "${branch_commit#*#}" != "$branch_commit" ]; then
-                    branch=${branch_commit#*#}
-                    commit=${branch_commit%%#*}
-                elif [ ${#branch_commit} -eq 40 ]; then
-                    branch=
-                    commit=$branch_commit
-                else
-                    branch=$branch_commit
-                    commit=
-                fi
-                unset branch_commit
-
-                if [ -n "$commit" ] && [ -n "$branch" ]; then
-                    # if [ ${#branch} -eq 40 ]; then
-                    repopath=$(
-                        p_text() {
-                            echo "repo"
-                            echo "$url"
-                            echo "$branch"
-                        }
-                        p_make() {
-                            cd $CACHED
-                            if [ ! -e "$CACHED/.git" ]; then
-                                git init >/dev/null
-                            fi
-                            git remote add origin "${url}" >/dev/null
-                            if [ "$branch" = "%all" ]; then
-                                git fetch --all >/dev/null
-                            else
-                                git fetch origin "$branch" >/dev/null
-                            fi
-                        }
-                        CACHED='' \
-                        dest='%cache' \
-                        ENVE_CACHE_DIR=${ENVE_SESSION_DIR:-$(mkdtemp "$(get_tempdir)/gitrepo.XXXXXX")} \
-                            catalog=gitrepo cache_path "" p_text p_make || return 1
-                        echo "$cached_path"
-                    ) || {
-                        return 1
-                    }
-                    # echo "repopath:$repopath" >&2
-                    # dl='cd "${dest}"; git init; git remote add origin "'"$repopath"/.git'";'
-                    # dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
-                    dl='git --git-dir='$repopath/.git' --work-tree="${dest}" checkout "'$commit'"'
-                    keepdir=1
-                    pure=${pure:-1}
-                elif [ -n "$commit" ]; then
-                    # https://stackoverflow.com/questions/3489173/how-to-clone-git-repository-with-specific-revision-changeset?answertab=votes#tab-top
-                    # commit="$branch"
-                    dl='cd "${dest}"; git init; git remote add origin "${url}";'
-                    dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
-                    keepdir=1
-                    pure=${pure:-1}
-                else
-                    if [ "$branch" = "%all" ]; then
-                        # dl='git clone "${url}" "${dest}";'
-                        dl='cd "${dest}";'
-                        dl="$dl"'git init; git remote add origin "${url}"; git fetch --all;'
-                        dl="$dl"' { git branch -r | grep -v \\-\> | while read remote; do git branch --force --track ${remote#origin/} $remote; done; };'
-                        dl="$dl"' git pull --all;'
-                        keepdir=1
-                    else
-                        dl='git clone --depth 1 --branch "'$branch'" "${url}" "${dest}"'
-                    fi
-                    pure=${pure:-0}
-                fi
-                unset commit branch branch_commit
             ;;
         git+ssh://*|git+file://*|git+http://*|git+https://*|git+git@*:*)
                 if [ "$desttype" = "file" ]; then
                     _error "git with file destination is not support"
                     return 1
                 fi
+                branch_commit=.
                 url=${url#git+}
-                dl='git clone --depth 1 "${url}" "${dest}"'
-                pure=${pure:-0}
+                # dl='git clone --depth 1 "${url}" "${dest}"'
+                # pure=${pure:-0}
             ;;
         file://*)
                 path="${url#file://}"
@@ -222,25 +186,168 @@ TODO: "desttype=auto" is not done yet
                 _error "url syntex error '$url'"
                 return 1
             ;;
-        /*|\./*)
+        /*|\./*|\~/*|\~)
                 path="$url"
             ;;
-        *)
-                if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
-                    $DEFAULT_UD_PARSER
-                    return
+        */*)
+                repo="${url%\#*}"
+                if [ "$repo" != "$url" ]; then
+                    branch_commit="${url##*\#}"
                 else
-                    # NOT_MATCH
-                    _error "url not found '$url'"
+                    branch_commit=.
+                fi
+                if [ -n "${repo#*/}" ] && [ "${repo#"${repo%/*}"}" = "/${repo#*/}" ]; then
+                    # "user/name" pattern, try github
+                    url="https://github.com/${repo%.git}.git"
+                    unset repo
+                else
+                    if [ -z "$noerror" ]; then
+                        _error "unaccept relative path, use absolute path or './$url'"
+                    fi
+                    unset repo
+                    dl=relative
                     return 1
                 fi
             ;;
+        *)
+                if [ -z "$noerror" ]; then
+                    _error "url not found '$url'"
+                fi
+                dl=relative
+                return 1
+                # if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
+                #     $DEFAULT_UD_PARSER
+                #     return
+                # else
+                #     # NOT_MATCH
+                #     _error "url not found '$url'"
+                #     return 1
+                # fi
+            ;;
     esac
 
-    
-    
 
     if [ -n "$path" ]; then
+        repo="${path%\#*}"
+        if [ "$repo" != "$path" ]; then
+            branch_commit="${path##*\#}"
+        else
+            branch_commit=
+        fi
+        if [ -e "${repo}/.git" ] && [ -n "$branch_commit" ] ; then
+            url="file://$path"
+            path=
+        fi
+        unset repo
+    fi
+
+
+    if [ -n "$branch_commit" ]; then
+        if [ "$branch_commit" = "." ]; then
+            branch=.
+            commit=
+        elif [ "${branch_commit#*#}" != "$branch_commit" ]; then
+            branch=${branch_commit#*#}
+            commit=${branch_commit%%#*}
+        elif [ ${#branch_commit} -eq 40 ]; then
+            branch=
+            commit=$branch_commit
+        else
+            branch=$branch_commit
+            commit=
+        fi
+        unset branch_commit
+
+        if [ -n "$commit" ] && [ -n "$branch" ]; then
+            # if [ ${#branch} -eq 40 ]; then
+            repopath=$(
+                p_text() {
+                    echo "repo"
+                    echo "$url"
+                    echo "$branch"
+                }
+                p_make() {
+                    cd $CACHED
+                    if [ ! -e "$CACHED/.git" ]; then
+                        git init >/dev/null
+                    fi
+                    git remote add origin "${url}" >/dev/null
+                    if [ "$branch" = "%all" ]; then
+                        git fetch --all >/dev/null
+                    else
+                        git fetch origin "$branch" >/dev/null
+                    fi
+                }
+                CACHED='' \
+                dest='%cache' \
+                ENVE_CACHE_DIR=${ENVE_SESSION_DIR:-$(mkdtemp "$(get_tempdir)/gitrepo.XXXXXX")} \
+                    catalog=gitrepo cache_path "" p_text p_make || return 1
+                echo "$cached_path"
+            ) || {
+                return 1
+            }
+            # echo "repopath:$repopath" >&2
+            # dl='cd "${dest}"; git init; git remote add origin "'"$repopath"/.git'";'
+            # dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
+            dl='git --git-dir='$repopath/.git' --work-tree="${dest}" checkout "'$commit'"'
+            keepdir=1
+            pure=${pure:-1}
+        elif [ -n "$commit" ]; then
+            # https://stackoverflow.com/questions/3489173/how-to-clone-git-repository-with-specific-revision-changeset?answertab=votes#tab-top
+            # commit="$branch"
+            dl='cd "${dest}"; git init; git remote add origin "${url}";'
+            dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
+            keepdir=1
+            pure=${pure:-1}
+        elif [ "$branch" = "." ]; then
+            dl='git clone --depth 1 "${url}" "${dest}"'
+            pure=${pure:-0}
+        elif [ "$branch" = "%all" ]; then
+            # dl='git clone "${url}" "${dest}";'
+            dl='cd "${dest}";'
+            dl="$dl"'git init; git remote add origin "${url}"; git fetch --all;'
+            dl="$dl"' { git branch -r | grep -v \\-\> | while read remote; do git branch --force --track ${remote#origin/} $remote; done; };'
+            dl="$dl"' git pull --all;'
+            keepdir=1
+            pure=${pure:-0}
+        else
+            dl='git clone --depth 1 --branch "'$branch'" "${url}" "${dest}"'
+            pure=${pure:-0}
+        fi
+        unset commit branch branch_commit
+    fi
+    # elif [ -n "$path" ]; then
+    #     repo="${path%\#*}"
+    #     if [ "$repo" != "$path" ]; then
+    #         branch="${path##*\#}"
+    #     else
+    #         branch=
+    #     fi
+    #     if [ -e "${repo}/.git" ] && [ -n "$branch"] ; then
+    #         repo="git+file://$path"
+    #     fi
+    #     elif [ ! -e "$repo" ] && [ -n "${repo#/*}" ] && [ -n "${repo%*/}" ] && \
+    #          [ "${repo#/*}" != "." ] && [ "${repo#/*}" != "~" ] && \
+    #          [ "${repo%"${repo#/*}"}" = "/${repo%*/}" ]; then
+    #         # "user/name" pattern, try github
+    #         repo="git+https://github.com/${repo%.git}.git"
+    #     fi
+    #     if [ "${repo#git+}" != "$repo" ]; then
+    #         parse_unified_download "$repo${branch:+"#$branch"}" "$dest" "$desttype"
+    #         return $?
+    #     fi
+    #     unset repo branch
+    # fi
+
+
+    if [ -n "$path" ]; then
+        # expand ~, but not /*
+        if [ "$path" = "~" ]; then
+            path="$HOME"
+        elif [ "${path%%/*}" = "~" ]; then
+            path="$HOME/${path#*/}"
+        fi
+
         path=$(canonicalize_symlinks "$path")
         if [ -n "$decomp" ] && [ -f "$path" ]; then
             # direct decompress without copy first
@@ -274,10 +381,10 @@ TODO: "desttype=auto" is not done yet
     unset path
 
     if [ -n "$needunpack" ] && [ -z "$decomp" ]; then
-        _error "implicit decompression, but '$url' seem not to do it"
+        _error "implicit decompression, but '$url' seems not an archive"
         return 1
     fi
-    unset needunpack
+    unset needunpack noerror
 
     if [ -n "${FETCH_DEBUG:-}" ]; then
         echo "url='$url'; dl='$dl'; decomp='$decomp'"
@@ -290,7 +397,7 @@ unified_fetch() {
         echo "$url"
         echo "$dl"
         echo "$decomp"
-    }   
+    }
     p_make() {
         dest=$CACHED
         if [ -n "$keepdir" ]; then
@@ -310,7 +417,7 @@ unified_fetch() {
         fi
     }
     if [ $# -gt 0 ]; then
-        parse_unified_download "$@"
+        FASTRUN="" parse_unified_download "$@"
     fi
 
     title="${url##*/}"
@@ -319,7 +426,7 @@ unified_fetch() {
     title=${title%.bz2}
     title=${title%.xz}
     title=${title%.tar}
-    title="$title" dest="$dest" catalog=fetch cache_rebuild p_text p_make
+    FASTRUN="" title="$title" dest="$dest" catalog=${catalog:-fetch} cache_rebuild p_text p_make
 
     dest=$CACHED
     if [ -z "${FASTRUN:-}" ]; then
@@ -331,6 +438,40 @@ fetch() {
     unified_fetch "$@"
 }
 
+# gitrepourl() {
+#     repo_branch="$1"
+#     repo="${1%\#*}"
+#     if [ "$repo" != "$repo_branch" ]; then
+#         branch="${1##*\#}"
+#     else
+#         branch=
+#     fi
+#     if [ -e "${repo}/.git" ]; then
+#         repo="git+file://$repo"
+#     else
+#         # Sourced from antigen url resolution logic.
+#         # https://github.com/zsh-users/antigen/blob/master/antigen.zsh
+#         # Expand short github url syntax: `username/reponame`.
+#         case $repo in
+#             git+ssh://*|git+file://*|git+http://*|git+https://*|git+git@*:*)
+#                     :
+#                 ;;
+#             ssh://*|file://*|http://*|https://*|git@*:*)
+#                     repo="git+$repo"
+#                 ;;
+#             *)
+#                     repo="git+https://github.com/${repo%.git}.git"
+#                 ;;
+#         esac
+#     fi
+#     if [ -n "$branch" ]; then
+#         echo "${repo}#${branch}"
+#     else
+#         echo "${repo}"
+#     fi
+# }
+
+
 
 # clone_git_commit() {
 #     url=$1
@@ -340,7 +481,7 @@ fetch() {
 #     # add a remote
 #     git remote add origin $url >&2
 #     # fetch a commit (or branch or tag) of interest
-#     # Note: the full history up to this commit will be retrieved unless 
+#     # Note: the full history up to this commit will be retrieved unless
 #     #       you limit it with '--depth=...' or '--shallow-since=...'
 #     git fetch --depth=1 origin $commit >&2
 #     # reset this repository's master branch to the commit of interest

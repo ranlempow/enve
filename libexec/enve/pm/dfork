@@ -159,47 +159,48 @@ case $state/$input in
 
     STOPPED.SCHE_START/dependExist)     sets START_PREPARING;       run execStartPre; ;;
     STOPPED.SCHE_START/dependFail)      sets STOPPED;               run calculateDependencies; ;;
-    
+    STOPPED.SCHE_START/timeout)  ???;;
+
     START_PREPARING/execPass)           sets STARTING;              run execRun; ;;
     START_PREPARING/execFail)           sets FAILURE.START;         run calculateDependencies; ;;
     START_PREPARING/timeout)            sets FAILURE.START;         run calculateDependencies; ;;
-    
-    STARTING/execPass)                  sets STOPPED;                 ; ;;
+
+    STARTING/execPass)                  sets STOPPED;               run calculateDependencies??; ;;
     STARTING/execFail)                  sets WAIT_RETRYING;         run addRetryCount; ;;
     STARTING/retryExceeded)             sets FAILURE.START;         run calculateDependencies; ;;
     STARTING/timeout)                   sets LIVE_CHECKING;         run liveCheck; ;;
 
     LIVE_CHECKING/execPass)             sets RUNNING;               run calculateDependencies; ;;
     LIVE_CHECKING/execFail)             sets WAIT_RETRYING;         run addRetryCount; ;;
-    
+
     WAIT_RETRYING/timeout)              sets STARTING;              run execRun; ;;
     WAIT_RETRYING/stopRequest)          sets STOPPED;               run calculateDependencies; ;;
     WAIT_RETRYING/dependFail)           sets FAILURE.START;         run calculateDependencies; ;;
-    
+
     # ===================
-    
-    RUNNING*/resourceGone)              sets STOPPED.FAILED;        run forceStopDependencies?; ;;
-    
+
+    RUNNING*/resourceGone)              sets STOPPED.FAILED;        run forceStopDependencies??; ;;
+
     # stopped by accident
     STOPPED.FAILED/stopRequest)         sets STOPPED;               run execStopPost; ;;
     STOPPED.FAILED/timeout)             sets STOPPED.MAY_RESTART;   run execStopPost; maybeStart?; ;;
     STOPPED.MAY_START/execPass)         sets STOPPED.SCHE_START;    run startDependencies; ;;
     STOPPED.MAY_START/execFail)         sets STOPPED;               ;;
-    
+
     # TODO: with resourceGone
     RUNNING/stopRequest)                sets RUNNING.SCHE_STOP      run StopDependencies; ;;
     RUNNING/restartRequest)             sets RUNNING.WANT_RESTART   run execRestartPre; ;;
     RUNNING/reloadRequest)              sets RUNNING.SCHE_RELOAD    run reloadDependencies; ;;
-    
+
     # ===================
 
     RUNNING.SCHE_STOP/dependStopped)    sets STOPPING;              run execStop; ;;
     STOPPING/resourceGone)              sets STOPPED;               run execStopPost; ;;
     STOPPING/timeout)                   sets FORCE;                 run forceExecStop; ;;
-    
+
     FORCE/resourceGone)                 sets STOPPED;               run execStopPost; ;;
     FORCE/timeout)                      sets FATAL;                 ;;
-    
+
     # ===================
 
     RUNNING.WANT_RESTART/execPass)      sets STOPPING.RESTARING;    run execStop; ;;
@@ -209,17 +210,17 @@ case $state/$input in
     STOPPING.RESTARING/timeout)         sets FORCE.RESTARING;       run forceExecStop; ;;
     FORCE.RESTARING/resourceGone)       sets STOPPED.SCHE_RESTART;  run restartDependencies; ;;
     FORCE.RESTARING/timeout)            sets FATAL;                 ;;
-    
+
     STOPPED.SCHE_RESTART/dependStopped) sets STOPPED.WAIT_RESTART;  ;;
     STOPPED.SCHE_RESTART/timeout)       ???;;
     STOPPED.WAIT_RESTART/timeout)       sets STOPPED.SCHE_START;    ;;
-    
+
     # ===================
 
-    RUNNING.SCHE_RELOAD/dependReloaded  -> RUNNING.RELOADING    => execReload
-    RUNNING.RELOADING/conditionPass     -> RUNNING
-    RUNNING.RELOADING/conditionFail     ->
-    RUNNING.RELOADING/timeout           ->
+    # RUNNING.SCHE_RELOAD/dependReloaded  -> RUNNING.RELOADING    => execReload
+    # RUNNING.RELOADING/conditionPass     -> RUNNING
+    # RUNNING.RELOADING/conditionFail     ->
+    # RUNNING.RELOADING/timeout           ->
 
     # ===================
 
@@ -266,7 +267,7 @@ fsm() {
         tcp: nc -kl localhost 5487
         udp: nc -klu localhost 5487
         tls: openssl s_server -accept 443
-        tls: openssl s_client -connect localhost 443 
+        tls: openssl s_client -connect localhost 443
     '
     while true; do
         if read -r line; then
@@ -294,6 +295,10 @@ fsm() {
                             fi
                         done
                         # TODO: resource check
+                    ;;
+                ping)
+                    # TODO: check dfork is alive
+                    # write source id and timestamp to output
                     ;;
                 FATAL)
                     ;;

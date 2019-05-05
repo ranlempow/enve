@@ -19,13 +19,13 @@ setup() {
     fnmatch 'a[b]c' 'abc'
     fnmatch 'a[a-c]c' 'abc'
     ! fnmatch 'a[xy]c' 'abc'
-    
+
     fnmatch 'a[b/]c' 'abc'
     fnmatch 'a[b/]c' 'a/c'
 
     fnmatch '.a?c' '.abc'
     fnmatch '?a?c' '.abc'
-    
+
     fnmatch 'a[!z]c' 'abc'
     # non-posix but bash supported
     # fnmatch 'a[^z]c' 'abc'
@@ -63,17 +63,17 @@ setup() {
 @test "make_gitignore_filter" {
 
     # make_gitignore_filter "$(printf abc\\ndef\\n)" >&2
-    
+
     [ "$(printf abc\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n%s\\n 'abc' 'def')")" = "123" ]
     # shopt -s extglob
     [ "$(printf abc\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n%s\\n 'a*' 'd?f')")" = "123" ]
     [ "$(printf abc/def\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n '**/def')")" = "123" ]
     [ "$(printf abc/def\\n123\\n | gitignore_filter "$(printf %s\\n 'abc/**')")" = "123" ]
     [ "$(printf abc/def/123\\n123\\n | gitignore_filter "$(printf %s\\n '**/def/**')")" = "123" ]
-    
+
     [ "$(printf abc/def\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n%s\\n '**/def' '!def')")" = "123
 def" ]
-    
+
     [ "$(printf abc\\n123\\ndef\\n | gitignore_filter "")" = "abc
 123
 def" ]

@@ -1,21 +1,21 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-array_remove() {
-    eval declare -a array=("\${$1[@]}")
-    eval declare -a delete=("\${$2[@]}")
-    eval "$1=()"
-    for i in "${!array[@]}"; do
-        local match=
-        for target in "${delete[@]}"; do
-            if [[ ${array[i]} = "${delete[target]}" ]]; then
-              match=1
-            fi
-        done
-        if [ -z "$match" ]; then
-            eval "$1=(\$$1 ${array[i]})"
-        fi
-    done
-}
+# array_remove() {
+#     eval declare -a array=("\${$1[@]}")
+#     eval declare -a delete=("\${$2[@]}")
+#     eval "$1=()"
+#     for i in "${!array[@]}"; do
+#         local match=
+#         for target in "${delete[@]}"; do
+#             if [ ${array[i]} = "${delete[target]}" ]; then
+#                 match=1
+#             fi
+#         done
+#         if [ -z "$match" ]; then
+#             eval "$1=(\$$1 ${array[i]})"
+#         fi
+#     done
+# }
 
 
 PM_HOME=$(dirname $0)
@@ -329,9 +329,9 @@ TABLE="$(parse_config "$(root="$(dirname "$0")" resolve_path "pmcfg_example.ini"
 echo "$TABLE"
 
 service_names="$({ table_subset "service\..*" || true; } |
-                 as_postfix "service\." | as_rootkey | as_uniquekey | tr "$newl" " " )"
+                    as_postfix "service\." | as_rootkey | as_uniquekey | tr "$newl" " " )"
 cmdwarp_names="$({ table_subset "cmdwrap\..*" || true; } |
-                 as_postfix "cmdwrap\." | as_uniquekey | tr "$newl" " " )"
+                    as_postfix "cmdwrap\." | as_uniquekey | tr "$newl" " " )"
 
 ALL_EXEC_ACTIONS="execDeploy execRun execStart execStartPre execStartPost execRestartPre execStop execStopPost execReload"
 ALL_EXEC_ACTIONS_REGEX="$(echo $ALL_EXEC_ACTIONS | tr ' ' '|')"
@@ -356,14 +356,14 @@ function wrap_exec_statment() {
                 if [ "$1" = "$wrap" ]; then
                     # func="$(table_tail "cmdwrap\.$wrap")"
                     # echo 's/$2/'"${3:-}"'/g'
-                    value="$(table_tail "cmdwrap\.$wrap" | \
-                             sed -e 's/$1/'"${2:-}"'/g' \
-                                 -e 's/$2/'"${3:-}"'/g' \
-                                 -e 's/$3/'"${4:-}"'/g' \
-                                 -e 's/$4/'"${5:-}"'/g' \
-                                 -e 's/$5/'"${6:-}"'/g' \
-                                 -e 's/$6/'"${7:-}"'/g'
-                                 )$extend"
+                    value="$(   table_tail "cmdwrap\.$wrap" | \
+                                sed -e 's/$1/'"${2:-}"'/g' \
+                                    -e 's/$2/'"${3:-}"'/g' \
+                                    -e 's/$3/'"${4:-}"'/g' \
+                                    -e 's/$4/'"${5:-}"'/g' \
+                                    -e 's/$5/'"${6:-}"'/g' \
+                                    -e 's/$6/'"${7:-}"'/g'
+                                    )$extend"
                 fi
             done
 
@@ -419,7 +419,7 @@ tmux_relate() {
     tmux detach
     tmux attach -t XXXX
     tmux new cmd args
-    
+
 }
 
 
@@ -445,7 +445,7 @@ while true; do
                 ;;
         esac
     done < $PM_FIFO
-    
+
     # for pid in "${states[@]}"; do
     # done
 

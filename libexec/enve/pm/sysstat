@@ -1,4 +1,4 @@
-#!/usr/bin/env dash
+#!/bin/sh
 
 
 true '
@@ -21,11 +21,11 @@ net.okbs
 if [ -z "${LINUX:-}" ]; then
     top -l 2 -n 0 | tail -n +10 | {
         toptext="$(cat)"
-        printf %s\n "$toptext" | grep "Load Avg:" | \
+        printf %s\\n "$toptext" | grep "Load Avg:" | \
             sed -e 's/Load Avg: \([0-9]\+\.[0-9]\+\), \([0-9]\+\.[0-9]\+\), \([0-9]\+\.[0-9]\+\).*/loadavg.1m=\1\nloadavg.5m=\2\nloadavg.15m=\3/g'
-        printf %s\n "$toptext" | grep "CPU usage:" | \
+        printf %s\\n "$toptext" | grep "CPU usage:" | \
             sed -e 's/CPU usage: \([0-9]\+\.[0-9]\+\)% user, \([0-9]\+\.[0-9]\+\)% sys, [0-9]\+\.[0-9]\+% idle.*/cpu.user=\1\ncpu.sys=\2/g'
-        printf %s\n "$toptext" | grep "PhysMem:" | \
+        printf %s\\n "$toptext" | grep "PhysMem:" | \
             sed -e 's/PhysMem: \([0-9]\+[KMG]\) used ([0-9]\+[KMG] wired), \([0-9]\+[KMG]\) unused.*/mem.used=\1\nmem.free=\2/g'
     }
 
@@ -64,14 +64,18 @@ EOF
     done
     echo "$sumtps" | bc
     echo "$sumkbs" | bc
-    
+
     while true; do
-        $(
+        eval "$(
             ifconfig p1p1 | grep packets | awk '{print $5, $3}' | \
-            xargs echo | sed -E -e "s/([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)/rx=\1 rxp=\2 tx=\3 txp=\4/"
-        )
-        echo $rx $rxp $tx $txp $(cat /tmp/netstat) | awk '{print $1-$5, $2-$6, $3-$7, $4-$8}'
-        echo $rx $rxp $tx $txp > /tmp/netstat
+            xargs echo | sed -E -e "s/([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)/rx=\\1 rxp=\\2 tx=\\3 txp=\\4/"
+        )"
+
+        # shellcheck disable=2154
+        {
+            echo $rx $rxp $tx $txp "$(cat /tmp/netstat)" | awk '{print $1-$5, $2-$6, $3-$7, $4-$8}'
+            echo $rx $rxp $tx $txp > /tmp/netstat
+        }
         sleep 5
     done
 fi

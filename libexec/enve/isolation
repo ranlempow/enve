@@ -11,9 +11,9 @@ set -euo pipefail
 #
 
 
-# sandbox-exec -p ' 
+# sandbox-exec -p '
 # (version 1)
-# (allow default) 
+# (allow default)
 # (deny file-read-data
 #     (regex #"^/private/tmp/dump\.c$"))
 # ' /bin/sh
@@ -54,12 +54,12 @@ cygstart --action=runas "\$@"
 (O)system.bin - ',' split list, add program at host to chroot path
 
 (O)jail - use advance isolation technology
-daemon - detach form currnet shell, fork twice and new session
-       - default to true if invoke by pm, default to false if invoke by enve
+daemon  - detach form currnet shell, fork twice and new session
+        - default to true if invoke by pm, default to false if invoke by enve
 
 (F)interface - add interface at host to jail
-(O)mount - given as a single fstab(5) line, mount to chroot path
-         - there are nixdir, cachedir, tmpdir mounts by default
+(O)mount    - given as a single fstab(5) line, mount to chroot path
+            - there are nixdir, cachedir, tmpdir mounts by default
 
 (O)exec.start
 (O)exec.clean
@@ -324,7 +324,7 @@ simple_root_mac() {
 
     # certs
     cp -a /etc/ssl "$CHROOT/etc/ssl"
-    
+
     add_binary /bin/bash
     add_binary /bin/sh
     add_binary /bin/ls
@@ -638,7 +638,7 @@ _redirect_stdio() {
 
 
 start_with_namespace() {
-    
+
 
     # exec unshare --ipc --uts --cgroup --net --user --pid --mount \
     #     chroot --userspec=$user:$user "$CHROOT" /bin/sh "$INNER_SCRIPT" $EXEC_START $(_stdio_txt)
@@ -658,8 +658,8 @@ start_with_namespace() {
 }
 
 start_with_chroot() {
-    
-    
+
+
     # sh -c '(exec chroot --userspec='$user:$user' "'"$CHROOT"'" \
     #         /bin/sh "'"$INNER_SCRIPT"'" '"$EXEC_START $(_stdio_txt)"' &
     #         ) &'
@@ -678,12 +678,12 @@ start_with_chroot() {
 }
 
 start_switch_user() {
-    
+
 
     # (
         hascmd setsid && setsid
         _redirect_stdio
-        # echo su - -m $user "$INNER_SCRIPT" $EXEC_START 
+        # echo su - -m $user "$INNER_SCRIPT" $EXEC_START
         # exec su - -m $user "$INNER_SCRIPT" $EXEC_START &
         # exec sudo -u $user /bin/sh "$INNER_SCRIPT" $EXEC_START &
 
@@ -789,7 +789,7 @@ startns() {
     # pid=$(cat $PIDFILE)
     # read pid < $PIDFILE
 
-    
+
     # echo "$(timestamp) delayinit ok"
 }
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # __NAME__=ci
 # __VERSION__=0.1.0
@@ -9,6 +9,8 @@ if [ -z "${ENVE_HOME:-}" ]; then
     echo "fatal: ENVE_HOME not set." >&2
     exit 1
 fi
+
+# shellcheck disable=2034
 ENVE_PROGRAM=enve/ci
 
 
@@ -18,7 +20,7 @@ settrace
 
 if [ -n "${ENVE_REQ_VERSION:-}" ] || [ -n "${ENVE_REQ_SHELL:-}" ]; then
     # shellcheck source=libexec/enve/bootlib
-    . "$ENVE_HOME/enve/bootlib"    
+    . "$ENVE_HOME/enve/bootlib"
     reexec_if_req_not_match "${ENVE_REQ_VERSION:-}" "${ENVE_REQ_SHELL:-}" "$@"
 fi
 
@@ -47,6 +49,10 @@ shift
 
 case $cmd in
     noop)
+        ;;
+    run)
+            ENVE_TEST_OUTPUT=${ENVE_TEST_OUTPUT:-$(mkdtemp "$(get_tempdir)/enve-test_XXXXXX")}
+            do_harness_no_checkout "$@"
         ;;
     runset)
             do_harness "$@"

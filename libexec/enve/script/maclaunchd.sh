@@ -4,6 +4,8 @@ if [ -z "${ENVE_HOME:-}" ]; then
     echo "fatal: ENVE_HOME not set." >&2
     exit 1
 fi
+
+# shellcheck disable=2034
 ENVE_PROGRAM=enve/maclaunchd
 
 # shellcheck source=libexec/enve/base
@@ -11,7 +13,20 @@ ENVE_PROGRAM=enve/maclaunchd
 settrace
 
 
-dest = "$HOME/Library/LaunchAgents/$service_label.plist"
+service_name="envsrv"
+service_args=~/envsrv.sh
+service_envs="SP_ENV SPvalue"
+service_label="tw.org.enve.$service_name"
+
+domain_target=system
+domain_target=gui/$(id -u)
+
+dest="/Library/LaunchDaemons/$service_label.plist"
+dest="$HOME/Library/LaunchAgents/$service_label.plist"
+
+var=/var
+var=~/.local
+
 
 is_loaded() {
     # TODO: find replacement for deprecated "list"
@@ -19,74 +34,90 @@ is_loaded() {
 }
 
 service_kill() {
-    launchctl kill "SIGTERM" "#{domain_target}/#{service.label}"
+    _info "Sending SIGTERM ..."
+    launchctl kill SIGTERM "${domain_target}/${service_label}"
     while is_loaded; do
         sleep 5
         is_loaded || break
-        launchctl kill SIGKILL "#{domain_target}/#{service.label}"
+        _info "Sending SIGKILL ..."
+        launchctl kill SIGKILL "${domain_target}/${service_label}"
     done
-    echo "Successfully stopped `#{service.name}` via #{service.label}"
+    _info "Successfully stopped ${service_name} via ${service_label}"
 }
 
 service_start() {
     tmpplist="$(mkstemp ${TMPDIR:-/tmp}/$service_label.plist.XXXXXX)"
-    generate_plist "xxxx" > "$tmpplist"
+    generate_plist > "$tmpplist"
     rm -rf "$dest"
     cp "$tmpplist" "$dest"
     chmod 644 "$dest"
-    launchctl bootstrap "gui/$(id -u)" "$dest"
-    launchctl enable "gui/$(id -u)/$service_label"
-    echo "Successfully #{function} `#{service.name}` (label: #{service.label})"
+    launchctl bootstrap "$domain_target" "$dest"
+    launchctl enable "$domain_target/$service_label"
+    _info "Successfully started ${service_name} (label: ${service_label})"
 }
 
 service_stop() {
-    echo "Stopping ${service.name}... (might take a while)"
-    launchctl bootout "gui/$(id -u)/$service_label"
-    while [ "$?" == 9216 ]; do
+    _info "Stopping ${service_name}... (might take a while)"
+    set +e
+    launchctl bootout "$domain_target/$service_label"
+    while [ "$?" = 9216 ]; do
         sleep 5
-        launchctl bootout "gui/$(id -u)/$service_label"
-    done 
+        launchctl bootout "$domain_target/$service_label"
+    done
+    set -e
     if ! is_loaded; then
-        echo "Successfully stopped `#{service.name}` (label: #{service.label})"
+        _info "Successfully stopped ${service_name} (label: ${service_label})"
     else
         service_kill
     fi
     rm -rf "$dest"
 }
 
+generate_plist() {
+    mkdir -p "$var/log/$service_name"
 
+    cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${service_label}</string>
+  <key>ProgramArguments</key>
+  <array>
+EOF
 
+    for arg in $service_args; do
+        printf '    <string>%s</string>' "$arg"
+    done
 
-        quiet_system launchctl, "bootout", "#{domain_target}/#{service.label}"
-        while $CHILD_STATUS.to_i == 9216
-          sleep(5)
-          quiet_system launchctl, "bootout", "#{domain_target}/#{service.label}"
-        end
-      end
-      if service.dest.exist?
-        unless MacOS.version >= :el_capitan
-          # This syntax was deprecated in Yosemite but there's no alternative
-          # command (bootout) until El Capitan.
-          safe_system launchctl, "unload", "-w", service.dest.to_s
-        end
-        ohai "Successfully stopped `#{service.name}` (label: #{service.label})"
-      elsif service.loaded?
-        kill(service)
-      end
-      rm service.dest if service.dest.exist?
-end
+    cat <<EOF
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+EOF
+    if [ -n "$service_envs" ]; then
+        while read -r key value; do
+            printf '    <key>%s</key>\n    <string>%s</string>' "$key" "$value"
+        done <<EOF
+$service_envs
+EOF
+    fi
 
+    cat <<EOF
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$var/log/$service_name/$service_name.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>$var/log/$service_name/$service_name.err.log</string>
+</dict>
+</plist>
+EOF
 
-def launchctl_load(plist, function, service)
-    if MacOS.version >= :yosemite
-      unless function == "ran"
-        safe_system launchctl, "enable", "#{domain_target}/#{service.label}"
-      end
-      safe_system launchctl, "bootstrap", domain_target, plist
-    else
-      # This syntax was deprecated in Yosemite
-      safe_system launchctl, "load", "-w", plist
-    end
+}
 
-    ohai("Successfully #{function} `#{service.name}` (label: #{service.label})")
-end
+"$1"

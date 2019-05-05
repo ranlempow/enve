@@ -3,7 +3,7 @@
 
 create_directories() {
     _sudo "to make the basic directory structure of Nix (part 1)" \
-          mkdir -pv -m 0755 \
+        mkdir -pv -m 0755 \
             /nix /nix/var /nix/var/log /nix/var/log/nix /nix/var/log/nix/drvs \
             /nix/var/nix/db \
             /nix/var/nix/gcroots \
@@ -12,15 +12,15 @@ create_directories() {
             /nix/var/nix/userpool
 
     _sudo "to make the basic directory structure of Nix (part 2)" \
-          mkdir -pv -m 1777 \
+        mkdir -pv -m 1777 \
             /nix/var/nix/gcroots/per-user \
             /nix/var/nix/profiles/per-user
 
     _sudo "to make the basic directory structure of Nix (part 3)" \
-          mkdir -pv -m 1775 /nix/store
+        mkdir -pv -m 1775 /nix/store
 
     _sudo "to make the basic directory structure of Nix (part 4)" \
-          chgrp 30000 /nix/store
+        chgrp 30000 /nix/store
 
     # _sudo "to set up the root user's profile (part 1)" \
     #       mkdir -pv -m 0755 /nix/var/nix/profiles/per-user/root
@@ -30,7 +30,7 @@ create_directories() {
 
     if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
         _sudo "to place the default nix daemon configuration (part 1)" \
-              mkdir -pv -m 0555 /etc/nix
+                mkdir -pv -m 0555 /etc/nix
     fi
 }
 
@@ -115,12 +115,12 @@ main() {
     # setup_default_profile
     new_profile=$(
     export NIX_PATH=nixpkgs=https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz
-    # NIX_PATH=nixpkgs=http://d3g5gsiof5omrk.cloudfront.net/nixpkgs/nixpkgs-18.09pre132003.13e74a838db/nixexprs.tar.xz 
+    # NIX_PATH=nixpkgs=http://d3g5gsiof5omrk.cloudfront.net/nixpkgs/nixpkgs-18.09pre132003.13e74a838db/nixexprs.tar.xz
 
     NIX_SSL_CERT_FILE=$NIX_INSTALLED_CACERT/etc/ssl/certs/ca-bundle.crt \
     sudo -E $NIX_INSTALLED_NIX/bin/nix-build --no-out-link - <<EOF
     with import <nixpkgs> { };
-    buildEnv { 
+    buildEnv {
       name = "user-environment";
       paths = [
         $NIX_INSTALLED_NIX $NIX_INSTALLED_CACERT
@@ -132,7 +132,7 @@ EOF
     sudo ln -s "$new_profile" /nix/var/nix/profiles/default || die "fail to link $new_profile to default profile"
     echo "link $new_profile to default profile"
 
-    
+
     if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
         place_nix_configuration
         poly_configure_nix_daemon_service
@@ -166,21 +166,21 @@ install_nix() {
     # sed -i -e 's#script=.*# echo "$unpack"/*/install ; exit 0#' -e 's#trap cleanup.*##' "$tmpDir/nix-get.sh"
     sed -i -e 's#script=.*# echo "$unpack"/*/install ; exit 0#' "$tmpDir/nix-get.sh"
     sed -i -e 's#trap cleanup.*##' "$tmpDir/nix-get.sh"
-    
+
     install_script="$($tmpDir/nix-get.sh | tail -n 1)"
 
     multi_install_script="$(dirname "$install_script")/install-multi-user"
     sed -i -e 's#readonly NIX_USER_COUNT="32"#readonly NIX_USER_COUNT="4"#' "$multi_install_script"
     # sed -i -e 's#readonly NIX_INSTALLED_CACERT=#NIX_INSTALLED_CACERT=#' "$multi_install_script"
     sed -i -e 's#^main$##' "$multi_install_script"
-    
+
     {
         # echo "$(declare -f create_directories)" >> "$multi_install_script"
-        
+
         type create_directories | tail -n +2
         # TODO: remove this
         # type install_from_extracted_nix | tail -n +2
-        
+
         # TODO: remove this
         type poly_configure_nix_daemon_service | tail -n +2
 
@@ -190,7 +190,7 @@ install_nix() {
         echo "main"
     } >> "$multi_install_script"
 
-    # to fix: error: the group 'nixbld' specified in 'build-users-group' does not exist 
+    # to fix: error: the group 'nixbld' specified in 'build-users-group' does not exist
     mkdir $tmpDir/nixconf
     echo "build-users-group =
 " > $tmpDir/nixconf/nix.conf
@@ -201,7 +201,7 @@ install_nix() {
 
 }
 
-# TODO: remove this after nix fix the bug
+# TODO: nix 2.2.1: remove this after nix fix the bug
 poly_configure_nix_daemon_service() {
     # _sudo "to set up the nix-daemon as a LaunchDaemon" \
     #       ln -sfn "/nix/var/nix/profiles/default$PLIST_DEST" "$PLIST_DEST"
@@ -216,8 +216,8 @@ poly_configure_nix_daemon_service() {
     <string>org.nixos.nix-daemon</string>
     <key>EnvironmentVariables</key>
     <dict>
-           <key>OBJC_DISABLE_INITIALIZE_FORK_SAFETY</key>
-           <string>YES</string>
+      <key>OBJC_DISABLE_INITIALIZE_FORK_SAFETY</key>
+      <string>YES</string>
     </dict>
     <key>KeepAlive</key>
     <true/>
@@ -259,7 +259,7 @@ linux_runtime() {
     m      nixbld3  nixbld
     m      nixbld4  nixbld
 EOF
-    
+
     cat > $ETCROOT/systemd/system/nix-daemon.service <<-EOF
 [Unit]
 Description=Nix Daemon
@@ -285,7 +285,7 @@ ListenStream=/nix/var/nix/daemon-socket/socket
 [Install]
 WantedBy=sockets.target
 EOF
-    
+
     mkdir -p $ETCROOT/systemd/system/sockets.target.wants
     ln -sf ../nix-daemon.socket $ETCROOT/systemd/system/sockets.target.wants/nix-daemon.socket
 

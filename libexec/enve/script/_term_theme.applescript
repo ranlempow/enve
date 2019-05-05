@@ -1,13 +1,12 @@
-#!/usr/bin/osascript                                                                            
+#!/usr/bin/osascript
 
 on run argv
-  
   if length of argv is equal to 0
     set profile to ""
   else
     set profile to item 1 of argv
   end if
-  -- set profile to "Basic" 
+  -- set profile to "Basic"
   tell first window of application "Terminal"
     set newTab to selected tab
   end tell

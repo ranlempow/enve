@@ -10,6 +10,13 @@ HAVE_ENVE_TESTLIB=1
 
 
 harness() {
+    true '
+harness TESTNAME1 CMD1 [TESTNAME2 CMD2] ...
+
+output tap format to $logfile
+output "success|failure %problem/%skipped/%total" to $statusfile
+'
+
     if [ -n "${CACHED:-}" ]; then
         logfile="$CACHED/test.log"
         statusfile="$CACHED/status"
@@ -29,8 +36,7 @@ harness() {
             {
                 printf '# RUN %s: %s\n' "$testname" "$cmd"
                 eval "$cmd"
-                # retcodes="$retcodes${retcodes:+ }$?"
-            } | tee "${logfile%.log}-$testname.log" &
+            } 2>&1 | tee "${logfile%.log}-$testname.log" &
             pids="$pids${pids:+ }$!"
             harness_exec_cnt=$((harness_exec_cnt + 1))
         done
@@ -73,6 +79,7 @@ harness() {
         failure=0
         skipped=0
 
+        # shellcheck disable=2030
         getmark() {
             mark=${line#ok }
             junk=${mark%%[!0-9]*}
@@ -92,8 +99,9 @@ harness() {
         while read -r line; do
             comment=${line#*\#}
             line=${line%%\#*}
+            # shellcheck disable=2030
             junk=${line##*[![:space:]]}
-            line=${line%"$junk"}
+            line=${line%"$junk3"}
             number=${line#1..}
             mark=
             if [ -n "$number" ] && [ -z "${number##[0-9]*}" ]; then
@@ -112,7 +120,7 @@ harness() {
             fi
             if [ -n "$mark" ]; then
                 printf '\r[%3d/%3d] %-43s (failure: %3d, skipped: %3d)' \
-                    "$((success + failure + skipped))" "$total" "$mark" "$failure" "$skipped" 
+                    "$((success + failure + skipped))" "$total" "$mark" "$failure" "$skipped"
             fi
         done
         echo
@@ -131,7 +139,30 @@ harness() {
     }
 }
 
+do_harness_no_checkout() {
+    base=$1
+    roles=${2:-}
+
+    # shellcheck source=libexec/enve/envelib
+    . "$ENVE_HOME/enve/envelib"
+
+    ENVE_TEST_OUTPUT=$ENVE_TEST_OUTPUT \
+    ENVE_ROLES=$roles \
+    ENVE_PROFILE="$base/enve.ini" \
+    ENVE_CONFIG="$(out_var_fast test.ci true)" \
+    fire test
+
+}
+
 do_harness() {
+    true '
+do_harness URL COMMIT_BRANCH SETNAME [ROLES]
+
+
+output tap format to $logfile?
+output "success|failure %problem/%skipped/%total" to stdout
+'
+
     url=$1
     commit=$2
     setname=$3
@@ -146,13 +177,15 @@ do_harness() {
         thedir=$(
             CACHED='' fetch "git+$url#$commit" %cache dir
         )
-        . "$ENVE_HOME/enve/envelib"\
-        ENVE_TEST_OUTPUT=$CACHED \
-        ENVE_ROLES="$setname${roles:+,}${roles}" \
-        ENVE_PROFILE="$thedir/enve.ini" \
-        ENVE_CONFIG="$(out_var_fast test.ci true)" \
-             fire test || true
+        # . "$ENVE_HOME/enve/envelib"
 
+        ENVE_TEST_OUTPUT=$CACHED \
+        do_harness_no_checkout "$thedir" "$setname${roles:+,}${roles}" || true
+        # ENVE_TEST_OUTPUT=$CACHED \
+        # ENVE_ROLES="$setname${roles:+,}${roles}" \
+        # ENVE_PROFILE="$thedir/enve.ini" \
+        # ENVE_CONFIG="$(out_var_fast test.ci true)" \
+        # fire test || true
     }
     dest='' title=$setname catalog=testset cache_path "status" harness_text harness_make "" || {
         _error mygod
@@ -161,31 +194,33 @@ do_harness() {
     cat $cached_path
 }
 
-_tw1='\t'
-_tw2='\t\t'
-_tw3='\t\t\t'
-_tw4='\t\t\t\t'
-_tw5='\t\t\t\t\t'
-_tw6='\t\t\t\t\t\t'
-_tw7='\t\t\t\t\t\t\t'
-_tw8='\t\t\t\t\t\t\t\t'
-
-_st27='???????????????????????????'
+# shellcheck disable=2034
+{
+    _tw1='\t'
+    _tw2='\t\t'
+    _tw3='\t\t\t'
+    _tw4='\t\t\t\t'
+    _tw5='\t\t\t\t\t'
+    _tw6='\t\t\t\t\t\t'
+    _tw7='\t\t\t\t\t\t\t'
+    _tw8='\t\t\t\t\t\t\t\t'
+    _st27='???????????????????????????'
+}
 
 shorten() {
-    eval junk=\${text#\"\${_st$1}\"}
+    eval "junk=\${text#\"\${_st$1}\"}"
     text="${text%"$junk"}"
 }
 
 tablize() {
     widthtab=$1
-    widthmax=$(($widthtab * 8))
+    widthmax=$((widthtab * 8))
 
     if [ ${#text} -ge $widthmax ]; then
         shorten 27
         text="$text ... "
     fi
-    eval text=\"\${text}\${_tw$(( (widthmax - ${#text}) / 8 + 1 ))}\"
+    eval "text=\"\${text}\${_tw$(( (widthmax - ${#text}) / 8 + 1 ))}\""
 
     #     text="$text ... $tab"
     # elif [ "${#branch}" -ge 24 ]; then
@@ -208,6 +243,8 @@ testsets() {
     dest=$(
         fetch "git+$url#$branch" %cache dir
     )
+
+    # shellcheck source=libexec/enve/envelib
     . "$ENVE_HOME/enve/envelib"
     TABLE=$(parse_config "$dest/enve.ini")
 
@@ -225,16 +262,16 @@ testsets() {
     # sets=
     the_branches=
 
-    for setname in $(table_subset "test\\.sets\\..*" | as_postfix "test.sets." | \
-                     as_rootkey | as_uniquekey); do
+    for setname in $(   table_subset "test\\.sets\\..*" | as_postfix "test.sets." | \
+                        as_rootkey | as_uniquekey); do
         # sets="$sets${sets:+ }$setname"
         branches=$(table_subset test.sets.$setname.branches | as_concat " ")
         roles=$(table_subset test.sets.$setname.roles | as_concat ",")
         limit=$(table_tail test.sets.$setname.limit)
         after=$(table_tail test.sets.$setname.after)
         for child_branch in $branches; do
-            if [ -z "$the_branches" ] || \
-               [ "${the_branches#* $child_branch*}" != "$the_branches" ]; then
+            if  [ -z "$the_branches" ] || \
+                [ "${the_branches#* $child_branch*}" != "$the_branches" ]; then
                 the_branches="$the_branches $child_branch"
             fi
             # echo "child_branch: $child_branch" >&2
@@ -322,16 +359,20 @@ testsets() {
                 comment="$comment$tab$tab$tab"
             fi
             lines="$lines$C1${commit%?????????????????????????????????}$C0$tab$comment"
-            for commitfile in $setsdir/*-done-*.$commit; do
+            for commitfile in "$setsdir/"*-done-*".$commit"; do
                 if [ "$commitfile" != "$setsdir/*-done-*.$commit" ]; then
                     {
-                        read -r url commit branch setname
-                        read -r start pid
-                        read -r end statusfile
-                        read -r state result < "$statusfile"
+                        # shellcheck disable=2034
+                        {
+                            read -r url commit branch setname
+                            read -r start pid
+                            read -r end statusfile
+                            read -r state result < "$statusfile"
+                        }
                         if [ -z "$sets" ] || [ "${sets#*$tab$setname*}" ]; then
                             sets="${sets}$tab$setname"
                         fi
+                        # shellcheck disable=2034
                         IFS=/ read -r failure skip total <<EOF
 $result
 EOF
@@ -388,6 +429,8 @@ case_worker() {
             # echo "branch:$branch" >&2
             # echo "casename:$casename" >&2
             echo "$(date +%s) $$" >> "$private"
+
+            # shellcheck disable=2097,2098
             commit='' do_harness "$url" "$commit#$branch" "$setname" "$roles" >/dev/null
             echo "$(date +%s) $cached_path" >> "$private"
             mv "$private" "$setsdir/$num-done-$setname.$commit"

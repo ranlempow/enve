@@ -28,14 +28,41 @@ enve.require
 enve.require.version    make enve executable in subenv
 
 
+define.module                           模組定義
+define.module.$i.name     default is "$dirname"/*.enve.ini
+define.module.$i.produce  must set
+define.module.$i.native_exec
+        default is false, no create enve
+define.module.$i.source_exec
+        default is false, not use fork, use '.' instand
+define.module.$i.exec     default is %root/$procedure.enve.module
+(X)define.module.$i.order    must set
+define.module.$i.after    this may help ordering modules
+define.module.$i.before
+
+
 core.target
 
 enve.target
 
+enve.build          type of build target, default is none, options are
+                    [none|package|build]
+                    build會進行建造但是不打包, 輸出可以下則%path|%cache|%tmp
+                    package會把build之後的資料夾進行打包, 輸出放到cache
+
+enve.setup          type of setup target, default is none, options are
+                    [none|chroot|simple|tmp]
+                    none是直接使用原始碼資料夾, 跳過任何設定步驟
+                    chroot會設定一個可以被chroot的系統資料夾
+                    simple只是簡單的初始化一個空的資料夾
+                    tmp比simple更單純, 而且使用暫存茲要夾
+
 layout.root
 layout.tmp
+layout.out
 layout.var
-layout.cachedir
+layout.cache
+
 
 
 path - PATH
@@ -77,21 +104,26 @@ module.param.*
 module.roles(LIST)
 
 
+
 build.out           artifact output path, default is %cache
 build.exec          default is %autodetect
 build.refresh       force rebuild
 build.package       make tar file, default is %nopkg, %cache|%tmp|%nopkg|[path]
 
+
+
 install.root
 install.exec
 
 install.files
+install.files.[name].variable
 install.files.[name].content
 install.files.[name].source
 install.files.[name].path
 install.files.[name].mode
 
 install.unpack
+install.unpack.[name].variable
 install.unpack.[name].source
 install.unpack.[name].path
 install.unpack.[name].mode
@@ -116,9 +148,12 @@ install.unpack.[name].mode
 settle.* <- system.*
 
 
+piso.exec.*
+
 (O)exec.start
 exec.command - replace exec.start
 
+exec.use_sudo
 (O)exec.clean
 exec.passenv
 exec.unsetenv - 'env -u XXX'
@@ -133,12 +168,12 @@ exec.ulimit.XXX
 exec.env.XXX
 exec.pidfile - assume exec.start should do the fork stuff
 exec.daemon - detach form currnet shell, fork twice and new session
-       - default to true if invoke by pm, default to false if invoke by enve
+            - default to true if invoke by pm, default to false if invoke by enve
 
 pm.socket - communicate path of sub-pm
 
 test.jobs.*
-test.jobs.*.parallel        default true, if false, must run by order 
+test.jobs.*.parallel        default true, if false, must run by order
                             and mutually exclusive
 test.sets.*.branches        test commits on branch
 test.sets.*.roles

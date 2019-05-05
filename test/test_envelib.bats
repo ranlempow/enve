@@ -7,9 +7,13 @@ setup() {
     mkstab ../libexec/enve/envelib \
         table_tail table_subset table_exclude value_substi table_substi \
         as_postfix as_rootkey as_value as_uniquekey as_concat \
+        module_sort_after get_module_info \
         out_var \
         fire_chain \
         parse_config
+
+    mkstab ../libexec/enve/pathutils \
+        canonicalize_symlinks
 
     tab="$(printf '\tx')"
     tab="${tab%x}"
@@ -104,6 +108,96 @@ setup() {
 #     [ "$(fire_chain1 "ABC!build!run@R1" fire locate_project)" = "ABC_LOC_DEF_LOC/enve.ini@R1" ]
 # }
 
+@test "get_module_info" {
+    rm -rf "$BATS_TMPDIR/get_module_info"
+    mkdir -p "$BATS_TMPDIR/get_module_info"
+    base=$(canonicalize_symlinks "$BATS_TMPDIR/get_module_info")
+    cat > "$BATS_TMPDIR/get_module_info/enve.ini" <<EOF
+[define.module.mymod.x]
+procedure=x
+EOF
+
+    get_module_info "$BATS_TMPDIR/get_module_info" >&2
+    [ "$(get_module_info "$BATS_TMPDIR/get_module_info")" = \
+        "mymod,x,:,:,$base/x.enve.module,,$base/enve.ini,$base" \
+    ]
+
+
+    cat > "$BATS_TMPDIR/get_module_info/enve.ini" <<EOF
+[define.module.mymod2.y]
+after=a
+before=b
+native_exec=true
+source_exec=true
+exec=/bin/sh
+enve=./xxx.enve
+EOF
+    get_module_info "$BATS_TMPDIR/get_module_info" >&2
+    [ $(get_module_info "$BATS_TMPDIR/get_module_info") = \
+        "mymod2,y,:a:,:b:,$(canonicalize_symlinks "/bin/sh"),native_exec=1;source_exec=1;,$base/xxx.enve,$base" \
+    ]
+
+    cat > "$BATS_TMPDIR/get_module_info/enve.ini" <<EOF
+[define.module.mymod3.z]
+after=a
+after=b
+after=c
+before=1,2:3
+EOF
+    get_module_info "$BATS_TMPDIR/get_module_info" >&2
+    [ $(get_module_info "$BATS_TMPDIR/get_module_info") = \
+        "mymod3,z,:a:b:c:,:1:2:3:,$base/z.enve.module,,$base/enve.ini,$base" \
+    ]
+
+    cat > "$BATS_TMPDIR/get_module_info/enve.ini" <<EOF
+[define.module.mymod.x]
+procedure=x
+[define.module.mymod.y]
+procedure=y
+EOF
+
+    get_module_info "$BATS_TMPDIR/get_module_info" >&2
+    [ "$(get_module_info "$BATS_TMPDIR/get_module_info")" = \
+        "mymod,x,:,:,$base/x.enve.module,,$base/enve.ini,$base
+mymod,y,:,:,$base/y.enve.module,,$base/enve.ini,$base" \
+    ]
+}
+
+@test "module_sort_after" {
+    merge() {
+        cut -d "," -f 1 | paste -sd ","
+    }
+    mline() {
+        echo "$1,$2,$3,$4,,"
+    }
+
+    [ "$(nonfast=1 modules="" module_sort_after "$(mline a - : :)" | merge)" = "a" ]
+
+    modules="$(mline a - : :)
+$(mline c - : :)"
+
+    [ "$(nonfast=1 modules=$modules module_sort_after "$(mline b - :a: :c:)" | merge)" = "a,b,c" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after $(mline b - :a: :) | merge)" = "a,c,b" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after $(mline b - : :a:) | merge)" = "b,a,c" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after $(mline b - : :c:) | merge)" = "a,b,c" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after $(mline b - :c: :) | merge)" = "a,c,b" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after "$(mline a - : :)" | merge)" = "a,c" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after "$(mline c - : :)" | merge)" = "a,c" ]
+    nonfast=1 modules=$modules run module_sort_after $(mline b - :c: :a:)
+    [ "$status" -eq 2 ]
+
+    modules="$(mline b - :a: :c:)"
+    [ "$(nonfast=1 modules=$modules module_sort_after $(mline a - : :) | merge)" = "a,b" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after $(mline c - : :) | merge)" = "b,c" ]
+    [ "$(nonfast=1 modules=$modules module_sort_after $(mline d - : :) | merge)" = "b,d" ]
+    nonfast=1 modules=$modules run module_sort_after $(mline a - :b: -)
+    [ "$status" -eq 2 ]
+    nonfast=1 modules=$modules run module_sort_after $(mline c - : :b:)
+    [ "$status" -eq 2 ]
+
+    # echo "$modules" >&2
+    # false
+}
 
 @test "value_substi" {
     [ "$(a=1  _value='3${a}4' value_substi nonfast)" = "314" ]
@@ -121,13 +215,13 @@ setup() {
     [ "$(a=1  _value='${a' value_substi nonfast)" = '${a' ]
     [ "$(a=1  _value='$a}' value_substi nonfast)" = '$a}' ]
     [ "$(a=1  _value='\${a' value_substi nonfast)" = '\${a' ]
-    ! a=1  _value='${notExist}' value_substi 
+    ! a=1  _value='${notExist}' value_substi
 
     [ "$(a=1  _value='3${c:-5"$a"6}4' value_substi nonfast)" = '35164' ]
-    
+
     ! a=1  _value='3${c:-5"$(echo x)"6}4' value_substi nonfast
     ! a=1  _value='3${$(echo x)}4' value_substi nonfast
-    
+
     [ "$(PASSVARS="a$newl" a=1  _value='3${a}4' value_substi nonfast)" = '3'\''"${a}"'\''4' ]
 
 
@@ -142,7 +236,7 @@ setup() {
     out_var a 1
     out_var b '2${a}'
     )"
-    
+
     [ "$(TABLE="$TABLE" table_substi "$CONTEXT")" = "$(
         out_var AA '314'
         out_var BB '321${a}4'
@@ -175,9 +269,9 @@ setup() {
 
 @test "parse_config" {
 
-    rm -rf /tmp/test_prj1
-    mkdir -p /tmp/test_prj1
-    cat > /tmp/test_prj1/enve.ini <<EOF
+    rm -rf "$BATS_TMPDIR/test_parse_config"
+    mkdir -p "$BATS_TMPDIR/test_parse_config"
+    cat > "$BATS_TMPDIR/test_parse_config/enve.ini" <<EOF
 [this]
 is=not true
 
@@ -201,27 +295,33 @@ not me
 
 # not me
 EOF
-    TABLE=$(roles=select1,select2 parse_config "/tmp/test_prj1/enve.ini")
-    TABLE=$(echo "$TABLE" | grep -E -v -e "^VAR${tab}enve\.configs${tab}" -e "^VAR${tab}enve\.roles${tab}")
+    TABLE=$(roles=select1,select2 parse_config "$BATS_TMPDIR/test_parse_config/enve.ini")
+
+    echo "$TABLE" | grep -E "VAR${tab}layout.root${tab}" >/dev/null
+    echo "$TABLE" | grep -E "VAR${tab}bound${tab}" >/dev/null
+
+    TABLE=$(echo "$TABLE" | grep -E -v \
+            -e "^VAR${tab}enve\.roles${tab}"
+        )
 
     echo "$TABLE" >&2
     [ "$TABLE" = "$(printf %s%s%s%s%s%s%s \
-        "VAR${tab}layout.root${tab}/private/tmp/test_prj1${newl}" \
+        "VAR${tab}layout.root${tab}$(canonicalize_symlinks "$BATS_TMPDIR/test_parse_config")${newl}" \
         "VAR${tab}this.is${tab}not true${newl}" \
         "VAR${tab}my.name.is${tab}adam${newl}" \
-        "VAR${tab}my.name.are${tab}family1${newl}" \
         "VAR${tab}my.name.are${tab}family2${newl}" \
         "VAR${tab}list${tab}a${newl}" \
         "VAR${tab}list${tab}b${newl}" \
-        "VAR${tab}bound${tab}/private/tmp/test_prj1/enve.ini"
+        "VAR${tab}bound${tab}$(canonicalize_symlinks "$BATS_TMPDIR/test_parse_config/enve.ini")${newl}" \
+        "VAR${tab}enve.configs${tab}$(canonicalize_symlinks "$BATS_TMPDIR/test_parse_config/enve.ini")${newl}" \
     )" ]
 }
 
 @test "parse_config multiline" {
 
-    rm -rf /tmp/test_prj1
-    mkdir -p /tmp/test_prj1
-    cat > /tmp/test_prj1/enve.ini <<'EOF'
+    rm -rf "$BATS_TMPDIR/test_parse_config_multiline"
+    mkdir -p "$BATS_TMPDIR/test_parse_config_multiline"
+    cat > "$BATS_TMPDIR/test_parse_config_multiline/enve.ini" <<'EOF'
 
 [long]
 a= \
@@ -230,16 +330,18 @@ a= \
 b= \\
 
 EOF
-    TABLE=$(parse_config "/tmp/test_prj1/enve.ini")
-    TABLE=$(echo "$TABLE" | grep -E -v -e "^VAR${tab}enve\.configs${tab}" -e "^VAR${tab}enve\.roles${tab}")
+    TABLE=$(parse_config "$BATS_TMPDIR/test_parse_config_multiline/enve.ini")
+    TABLE=$(echo "$TABLE" | grep -E -v \
+            -e "^VAR${tab}enve\.roles${tab}"
+    )
 
     echo "$TABLE" >&2
     [ "$TABLE" = "$(printf %s%s%s%s \
-        "VAR${tab}layout.root${tab}/private/tmp/test_prj1${newl}" \
+        "VAR${tab}layout.root${tab}$(canonicalize_symlinks "$BATS_TMPDIR/test_parse_config_multiline")${newl}" \
         "VAR${tab}long.a${tab} 1 2${newl}" \
         "VAR${tab}long.b${tab} \\${newl}" \
-        "VAR${tab}bound${tab}/private/tmp/test_prj1/enve.ini" \
-        
+        "VAR${tab}bound${tab}$(canonicalize_symlinks "$BATS_TMPDIR/test_parse_config_multiline/enve.ini")${newl}" \
+        "VAR${tab}enve.configs${tab}$(canonicalize_symlinks "$BATS_TMPDIR/test_parse_config_multiline/enve.ini")${newl}" \
     )" ]
 }
 

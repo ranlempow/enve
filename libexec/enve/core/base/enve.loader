@@ -17,6 +17,11 @@
 . "$ENVE_HOME/enve/pathutils"
 settrace
 
+core_out_module() {
+    d=$3
+    fast_basename
+    out_module "$1" "$2#$d" "$3"
+}
 
 builtin_loader() {
     # table_subset "module\\.[[:alnum:]]*" | as_postfix "module\\." | \
@@ -25,57 +30,70 @@ builtin_loader() {
     if [ -n "$(table_subset "python\\..*")" ]; then
     # if [ -n "$(table_subset "python")" ]; then
         echo "$ENVE_HOME/enve/core/pyvenv"
+        # core_out_module common 300 "$ENVE_HOME/enve/core/pyvenv"
     fi
     if [ -n "$(table_subset "nodejs\\..*")" ]; then
     # if [ -n "$(table_subset "nodejs")" ]; then
         echo "$ENVE_HOME/enve/core/nodejs"
+        # core_out_module common 310 "$ENVE_HOME/enve/core/nodejs"
     fi
     if [ -n "$(table_subset "ruby\\..*")" ]; then
     # if [ -n "$(table_subset "ruby")" ]; then
         echo "$ENVE_HOME/enve/core/ruby"
+        # core_out_module common 320 "$ENVE_HOME/enve/core/ruby"
     fi
+    # if [ -n "$(table_subset "oh-my-zsh\\..*")" ]; then
+    #     echo "$ENVE_HOME/enve/core/oh-my-zsh"
+    # fi
     # echo "$TABLE" >&2
     # echo "$(table_subset "module" )" >&2
     # echo "$(table_subset "module" | as_value)" >&2
-    
+
     { table_subset "module" | as_value || true; } | \
     while read -r value; do
         # echo o${value}o >&2
         if [ -d "$ENVE_HOME/enve/core/$value" ]; then
+            # core_out_module common 500 "$ENVE_HOME/enve/core/$value"
             echo "$ENVE_HOME/enve/core/$value"
             # return 0
         elif [ -d "$ENVE_HOME/enve/contrib/$value" ]; then
+            # core_out_module common 600 "$ENVE_HOME/enve/contrib/$value"
             echo "$ENVE_HOME/enve/contrib/$value"
             # return 0
         elif [ -d "$(resolve_path "$value")" ]; then
+            # core_out_module common 700 "$value"
             echo "$value"
             # return 0
         fi
     done
 }
 
-path_loader() {
-    table_subset "module\\.[[:alnum:]]*\\.path" | as_postfix "module\\." | {
-        while IFS="${tab}" read -r name value; do
-            name="${name%.path}"
-            path="$(resolve_path "$value")"
-            if [ -d "$path" ]; then
-                echo "$path"
-                return 0
-            fi
-        done
-    } || return 0
-}
+# path_loader() {
+#     table_subset "module\\.[[:alnum:]]*\\.path" | as_postfix "module\\." | {
+#         while IFS="${tab}" read -r name value; do
+#             name="${name%.path}"
+#             path="$(resolve_path "$value")"
+#             if [ -d "$path" ]; then
+#                 echo "$path"
+#                 return 0
+#             fi
+#         done
+#     } || return 0
+# }
 
 self_loader() {
     # (
-        normalize "$ENVE_HOME/enve"
+        normalize "$ENVE_HOME/enve/core/base"
+        normalize "$ENVE_HOME/enve/core/term"
     # )
+    # core_out_module common 0 "$ENVE_HOME/enve"
 }
 
-echo "IN $0" >&2
-TABLE=$(cat)
-builtin_loader
-path_loader
-self_loader
-echo "OUT $0" >&2
+main() {
+    info "IN $(basename $ZERO)/enve.loader"
+    TABLE=$(cat "${configfile:--}")
+    self_loader
+    builtin_loader
+    # path_loader
+    info "OUT $(basename $ZERO)/enve.loader"
+}

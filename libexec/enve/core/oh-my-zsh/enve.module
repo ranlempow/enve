@@ -1,0 +1,373 @@
+#!/usr/bin/env bash
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+# shellcheck source=libexec/enve/urlutils
+. "$ENVE_HOME/enve/urlutils"
+settrace
+
+. "$ZERO/gitrepourl.sh"
+
+
+add_fpath() {
+    # Add the directory to ZGEN_COMPLETIONS array if not present
+    # if [[ ! "${ZSH_COMPLETIONS[@]}" =~ ${1} ]]; then
+    if [ "${ZSH_COMPLETIONS%"$newl$1$newl"*}" = "${ZSH_COMPLETIONS}" ]; then
+        # ZSH_COMPLETIONS+=("${1}")
+        ZSH_COMPLETIONS="${ZSH_COMPLETIONS}$1$newl"
+    fi
+}
+
+add_module() {
+    if [ "${ZSH_LOADED%"$newl$1$newl"*}" = "${ZSH_LOADED}" ]; then
+        ZSH_LOADED="${ZSH_LOADED}$1$newl"
+        completion_path="$(dirname "$1")"
+        add_fpath "${completion_path}"
+    fi
+}
+
+add_plugin() {
+    if [ "${ZSH_PLUGINS%"$newl$1$newl"*}" = "${ZSH_PLUGINS}" ]; then
+        ZSH_PLUGINS="${ZSH_PLUGINS}$1$newl"
+
+        # TODO: autojump
+        # if [ "$1" = autojump ]; then
+        #     $ENV_ROOT/share/zsh/site-functions/autojump.zsh
+        # fi
+        # $ENV_ROOT/bash-completion/completions/autojump.bash
+    fi
+}
+
+
+loadone() {
+    if [ "$#" = 0 ]; then
+        echo '`load` requires at least one parameter:' >&2
+        echo '`zgen load <repo>[#branch] [location]`' >&2
+    elif [ "${1%%/*}" = "$1" ]; then
+        # $1 not contain slash
+        add_plugin "$1"
+        return 0
+    elif [ "$#" = 1 ] &&  { [ "${1%"${1#?}"}" = '/' ] || \
+                            [ "${1%"${1#?}"}" = '.' ]; }; then
+        location="${1}"
+    else
+        repo="${1}"
+        file="${2:-}"
+        # local branch="${3:-master}"
+        # local dir="$(-zgen-get-clone-dir ${repo} ${branch})"
+        dir=$(catalog=zsh fetch "$(gitrepourl "$repo")" %cache dir)
+        location="${dir}/${file}"
+        location=${location%/}
+    fi
+
+
+    # source the file
+    if [ -f "${location}" ]; then
+        add_module "${location}"
+
+    elif [ -f "${location}.zsh-theme" ]; then
+        add_module "${location}.zsh-theme"
+
+    elif [ -f "${location}.theme.zsh" ]; then
+        add_module "${location}.theme.zsh"
+
+    elif [ -f "${location}.zshplugin" ]; then
+        add_module "${location}.zshplugin"
+
+    elif [ -f "${location}.zsh.plugin" ]; then
+        add_module "${location}.zsh.plugin"
+
+    # Classic oh-my-zsh plugins have foo.plugin.zsh
+    elif [ "$(for f in "${location}/"*.plugin.zsh; do echo $f; done)" \
+            != "${location}/*.plugin.zsh" ]; then
+        for script in "${location}/"*.plugin.zsh; do
+            add_module $script
+        done
+    # elif -zgen-path-contains "${location}" ".plugin.zsh" ; then
+    #     for script (${location}/*\.plugin\.zsh(N)) add_module "${script}"
+
+    # elif -zgen-path-contains "${location}" ".zsh" ; then
+    #     for script (${location}/*\.zsh(N)) add_module "${script}"
+
+    # elif -zgen-path-contains "${location}" ".sh" ; then
+    #     for script (${location}/*\.sh(N)) add_module "${script}"
+
+    # Completions
+    elif [ -d "${location}" ]; then
+        add_fpath "${location}"
+    else
+        if [ -d ${dir:-$location} ]; then
+            echo "Failed to load ${dir:-$location} -- ${file}" >&2
+        else
+            echo "Failed to load ${dir:-$location}" >&2
+        fi
+    fi
+}
+
+
+
+# prompt_pure_set_title() {
+#     setopt localoptions noshwordsplit
+
+#     # emacs terminal does not support settings the title
+#     (( ${+EMACS} )) && return
+
+#     case $TTY in
+#         # Don't set title over serial console.
+#         /dev/ttyS[0-9]*) return;;
+#     esac
+
+#     # Show hostname if connected via ssh.
+#     local hostname=
+#     if [[ -n $prompt_pure_state[username] ]]; then
+#         # Expand in-place in case ignore-escape is used.
+#         hostname="${(%):-(%m) }"
+#     fi
+
+#     local -a opts
+#     case $1 in
+#         expand-prompt) opts=(-P);;
+#         ignore-escape) opts=(-r);;
+#     esac
+
+#     # Set title atomically in one print statement so that it works
+#     # when XTRACE is enabled.
+#     print -n $opts $'\e]0;'${hostname}${2}$'\a'
+# }
+
+# function title {
+#   emulate -L zsh
+#   setopt prompt_subst
+
+#   [[ "$EMACS" == *term* ]] && return
+
+#   # if $2 is unset use $1 as default
+#   # if it is set and empty, leave it as is
+#   : ${2=$1}
+
+#   case "$TERM" in
+#     cygwin|xterm*|putty*|rxvt*|ansi)
+#       print -Pn "\e]2;$2:q\a" # set window name
+#       print -Pn "\e]1;$1:q\a" # set tab name
+#       ;;
+#     screen*)
+#       print -Pn "\ek$1:q\e\\" # set screen hardstatus
+#       ;;
+#     *)
+#       if [[ "$TERM_PROGRAM" == "iTerm.app" ]]; then
+#         print -Pn "\e]2;$2:q\a" # set window name
+#         print -Pn "\e]1;$1:q\a" # set tab name
+#       else
+#         # Try to use terminfo to set the title
+#         # If the feature is available set title
+#         if [[ -n "$terminfo[fsl]" ]] && [[ -n "$terminfo[tsl]" ]]; then
+#           echoti tsl
+#           print -Pn "$1"
+#           echoti fsl
+#         fi
+#       fi
+#       ;;
+#   esac
+# }
+
+# new-session [-AdDEP] [-c start-directory] [-F format] [-n window-name] [-s session-name] [-t
+#              group-name] [-x width] [-y height] [shell-command]
+# tmux new -dP sh
+#   -d  The new session is attached to the current terminal unless -d is given.
+#   -P  The -P option prints information about the new session after it has been created.
+#   -2            Force tmux to assume the terminal supports 256 colours.
+#   -u  the -u flag explicitly informs tmux that UTF-8 is supported.
+
+
+# TODO: hook sindresorhus/pure
+# ./pure.zsh line 117
+# -------------------
+# # Set the path.
+# preprompt_parts+=('%F{blue}%~%f')
+#
+# ./pure.zsh line 97 (prompt_pure_preexec)
+# -------------------
+# # shows the current dir and executed command in the title while a process is active
+# prompt_pure_set_title 'ignore-escape' "$PWD:t: $2"
+#
+# ./pure.zsh line 174 (prompt_pure_precmd)
+# -------------------
+# # shows the full path in the title
+# prompt_pure_set_title 'expand-prompt' '%~'
+#
+# ./pure.zsh line 180 (prompt_pure_precmd)
+# -------------------
+# # Check if we should display the virtual env, we use a sufficiently high
+# # index of psvar (12) here to avoid collisions with user defined entries.
+# psvar[12]=
+# # Check if a conda environment is active and display it's name
+# if [[ -n $CONDA_DEFAULT_ENV ]]; then
+#     psvar[12]="${CONDA_DEFAULT_ENV//[$'\t\r\n']}"
+# fi
+
+
+
+# prompt_set_title() {
+#     [ -n "${EMACS:-}" ] && return
+#     case $TTY in
+#         # Don't set title over serial console.
+#         /dev/ttyS[0-9]*) return;;
+#     esac
+
+#     printf $'\e]1;'${hostname}${2}$'\a'
+#     printf $'\e]2;'${hostname}${2}$'\a'
+
+# }
+
+
+get_zsh(){
+    if [ -z "${ZGEN_OH_MY_ZSH_REPO:-}" ]; then
+        ZGEN_OH_MY_ZSH_REPO=robbyrussell
+    fi
+
+    if [ "${ZGEN_OH_MY_ZSH_REPO##*/}" = "${ZGEN_OH_MY_ZSH_REPO}" ]; then
+        ZGEN_OH_MY_ZSH_REPO="${ZGEN_OH_MY_ZSH_REPO}/oh-my-zsh"
+    fi
+    if [ -z "${ZGEN_OH_MY_ZSH_BRANCH:-}" ]; then
+        ZGEN_OH_MY_ZSH_BRANCH=master
+    fi
+    # echo "$ZGEN_OH_MY_ZSH_REPO#$ZGEN_OH_MY_ZSH_BRANCH" >&2
+    # echo xxxx
+    # echo "$(gitrepourl "$ZGEN_OH_MY_ZSH_REPO#$ZGEN_OH_MY_ZSH_BRANCH")"
+    FASTRUN=true catalog=zsh fetch "$(gitrepourl "$ZGEN_OH_MY_ZSH_REPO#$ZGEN_OH_MY_ZSH_BRANCH")" %cache dir
+    echo "$dest"
+}
+
+gencode() {
+    ZSH=
+#     loaded=$(table_subset "module\.loaded" | as_value)
+#     while read -r module; do
+#         if [ -f "$module/oh-my-zsh.sh" ]; then
+#             ZSH="$module"
+#         fi
+#     done <<EOF
+# $loaded
+# EOF
+    ZSH=$(get_zsh)
+    if [ -z "$ZSH" ]; then
+        _error "oh-my-zsh.sh not found"
+        return 1
+    fi
+
+    ZSH_LOADED="$newl"
+    ZSH_COMPLETIONS="$newl"
+    ZSH_PLUGINS="$newl"
+    imports=$(table_subset "oh-my-zsh\\.plugins" | as_value)
+    if [ -n "$imports" ]; then
+        while read -r imp; do
+            # FASTRUN=true catalog=zsh fetch "$(gitrepourl "$imp")" %cache dir
+            loadone "$imp"
+        done <<EOF
+$imports
+EOF
+    fi
+    ZSH_LOADED=${ZSH_LOADED#"$newl"}
+    ZSH_COMPLETIONS=${ZSH_COMPLETIONS#"$newl"}
+    ZSH_PLUGINS=${ZSH_PLUGINS#"$newl"}
+    ZSH_LOADED=${ZSH_LOADED%"$newl"}
+    ZSH_COMPLETIONS=${ZSH_COMPLETIONS%"$newl"}
+    ZSH_PLUGINS=${ZSH_PLUGINS%"$newl"}
+
+    out_code zsh 'if [ -n "$ZSH_VERSION" ]; then'
+
+    out_code zsh 'DISABLE_AUTO_UPDATE="true"'
+    out_code zsh 'DISABLE_AUTO_TITLE="true"'
+
+    out_code zsh 'ZSH='"$ZSH"
+    out_code zsh 'eval "plugins=()"'
+
+    if [ -n "$ZSH_PLUGINS" ]; then
+        while read -r plugin; do
+            # out_code "plugins+='$plugin'"
+            out_code zsh "__t='$plugin'"
+            out_code zsh 'eval "plugins+=\$__t"'
+            out_code zsh 'unset __t'
+        done <<EOF
+$ZSH_PLUGINS
+EOF
+    fi
+    out_code zsh 'source $ZSH/oh-my-zsh.sh'
+
+    out_code zsh 'eval "LOADED_PLUGINS=()"'
+    if [ -n "$ZSH_LOADED" ]; then
+        while read -r file; do
+            # maybe follow Zsh-Plugin-Standard?
+            # http://zdharma.org/Zsh-100-Commits-Club/Zsh-Plugin-Standard.html
+            # LOADED_PLUGINS is means 'user/plugin' ?
+
+            out_code zsh "__t='$(dirname "$file")'"
+            out_code zsh 'eval "LOADED_PLUGINS+=\$__t"'
+            out_code zsh 'unset __t'
+            out_code zsh 'ZERO='\'"${file}"\'' source '\'"${file}"\'
+
+        done <<EOF
+$ZSH_LOADED
+EOF
+    fi
+    out_code zsh 'unset LOADED_PLUGINS'
+
+    # Set up fpath, load completions
+    # NOTE: This *intentionally* doesn't use ${ZGEN_COMPINIT_FLAGS}; the only
+    #       available flags are meaningless in the presence of `-C`.
+    out_code zsh ""
+    out_code zsh "# ### Plugins & Completions"
+    # -zginit 'fpath=('"${(@q)ZGEN_COMPLETIONS}"' '\$fpath')'
+    if [ -n "$ZSH_COMPLETIONS" ]; then
+        while read -r comp; do
+            out_code zsh "__t='$comp'"
+            out_code zsh 'eval "fpath+=\$__t"'
+            out_code zsh 'unset __t'
+        done <<EOF
+$ZSH_COMPLETIONS
+EOF
+    fi
+
+    ZGEN_COMPINIT_DIR_FLAG=
+    # if [[ ${ZGEN_AUTOLOAD_COMPINIT} == 1 ]]; then
+    out_code zsh ''
+    # shellcheck disable=1003
+    out_code zsh 'autoload -Uz compinit && \'
+    out_code zsh '   compinit -C '"${ZGEN_COMPINIT_DIR_FLAG}"
+    # fi
+
+
+    out_code zsh "# Alt+Left/Right to move by whole words."
+    out_code zsh "bindkey '^[[1;3C' forward-word"
+    out_code zsh "bindkey '^[[1;3D' backward-word"
+
+    out_code zsh "# Same with Shift pressed."
+    out_code zsh "bindkey '^[[1;4C' forward-word"
+    out_code zsh "bindkey '^[[1;4D' backward-word"
+
+    out_code zsh "# Alt+Backspace to delete words before cursor"
+    out_code zsh "bindkey '\\e^?' backward-kill-word"
+    out_code zsh "bindkey '\\ew' backward-kill-word"
+
+    out_code zsh "# Home/End to go beginning and end of line"
+    out_code zsh "bindkey '^[[H' beginning-of-line"
+    out_code zsh "bindkey '^[[F' end-of-line"
+
+    out_code zsh "# Alt+. to repeat last command words"
+    out_code zsh "bindkey '^[.' insert-last-word"
+
+    out_code zsh 'fi'
+
+    out_var CONDA_DEFAULT_ENV "$(table_tail "PRJ_NAME")"
+}
+
+main() {
+    info "IN $(basename $ZERO)/enve.module"
+    TABLE=$(cat)
+    [ -n "$TABLE" ] && echo "$TABLE"
+    gencode
+    info "OUT $(basename $ZERO)/enve.module"
+}

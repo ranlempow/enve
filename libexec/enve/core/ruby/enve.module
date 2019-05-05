@@ -1,130 +1,341 @@
 #!/usr/bin/env bash
-set -euo pipefail
-. "$1" define
 
-echo IN $0 >&2
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
 
-prepare_hashstore() {
-    path="$1"
-    if [ -z "$path" ] || [ "$path" = "/" ]; then
-        return 0
-    fi
-    if [ -e "$path.processing" ]; then
-        rm -rf "$path"
-    fi
-    touch "$path.processing"
-}
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/envelib"
 
-commit_hashstore() {
-    if [ -z "$path" ] || [ "$path" = "/" ]; then
-        return 0
-    fi
-    if [ -n "$path" ]; then
-        if [ -e "${path}" ]; then
-            rm -rf "$path.processing"
-        fi
-    fi
-}
+settrace
 
 
 
-create_env() {
-    set -euo pipefail
+# prepare_hashstore() {
+#     path="$1"
+#     if [ -z "$path" ] || [ "$path" = "/" ]; then
+#         return 0
+#     fi
+#     if [ -e "$path.processing" ]; then
+#         rm -rf "$path"
+#     fi
+#     touch "$path.processing"
+# }
+
+# commit_hashstore() {
+#     if [ -z "$path" ] || [ "$path" = "/" ]; then
+#         return 0
+#     fi
+#     if [ -n "$path" ]; then
+#         if [ -e "${path}" ]; then
+#             rm -rf "$path.processing"
+#         fi
+#     fi
+# }
+
+
+
+# create_env() {
+#     set -euo pipefail
+#     stage=$1
+#     gem_exec="$2"
+#     bundler_exec="$3"
+#     requires="$4"
+#     gemsource="$5"
+
+#     gemfile="$RUBY_TMP/stage$stage/Gemfile"
+#     mkdir -p "$(dirname "$gemfile")"
+#     echo "source 'https://rubygems.org'" > "$gemfile"
+#     # echo "requires: $requires" >&2
+#     echo "$requires" | while read -r name ver; do
+#         if [ -n "$name" ]; then
+#             echo "gem: $name, version :${ver:-}" >&2
+#             echo "gem '$name'${ver:+, '$ver'}" >> "$gemfile"
+#         fi
+#     done
+#     echo "$gemsource" >> "$gemfile"
+
+#     echo "bundler_exec: $bundler_exec" >&2
+#     if [ -n "$bundler_exec" ]; then
+#         echo "bundler version: $(eval $bundler_exec --version)" >&2
+#     fi
+
+#     reqhash=$(
+#         cd "$(dirname "$gemfile")"
+#         rm -rf "$gemfile.lock"
+#         if [ -n "$bundler_exec" ]; then
+#             eval $bundler_exec lock >&2
+#             shasum -a 256 --text "$gemfile.lock" | awk '{ print $1 }'
+#         else
+#             shasum -a 256 --text "$gemfile" | awk '{ print $1 }'
+#         fi
+#     )
+
+#     echo "reqhash: $reqhash" >&2
+
+#     THE_GEM_HOME="$RUBY_TMP/venvs/$reqhash"
+#     mkdir -p "$RUBY_TMP/venvs"
+#     if [ ! -e "$THE_GEM_HOME" ]; then
+#         prepare_hashstore "$THE_GEM_HOME"
+#         if [ -n "$bundler_exec" ]; then
+#             eval GEM_HOME="$THE_GEM_HOME" $bundler_exec install --gemfile="$gemfile" -V >&2
+#         else
+#             echo "$requires" | while read -r name ver; do
+#                 if [ -n "$name" ]; then
+#                     GEM_HOME="$THE_GEM_HOME" "$gem_exec" install $name ${ver:+--version $ver} -V >&2
+#                 fi
+#             done
+#         fi
+#         commit_hashstore "$THE_GEM_HOME"
+#     fi
+#     echo "$reqhash"
+# }
+
+# resolve_ruby() {
+#     TABLE=$(cat "${configfile:--}")
+#     echo "$TABLE"
+#     RUBY_TMP="$HOME/.cache/enve/ruby"
+#     mkdir -p "$RUBY_TMP"
+
+#     ruby_ver="$(table_tail "ruby\.version")" || ruby_ver=
+#     ruby_location="${RUBY_TMP}/rubies/$ruby_ver"
+#     if [ -n "$ruby_ver" ]; then
+#         if [ ! -e "$ruby_location" ]; then
+#             prepare_hashstore "$ruby_location"
+#             ruby-build $ruby_ver "$ruby_location" >&2
+#             commit_hashstore "$ruby_location"
+#         fi
+#         export PATH="$ruby_location/bin:$PATH"
+#         out_list PATH "$ruby_location/bin"
+#     fi
+
+#     gem_exec="$(which gem)"
+#     bundler_exec="$(which bundle)"
+
+#     bundler_ver="$(table_tail "ruby\.stage2\.bundler" || true )"
+#     if [ -n "$bundler_ver" ]; then
+#         reqhash2=$(create_env 2 "$gem_exec" "" "bundler ${bundler_ver}" "")
+#         bundler_exec="$RUBY_TMP/venvs/$reqhash2/gems/bundler-$bundler_ver/exe/bundle"
+#         bundler_exec="GEM_PATH=$RUBY_TMP/venvs/$reqhash2 $RUBY_TMP/venvs/$reqhash2/bin/bundle _${bundler_ver}_"
+#     fi
+
+
+#     reqhash=$(
+#         create_env 1 "$gem_exec" "$bundler_exec" \
+#             "
+# $({ table_subset "ruby\.require\.packages" | as_value || true; })
+# $({ table_subset "ruby\.require\.packages\..*" | as_postfix "ruby\.require\.packages\." || true; })" \
+#             "$({ table_subset "ruby\.gemfile" || true; })"
+#     )
+
+#     out_join GEM_PATH ':'
+#     out_list GEM_PATH "$RUBY_TMP/venvs/$reqhash"
+#     out_list PATH "$RUBY_TMP/venvs/$reqhash/bin"
+#     echo "END resolve_ruby" >&2
+# }
+
+
+
+create_env_two() {
     stage=$1
     gem_exec="$2"
     bundler_exec="$3"
     requires="$4"
     gemsource="$5"
 
-    gemfile="$RUBY_TMP/stage$stage/Gemfile"
-    mkdir -p "$(dirname "$gemfile")"
-    echo "source 'https://rubygems.org'" > "$gemfile"
-    # echo "requires: $requires" >&2
-    echo "$requires" | while read -r name ver; do
-        if [ -n "$name" ]; then
-            echo "gem: $name, version :${ver:-}" >&2
-            echo "gem '$name'${ver:+, '$ver'}" >> "$gemfile"
+    p_text() {
+        command -v ruby
+        echo "$stage"
+        echo "$requires"
+        echo "$gemsource"
+        echo "bundler_exec: $bundler_exec"
+        if [ -n "$bundler_exec" ]; then
+            echo "bundler version: $(eval $bundler_exec --version)"
         fi
-    done
-    echo "$gemsource" >> "$gemfile"
-
-    echo "bundler_exec: $bundler_exec" >&2
-    if [ -n "$bundler_exec" ]; then
-        echo "bundler version: $(eval $bundler_exec --version)" >&2
-    fi
-
-    reqhash=$(
-        cd "$(dirname "$gemfile")"
-        rm -rf "$gemfile.lock"
+    }
+    p_vaild() {
+        if [ ! -e "$CACHED/Gemfile.lock" ]; then
+            return 0
+        fi
+        # TODO: non-posix
+        current=$(date +%s)
+        last_modified=$(date -r "$CACHED/Gemfile.lock" +%s)
+        if [ $((current - last_modified)) -gt 1800 ]; then
+            return 0
+        fi
+        echo 1
+    }
+    p_make() {
+        echo "source 'https://rubygems.org'" > "$CACHED/Gemfile"
+        while read -r name ver; do
+            if [ -n "$name" ]; then
+                echo "gem: $name, version :${ver:-}" >&2
+                echo "gem '$name'${ver:+", '$ver'"}" >> "$CACHED/Gemfile"
+            fi
+        done <<EOF
+$requires
+EOF
+        echo "$gemsource" >> "$CACHED/Gemfile"
+        cd "$CACHED"
+        # rm -rf "$CACHED/Gemfile.lock"
         if [ -n "$bundler_exec" ]; then
             eval $bundler_exec lock >&2
-            shasum -a 256 --text "$gemfile.lock" | awk '{ print $1 }'
         else
-            shasum -a 256 --text "$gemfile" | awk '{ print $1 }'
+            :
+            # cp "$CACHED/Gemfile" "$CACHED/Gemfile.lock"
         fi
-    )
+        # echo "$requires" > "$CACHED/req.in"
+        # "$pipc_exec" --rebuild --verbose "$CACHED/req.in" >&2
+    }
+    catalog=gemfile cache_path "Gemfile" p_text p_make p_vaild
+    gemfile=$cached_path
+    cached_path=
 
-    echo "reqhash: $reqhash" >&2
 
-    THE_GEM_HOME="$RUBY_TMP/venvs/$reqhash"
-    mkdir -p "$RUBY_TMP/venvs"
-    if [ ! -e "$THE_GEM_HOME" ]; then
-        prepare_hashstore "$THE_GEM_HOME"
+
+
+
+    # gemfile="$RUBY_TMP/stage$stage/Gemfile"
+    # mkdir -p "$(dirname "$gemfile")"
+    # echo "source 'https://rubygems.org'" > "$gemfile"
+    # # echo "requires: $requires" >&2
+    # echo "$requires" | while read -r name ver; do
+    #     if [ -n "$name" ]; then
+    #         echo "gem: $name, version :${ver:-}" >&2
+    #         echo "gem '$name'${ver:+, '$ver'}" >> "$gemfile"
+    #     fi
+    # done
+    # echo "$gemsource" >> "$gemfile"
+
+
+    # reqhash=$(
+    #     cd "$(dirname "$gemfile")"
+    #     rm -rf "$gemfile.lock"
+    #     if [ -n "$bundler_exec" ]; then
+    #         eval $bundler_exec lock >&2
+    #         shasum -a 256 --text "$gemfile.lock" | awk '{ print $1 }'
+    #     else
+    #         shasum -a 256 --text "$gemfile" | awk '{ print $1 }'
+    #     fi
+    # )
+
+    # echo "reqhash: $reqhash" >&2
+
+    p_text() {
+        if [ -e "$gemfile.lock" ]; then
+            cat "$gemfile.lock"
+        else
+            cat "$gemfile"
+        fi
+    }
+    p_vaild() {
+        echo 1
+    }
+    p_make() {
         if [ -n "$bundler_exec" ]; then
-            eval GEM_HOME="$THE_GEM_HOME" $bundler_exec install --gemfile="$gemfile" -V >&2
+            eval GEM_HOME="$CACHED" $bundler_exec install --gemfile="$gemfile" -V >&2
         else
-            echo "$requires" | while read -r name ver; do
+            while read -r name ver; do
                 if [ -n "$name" ]; then
-                    GEM_HOME="$THE_GEM_HOME" "$gem_exec" install $name ${ver:+--version $ver} -V >&2
+                    GEM_HOME="$CACHED" "$gem_exec" install $name ${ver:+--version $ver} -V >&2
                 fi
-            done
+            done <<EOF
+$requires
+EOF
+        GEM_HOME="$CACHED" "$gem_exec" install bundler
+        GEM_HOME="$CACHED" "$gem_exec" pristine --all
         fi
-        commit_hashstore "$THE_GEM_HOME"
-    fi
-    echo "$reqhash"
+    }
+    catalog=rbvenv cache_path "." p_text p_make p_vaild "non-mv-lock"
+    echo "$cached_path"
+
+    # THE_GEM_HOME="$RUBY_TMP/venvs/$reqhash"
+    # mkdir -p "$RUBY_TMP/venvs"
+    # if [ ! -e "$THE_GEM_HOME" ]; then
+    #     prepare_hashstore "$THE_GEM_HOME"
+    #     if [ -n "$bundler_exec" ]; then
+    #         eval GEM_HOME="$THE_GEM_HOME" $bundler_exec install --gemfile="$gemfile" -V >&2
+    #     else
+    #         echo "$requires" | while read -r name ver; do
+    #             if [ -n "$name" ]; then
+    #                 GEM_HOME="$THE_GEM_HOME" "$gem_exec" install $name ${ver:+--version $ver} -V >&2
+    #             fi
+    #         done
+    #     fi
+    #     commit_hashstore "$THE_GEM_HOME"
+    # fi
+    # echo "$reqhash"
 }
 
-resolve_ruby() {
-    TABLE=$(cat "${configfile:--}")
-    echo "$TABLE"
-    RUBY_TMP="$HOME/.cache/enve/ruby"
-    mkdir -p "$RUBY_TMP"
+resolve_ruby_two() {
+    # TABLE=$(cat "${configfile:--}")
+    # echo "$TABLE"
+    # RUBY_TMP="$HOME/.cache/enve/ruby"
+    # mkdir -p "$RUBY_TMP/rubies/"
 
-    ruby_ver="$(table_tail "ruby\.version")" || ruby_ver=
-    ruby_location="${RUBY_TMP}/rubies/$ruby_ver"
+    ruby_ver="$(table_tail "ruby\\.version")" || ruby_ver=
+    # ruby_location="${RUBY_TMP}/rubies/$ruby_ver"
+    # if [ -n "$ruby_ver" ]; then
+    #     if [ ! -e "$ruby_location" ]; then
+    #         prepare_hashstore "$ruby_location"
+    #         ruby-build $ruby_ver "$ruby_location" >&2
+    #         commit_hashstore "$ruby_location"
+    #     fi
+    #     export PATH="$ruby_location/bin:$PATH"
+    #     out_list PATH "$ruby_location/bin"
+    # fi
+
     if [ -n "$ruby_ver" ]; then
-        if [ ! -e "$ruby_location" ]; then
-            prepare_hashstore "$ruby_location"
-            ruby-build $ruby_ver "$ruby_location" >&2
-            commit_hashstore "$ruby_location"
-        fi
-        export PATH="$ruby_location/bin:$PATH"
-        out_list PATH "$ruby_location/bin"
+        p_text() {
+            echo "$ruby_ver"
+        }
+        p_vaild() {
+            echo 1
+        }
+        p_make() {
+            ruby-build $ruby_ver "$CACHED" >&2
+        }
+        catalog=rubies cache_path "bin" p_text p_make p_vaild "non-mv-lock"
+        export PATH="$cached_path:$PATH"
+        out_list PATH "$cached_path"
     fi
 
-    gem_exec="$(which gem)"
-    bundler_exec="$(which bundle)"
+    gem_exec="$(command -v gem)"
 
-    bundler_ver="$(table_tail "ruby\.stage2\.bundler" || true )"
+    bundler_ver="$(table_tail "ruby\\.stage2\\.bundler" || true )"
     if [ -n "$bundler_ver" ]; then
-        reqhash2=$(create_env 2 "$gem_exec" "" "bundler ${bundler_ver}" "")
-        bundler_exec="$RUBY_TMP/venvs/$reqhash2/gems/bundler-$bundler_ver/exe/bundle"
-        bundler_exec="GEM_PATH=$RUBY_TMP/venvs/$reqhash2 $RUBY_TMP/venvs/$reqhash2/bin/bundle _${bundler_ver}_"
+        reqhash2=$(create_env_two 2 "$gem_exec" "" "bundler ${bundler_ver}" "")
+        bundler_exec="$reqhash2/gems/bundler-$bundler_ver/exe/bundle"
+        bundler_exec="GEM_PATH=$reqhash2 $reqhash2/bin/bundle _${bundler_ver}_"
+    else
+        bundler_exec="$(command -v bundle)"
     fi
 
-    
+
     reqhash=$(
-        create_env 1 "$gem_exec" "$bundler_exec" \
+        create_env_two 1 "$gem_exec" "$bundler_exec" \
             "
-$({ table_subset "ruby\.require\.packages" | as_value || true; })
-$({ table_subset "ruby\.require\.packages\..*" | as_postfix "ruby\.require\.packages\." || true; })" \
-            "$({ table_subset "ruby\.gemfile" || true; })"
+$({ table_subset "ruby\\.require\\.packages" | as_value || true; })
+$({ table_subset "ruby\\.require\\.packages\\..*" | as_postfix "ruby\\.require\\.packages\\." || true; })" \
+            "$({ table_subset "ruby\\.gemfile" || true; })"
     )
 
     out_join GEM_PATH ':'
-    out_list GEM_PATH "$RUBY_TMP/venvs/$reqhash"
-    out_list PATH "$RUBY_TMP/venvs/$reqhash/bin"
-    echo "END resolve_ruby" >&2
+    out_list GEM_PATH "$reqhash"
+    out_list PATH "$reqhash/bin"
+
+    # echo "END resolve_ruby" >&2
 }
 
-resolve_ruby
+
+
+main() {
+    info "IN $(basename $ZERO)/enve.module"
+    TABLE=$(cat)
+    [ -n "$TABLE" ] && echo "$TABLE"
+    resolve_ruby_two
+    info "OUT $(basename $ZERO)/enve.module"
+}
+
+if [ "${TEST:-}" != "test" ]; then
+    main
+fi

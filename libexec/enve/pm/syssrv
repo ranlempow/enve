@@ -1,4 +1,4 @@
-#!/usr/bin/env dash
+#!/bin/sh
 
 # http://www.launchd.info/
 
@@ -23,7 +23,7 @@ service <service> stop
 cygrunsrv --stop <svc_name>
 launchctl stop com.example.app
 /etc/init.d/<service> stop
-systemctl stop <service>    
+systemctl stop <service>
 
 service <service> restart
 /etc/init.d/<service> restart
@@ -38,7 +38,7 @@ systemctl status <service>
 cygrunsrv --install svc_name --path /cygwin/style/path/to/daemon.exe --args "<args>" --user <user name> --passwd <password>
 launchctl load -w ~/Library/LaunchAgents/com.example.app.plist
 rc-update add <service> <runlevel>
-systemctl enable <service>  
+systemctl enable <service>
 
 [edit /etc/rc.conf <service>_enable="NO"]
 cygrunsrv --remove <svc_name>
@@ -57,7 +57,7 @@ ls /etc/init.d/|rc-update -v show
 systemctl list-unit-files --type=service
 
 
-systemctl kill <service> 
+systemctl kill <service>
 journalctl _SYSTEMD_UNIT=<service>.service
 '
 
@@ -177,11 +177,11 @@ sysvinit_detect() {
 }
 
 sysvinit_enable() {
-    ln -s /etc/init.d/$service /etc/rc.d/rc{2,3,4}.d/S90$service 
+    ln -s /etc/init.d/$service /etc/rc.d/rc{2,3,4}.d/S90$service
 }
 
 sysvinit_disable() {
-    rm /etc/rc.d/rc{2,3,4}.d/S90$service 
+    rm /etc/rc.d/rc{2,3,4}.d/S90$service
 }
 
 sysvinit_create() {
@@ -200,35 +200,36 @@ ARGS=
 PID=$(get_pid $DAEMON)
 
 case "$1" in
- start)
-   stat_busy "Starting $DAEMON"
-   [ -z "$PID" ] && $DAEMON $ARGS &>/dev/null
-   if [ $? = 0 ]; then
-     add_daemon $DAEMON
-     stat_done
-   else
-     stat_fail
-     exit 1
-   fi
-   ;;
- stop)
-   stat_busy "Stopping $DAEMON"
-   [ -n "$PID" ] && kill $PID &>/dev/null
-   if [ $? = 0 ]; then
-     rm_daemon $DAEMON
-     stat_done
-   else
-     stat_fail
-     exit 1
-   fi
-   ;;
- restart)
-   $0 stop
-   sleep 1
-   $0 start
-   ;;
- *)
-   echo "usage: $0 {start|stop|restart}"  
+    start)
+        stat_busy "Starting $DAEMON"
+        [ -z "$PID" ] && $DAEMON $ARGS &>/dev/null
+        if [ $? = 0 ]; then
+            add_daemon $DAEMON
+            stat_done
+        else
+            stat_fail
+            exit 1
+        fi
+    ;;
+    stop)
+        stat_busy "Stopping $DAEMON"
+        [ -n "$PID" ] && kill $PID &>/dev/null
+        if [ $? = 0 ]; then
+            rm_daemon $DAEMON
+            stat_done
+        else
+            stat_fail
+            exit 1
+        fi
+    ;;
+    restart)
+        $0 stop
+        sleep 1
+        $0 start
+    ;;
+    *)
+        echo "usage: $0 {start|stop|restart}"
+    ;;
 esac
 EOF
 }
@@ -304,7 +305,7 @@ cygrunsrv_create() {
     cygrunsrv --install $service \
         --path /cygwin/style/path/to/daemon.exe \
         --args "<args>" \
-        --user <user name> --passwd <password>
+        --user "<user name>" --passwd "<password>"
 }
 
 cygrunsrv_remove='cygrunsrv --remove $service'

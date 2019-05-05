@@ -59,9 +59,10 @@ fi
 
 install -d -m 755 "$PREFIX"/{bin,"$LIBEXEC_DIR"/enve,share/man/man{1,7}}
 install -m 755 "$ENVE_ROOT"/bin/* "$PREFIX"/bin
-install -m 755 "$ENVE_ROOT"/libexec/enve/* "$PREFIX/$LIBEXEC_DIR"/enve
-install -m 744 "$ENVE_ROOT"/man/*.1 "$PREFIX"/share/man/man1
-install -m 744 "$ENVE_ROOT"/man/*.7 "$PREFIX"/share/man/man7
+# install -m 755 "$ENVE_ROOT"/libexec/enve/* "$PREFIX/$LIBEXEC_DIR"/enve
+cp -R "$ENVE_ROOT"/libexec/enve "$PREFIX/$LIBEXEC_DIR"/enve
+# install -m 644 "$ENVE_ROOT"/man/*.1 "$PREFIX"/share/man/man1
+# install -m 644 "$ENVE_ROOT"/man/*.7 "$PREFIX"/share/man/man7
 # install -Dm644 "$ENVE_ROOT"/LICENSE" "$PREFIX"/share/licenses/enve/LICENSE
 
 echo "Installed Enve to $PREFIX/bin/enve"

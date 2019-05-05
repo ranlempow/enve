@@ -47,7 +47,7 @@ setup() {
     [ "$(cat b/1)" = "bingo" ]
     [ "$(cat c/1)" = "bingo" ]
     [ "$(cat aa/a/1)" = "bingo" ]
-    [ "$(cat aaa/aa/a/1)" = "bingo" ]   
+    [ "$(cat aaa/aa/a/1)" = "bingo" ]
 
     [ -L badfile ]
     [ -L baddir ]
@@ -76,7 +76,7 @@ setup() {
     [ "$(normalize "./a/../..")" = ".." ]
     [ "$(normalize "./a/../../..")" = "../.." ]
     [ "$(normalize "a/..")" = "." ]
-    
+
 }
 
 
