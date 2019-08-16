@@ -1,0 +1,90 @@
+.\" generated with Ronn/v0.7.3
+.\" http://github.com/rtomayko/ronn/tree/0.7.3
+.
+.TH "ENVE\-CONFIG" "5" "August 2019" "" ""
+.
+.SH "NAME"
+\fBenve\-config\fR \- configure file syntax
+.
+.SH "對設定檔求值概念"
+為了要定義一個執行環境，使用者必須編寫一個設定檔，在這個設定檔裡會指出環境中要有怎麼樣的要素與配置。
+.
+.P
+\fIenve\fR在執行之前會對一個table檔案進行求值。
+.
+.P
+\fBeval(enve設定檔) \-> Key value table\fR
+.
+.SH "ENVE Role"
+.
+.SH "求值時的依賴（Dependency On Evaluation）"
+這裡說的依賴是對相關檔案的依賴
+.
+.SH "以鍵值為基礎的設定檔語法"
+以每一行 \fBKEY=VALUE\fR 這樣的形式呈現。 \fB=\fR也必須緊接著\fBVALUE\fR，中間不能混有其它字元，即使是空白也不行。 \fBKEY\fR與\fB=\fR之間可以有空白，這讓此語法更便於排版。 \fBKEY\fR可以含有英文大小寫、數字與特定的符號字元。 \fBVALUE\fR可以含有任何字元除了\fB\en\ef\fR。
+.
+.P
+\fBKEY\fR可以用\fB\.\fR當作分隔，像性質相近的\fBKEY\fR組織成一個小段。
+.
+.IP "" 4
+.
+.nf
+
+core\.api\.exec=1
+core\.api\.cmd=2
+.
+.fi
+.
+.IP "" 0
+.
+.P
+以上的設定檔可以替換成\fB[SECTION]\fR為開頭的一個小段。
+.
+.IP "" 4
+.
+.nf
+
+[core\.api]
+exec=1
+cmd=2
+.
+.fi
+.
+.IP "" 0
+.
+.P
+每個鍵值的求值有順序分別，越尾段的鍵值越晚求值。 所以當有重複賦值的時候，後面的值會覆蓋前面的值。
+.
+.IP "" 4
+.
+.nf
+
+var\.a=1
+var\.a=2
+.
+.fi
+.
+.IP "" 0
+.
+.P
+整個設定檔求值之後\fBvar\.a\fR的值是\fB2\fR。
+.
+.P
+有些\fBKEY\fR是用來表示一個列表，在這種情況下，重複的賦值並不會產生覆蓋。 而是會連接成一個列表。
+.
+.IP "" 4
+.
+.nf
+
+list\.a=1
+list\.a=2
+.
+.fi
+.
+.IP "" 0
+.
+.P
+整個設定檔求值之後\fBlist\.a\fR的值是\fB1,2\fR，注意，連接的字元不一定是\fB,\fR。
+.
+.P
+如果一個\fBKEY\fR沒有被賦值，那設定檔求值之後，他的值會是一個預設值， 具體視不同的\fBKEY\fR而定，通常會寫在相關的文件中。
