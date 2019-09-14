@@ -24,12 +24,36 @@ curl --max-time 20 --head -x tanet.proxy.shu.edu.tw:3128 -L http://github.com
 
 
 
+#TODO
+enve project open - autosave shell enve, and can be reenter by interactive selecting
+enve project clone
+enve ssh-add - start ssh-agent & add key from $ENVE_USERHOME/.ssh/id_XXX
+
+(X)define.module.base-system.module.args
+(O)call module with MODULE_NAME set
+
+sidecar with livebound:
+    tmux:
+    sshd:  /usr/sbin/sshd -D -d -h ~/sshd-key/ssh_host_rsa_key
+    ssh-agent
+    psk-agent
+
+sidecar with tmux
+
+module import *ALTER*
+psk.setup
+
+(O)ENVE_RCRESOLVE_PIDFILE - write pid to ENVE_RCRESOLVE_PIDFILE when run rcfile
+
+
+
+
 #TODO tier1:
 (Go~)dictionary在程式碼中標定
 (Go~)加入更多的info, debug, warnning
 (O)kitty config, macos terminal theme
 (Going)use 'false; return 1' at error raise, subshell 要加入 settrace
-(Going)basename, dirname 使用快速版本
+(O)basename, dirname 使用快速版本
 
 (O)prompt & (O)title
 
@@ -58,7 +82,7 @@ curl --max-time 20 --head -x tanet.proxy.shu.edu.tw:3128 -L http://github.com
     (O)procedure序列, 各種procedure target
     (Go~)在config指定網路檔案下載到cache或特定資料夾
     (O)pyenve (O)ruby (O)nodejs 要使用cache
-    制度化/out/$prjname, $PRJ_OUT
+    (O)制度化/out/$prjname, $PRJ_OUT
     makefile試做
     (contribute)xcode, android, cmake
 
@@ -70,7 +94,7 @@ build.version|build.tag 可以自訂輸出的資料夾名稱, 也可以達成多
     android+ios, 手機開發環境範例
     簡單的ci範例
 
-move enve project to projects
+(O)move enve project to projects
 
 
 #TODO:
@@ -83,10 +107,12 @@ meta.*, meta模式, restrict模式(meta.restrict), meta.offline(no curl)
 meta.$subprogram.version
 meta.independant(不會include使用者預設的enve)
 
-isolator改良刪除不用的程式碼
-isolator與settle分離
+(O)isolator改良刪除不用的程式碼
+(O)isolator與settle分離
 
 dfork定案與初步測試
+amazon s3
+enve deploy system
 
 
 
@@ -122,7 +148,7 @@ use `kitty +kitten ssh myserver`
 shell.welcome, 以及腳本化welcome, 與git整合
 terminal.title, 腳本化
 enve.module更名?
-nix移到core/nix, 可能兼容unix.*
+(O)nix移到core/nix, 可能兼容unix.*
 git-hook簡易整合, enve clone
 rtmux.session.$SNAME.pane.$PNAME=[enve]
 
@@ -167,6 +193,24 @@ cache_build
 dest=$(
     fetch "git+$url#$branch" %cache dir
 )
+
+
+# 201908
+
+
+            prefix    dependency  maintain    location    autoimport sh_module
+core/       optinal   enve-libs   enve-owner  enve-repo   yes        require
+contrib/    optinal   posix       contributor enve-repo   yes        optional
+thirdparty/ optinal   no resist   other       public-repo no         optional
+
+thirdparty maintain a ordered key-value map module name to module repository url.
+
+autoimport is done by maintain a key-name list
+
+
+isoexec
+dlexec
+
 
 
 # 再次釐清

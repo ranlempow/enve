@@ -1,9 +1,9 @@
 
 TODO:
 1.利用註解說明gitignore_filter與gitignore實作上不相符的部分
-2.廣泛使用table_substi
+2.(O)廣泛使用table_substi
 3.(X)include指令移到前期resolve執行, loadconfig因為不用遞迴而更加清淨
-4.將pm整合入enve, 也就是說pm只是enve一個小外掛, ci也是enve小外掛
+4.(X)將pm整合入enve, 也就是說pm只是enve一個小外掛, ci也是enve小外掛
   但是pm利用enve來做大部分的invoke工作
 
 5.(O)注意passvar與subsitution個關係, (X)passvar應該是不能影響subsitution
@@ -11,6 +11,19 @@ TODO:
 
 6.(O)'key='這樣的形式是unset, unset就是false, LIST也會因為這樣而被全部unset
 7.(O)bool型別 true,false,unset(assign default value)
+
+
+API作法
+------
+* Lib API: 每個原始碼分開介紹
+* configs: 每個功能或模組分成章節, 一次介紹一組功能相近的configs
+* CLI tools: 目前只有enve需要介紹
+
+
+版本作法
+------
+每1-4年一次大改版, 架構更變, API大量更變, 廢棄config
+每2-12個禮拜一次小改版, 新的機能加入, API少量更變, 主要是增加新的config
 
 
 
@@ -27,7 +40,7 @@ enve.base.shell     if set, switch to specific shell
 enve.require
 enve.require.version    make enve executable in subenv
 
-
+## 模組module
 define.module                           模組定義
 define.module.$i.name     default is "$dirname"/*.enve.ini
 define.module.$i.produce  must set
