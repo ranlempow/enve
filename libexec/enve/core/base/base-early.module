@@ -1,0 +1,99 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+resolve_first() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    out_join BYPASS ':'
+    # out_list BYPASS "HOME"
+    # out_list BYPASS "USER"
+    out_var HOME "$HOME"
+    out_var USER "$USER"
+    out_var TMPDIR "${TMPDIR:-/tmp}"
+}
+
+
+resolve_basic_early() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
+    out_var PRJROOT "$PRJROOT"
+
+    { table_subset "variable\\..*" || true; } | as_postfix "variable\\." | \
+    while read -r name value; do
+        out_var "$name" "$value"
+    done
+
+    config_filename=$(table_tail "enve\\.configs")
+    if [ "${config_filename%.enve.ini}" != "$config_filename" ]; then
+        name=$(basename "$config_filename")
+        PRJ_NAME=${name%.enve.ini}
+    else
+        PRJ_NAME=$(basename "$(dirname "$(resolve_path '.')")")
+    fi
+    out_var "PRJ_NAME" "$PRJ_NAME"
+
+}
+
+
+
+resolve_ssh() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    out_list BYPASS "SSH_CONNECTION"
+    out_list BYPASS "SSH_TTY"
+    out_list BYPASS "SSH_CLIENT"
+    # if SSH_CONNECTION define, terminal is using ssh
+
+}
+
+resolve_shell() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    target="$(table_tail "core\\.target")"
+    if  [ "$target" = "shell" ]; then
+        out_join ENVE_BASHOPTS ':'
+        out_join ENVE_SHELLOPTS ':'
+        out_join ENVE_ZSHOPTS ':'
+
+        out_list "ENVE_SHELLOPTS" "$(table_subset "shell\\.set" | as_concat ":" || true)"
+        out_list "ENVE_BASHOPTS" "$(table_subset "shell\\.shopt" | as_concat ":" || true)"
+        out_list "ENVE_ZSHOPTS" "$(table_subset "shell\\.setopt" | as_concat ":" || true)"
+        out_list "ENVE_SHELLOPTS" "-posix"
+    fi
+    # given_shell=$(table_tail "shell")
+    # if [ -n "$given_shell" ]; then
+    #     out_var SHELL "$given_shell"
+    # fi
+}
+
+
+main() {
+    info "IN $ZERO/base-early.module"
+    TABLE=$(cat "${configfile:--}")
+    for proc in basic_early first ssh shell; do
+        info "IN resolve_$proc"
+        if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+            _error "error at resolve_$proc"
+            exit 1
+        fi
+        # info "OUT resolve_$proc"
+    done
+
+    # for proc in first basic command nix terminal prompt macos ssh \
+    #             shell secret boundfiles; do
+
+    #     info "IN resolve_$proc"
+    #     if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+    #         _error "error at resolve_$proc"
+    #         exit 1
+    #     fi
+    #     # info "OUT resolve_$proc"
+    # done
+
+    info "OUT $ZERO/base-early.module"
+    [ -n "$TABLE" ] && echo "$TABLE"
+}

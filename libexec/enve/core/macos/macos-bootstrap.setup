@@ -32,8 +32,8 @@
 # introduce github | gh-pages
 # introduce zsh | oh-my-zsh
 
-brew install duti
-duti -x com.apple.Terminal enve
+# brew install duti
+# duti -x com.apple.Terminal enve
 
 /Users/pengweiqi/.config/kitty/kitty.conf
 /Users/pengweiqi/.config/kitty/macos-launch-services-cmdline

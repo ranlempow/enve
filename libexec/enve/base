@@ -42,28 +42,43 @@ if in_busybox_shell; then
     :
 fi
 
-# replace() {
-#     # c=0
-#     while [ "$s" != "${s%%$1*}" ]; do
-#         s="${s%%$1*}$2${s#*$1}"
-#         # echo x "$s" "${s%%$1*}" >&2
-#         # if [ "$c" -gt 100 ]; then
-#         #     break
-#         # fi
-#         # c=$((c+1))
-#     done
-#     # printf %s "$s"
-# }
+fast_get_system() {
+    if [ -z "${ENVE_CACHED_OS:-}" ]; then
+        case $(uname -s) in
+            Linux*)     ENVE_CACHED_OS=Linux;;
+            FreeBSD*)   ENVE_CACHED_OS=FreeBSD;;
+            OpenBSD*)   ENVE_CACHED_OS=OpenBSD;;
+            Darwin*)    ENVE_CACHED_OS=Darwin;;
+            CYGWIN*)    ENVE_CACHED_OS=CYGWIN;;
+            MSYS*)      ENVE_CACHED_OS=MSYS;;
+            MINGW32*)   ENVE_CACHED_OS=MINGW32;;
+            MINGW64*)   ENVE_CACHED_OS=MINGW64;;
+            *)          ENVE_CACHED_OS=Unknown;;
+        esac
+        export ENVE_CACHED_OS
+    fi
+}
 
 replace() {
+    if [ -z "$1" ]; then
+        return 0
+    fi
+
+    count=${3:-}
+    i=0
     v=
-    while [ "$s" != "${s%%$1*}" ]; do
-        v="$v${s%%$1*}$2"
-        s="${s#*$1}"
+    while [ "$s" != "${s%%"$1"*}" ]; do
+        v="$v${s%%"$1"*}$2"
+        s="${s#*"$1"}"
+        i=$((i+1))
+        if [ -n "$count" ] && [ "$count" -eq "$i" ]; then
+            break
+        fi
     done
     s="$v$s"
     unset v
 }
+
 
 hashstr() {
     # data="$(cat)"
@@ -76,14 +91,175 @@ hashstr() {
     while read -r _hashvalue __file; do
         hashvalue=${_hashvalue}
         echo "$hashvalue"
-
+        unset _hashvalue __file
     done <<EOF
 $result
 EOF
-    __file=${__file}
-    unset _hashvalue __file
+
 }
 
+
+# _verify_ssh_live() {
+#     IFS=':' read -r method hash keyexp path sshtype pub < $mainkey_live_path
+#     if [ ! -e "$path" ]; then
+#         _need_ssh_add=1
+#         return
+#     fi
+#     IFS=' ' read -r curr_sshtype curr_pub curr_comment < "$path"
+#     if [ "$curr_sshtype" != "$sshtype" ] ||
+#        [ "$curr_pub" != "$pub" ]; then
+#         _need_ssh_add=1
+#         return
+#     fi
+#     fast_timestamp_ms
+#     if [ "$ts" -gt "$keyexp" ]; then
+#         _need_ssh_add=1
+#         return
+#     fi
+#     _need_ssh_add=
+# }
+
+
+# ensure_main_sshkey() {
+#     timeout=$((60*60*6))
+#     _need_ssh_add=
+#     # if [ -z "${ENVE_MAIN_KEY:-}" ] || [ ! -e "$ENVE_MAIN_KEY" ]; then
+#     #     _need_ssh_add=1
+#     # else
+#     #     IFS=':' read -r method hash keyexp < $ENVE_MAIN_KEY
+#     #     fast_timestamp_ms
+#     #     if [ "$ts" -gt "$keyexp" ]; then
+#     #         _need_ssh_add=1
+#     #     fi
+#     # fi
+#     if [ ! -e "/tmp/key_live" ]; then
+#         mkdir -p /tmp/key_live
+#     fi
+#     mainkey_live_path="/tmp/key_live/$USER"
+#     if [ ! -e "$mainkey_live_path" ]; then
+#         _need_ssh_add=1
+#     else
+#         _verify_ssh_live
+#     fi
+
+#     if [ -n "$_need_ssh_add" ]; then
+#         if [ -e "${ENVE_USERHOME}/.ssh/id_ed25519" ]; then
+#             ssh-add "${ENVE_USERHOME}/.ssh/id_ed25519" -t "$timeout"
+#         elif [ -e "${ENVE_USERHOME}/.ssh/id_rsa" ]; then
+#             ssh-add "${ENVE_USERHOME}/.ssh/id_rsa" -t "$timeout"
+#         else
+#             _error "there is no key in '${ENVE_USERHOME}/.ssh'"
+#             return 1
+#         fi
+#         while read -r bit sig path keytype; do
+#             if [ "$path" = ${ENVE_USERHOME}/.ssh/id_ed25519 ] ||
+#                [ "$path" = ${ENVE_USERHOME}/.ssh/id_rsa ]; then
+
+#                 IFS=':' read method hash <<EOF
+# $sig
+# EOF
+#                 IFS=' ' read -r sshtype pub comment < "$path"
+#                 fast_timestamp_ms
+#                 echo "$sig:$((tm + timeout)):$path:$sshtype:$pub" > $mainkey_live_path
+#                 break
+#             fi
+#         done <<EOF
+# $(ssh-add -l)
+# EOF
+#     fi
+#     unset timeout _need_ssh_add mainkey_live_path tm s method hash keyexp bit sig path keytype
+# }
+
+
+timestamp() {
+    # date +%s%N | cut -b5-13
+    tm=$(date +%s%N)
+    # tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
+    tm=${tm#?????}
+    tm=${tm%${tm#????????}}
+    echo "$tm"
+    unset tm
+}
+
+timestamp2() {
+    tm=$(date +%s%N)
+    # tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
+    tm=${tm#?????}
+    tm=${tm%${tm#????????}}
+    echo "$tm"
+    unset tm
+}
+
+timestamp_ms() {
+    tm=$(date +%s%3N)
+    if [ "${tm#"${tm%??}"}" == "3N" ]; then
+        tm=$(( ${tm%??} * 1000))
+    fi
+}
+fast_timestamp_ms() {
+    if [ -n "${BASH_VERSION}" ]; then
+        printf -v tm '%(%s%3N)T' -1
+    else
+        tm=$(date +%s%3N)
+    fi
+    if [ "${tm#"${tm%??}"}" == "3N" ]; then
+        tm=$(( ${tm%??} * 1000))
+    fi
+}
+
+
+fast_sleep() {
+    # ref: https://unix.stackexchange.com/questions/421189/sometimes-its-convenient-to-use-read-t-3-instead-of-sleep-3-how-do-i/421201#421201
+    # read -t 3 (a ksh93 extension now also supported by zsh, bash and mksh)
+    if [ -n "${BASH_VERSION:-}${ZSH_VERSION:-}${KSH_VERSION:-}" ]; then
+        pipepath="${TMPDIR:-/tmp}/sleep.pipe"
+        rm -f "$pipepath"
+        if [ ! -e "$pipepath" ]; then
+            mkfifo -m 600 "$pipepath" || true
+        fi
+        read -t "$1" <> "$pipepath" || true
+    else
+        sleep "$1"
+    fi
+}
+
+
+write_file_only_nonexist() {
+    filename=$1
+    text=${2:-}
+    mask=${3:-0022}
+    _need_noclobber=
+    # _old_mask=$(umask)
+    umask $mask
+    if [ "${-#*C}" = "$-" ]; then
+        # need set `noclobber`
+        _need_noclobber=1
+    fi
+    if [ -n "$_need_noclobber" ]; then set -o noclobber; fi
+    # if { echo "$text" > $filename; } 2>/dev/null; then
+    if { printf %s "$text" > $filename; } 2>/dev/null; then
+        set -- 0
+    else
+        set -- 1
+    fi
+    if [ -n "$_need_noclobber" ]; then set +o noclobber; fi
+    # umask ${_old_mask}
+    umask 0022
+    unset _need_noclobber filename text mask
+    return $1
+}
+
+fast_append_variable_quote() {
+    var=$1
+    if [ -n "$var" ] && [ "${var#*'$'}" = "${var}" ]; then
+        eval s=\"\${$var-var_is_unset}\"
+        if [ "$s" != var_is_unset ]; then
+            replace "'" "'\\''"
+            printf -v deftext "%s%s='%s'" "$deftext${deftext:+ }" "$var" "$s"
+        fi
+    fi
+    unset var s
+}
 
 fast_readtext() {
     text=
@@ -118,25 +294,39 @@ fast_basename() {
 }
 
 
-combine_umask() {
-    mask=
-    eval "mask=$((0$(umask) & 0$1))"
-    printf %o\\n "$mask"
-}
+# combine_umask() {
+#     mask=
+#     eval "mask=$((0$(umask) & 0$1))"
+#     printf %o\\n "$mask"
+# }
 
 create_file_mutex() {
-    (
-        umask "$(combine_umask "${2:-7077}")"
-        set -o noclobber
-        { true > "$1" ; } >/dev/null 2>&1
-    )
+    write_file_only_nonexist "$1" "" "${2-077}"
+    # (
+    #     umask "$(combine_umask "${2:-7077}")"
+    #     set -o noclobber
+    #     { true > "$1" ; } >/dev/null 2>&1
+    # )
 }
 
 create_dir_mutex() {
-    (
-        umask "$(combine_umask "${2:-7077}")"
-        mkdir "$1" >/dev/null 2>&1
-    )
+    filename=$1
+    mask=${2:-077}
+    umask $mask
+    # _old_mask=$(umask)
+    if { mkdir "$filename" ; } 2>/dev/null; then
+        set -- 0
+    else
+        set -- 1
+    fi
+    umask 0022
+    # umask ${_old_mask}
+    unset _old_mask filename
+    return $1
+    # (
+    #     umask "$(combine_umask "${2:-7077}")"
+    #     mkdir "$1" >/dev/null 2>&1
+    # )
 }
 
 _sixrand50() {
@@ -181,13 +371,24 @@ mkdtemp() {
 
 # enve is a stateless program, that is unnecessary to use '/var'
 
+fast_get_cachedir() {
+    if [ -n "${ENVE_CACHE_DIR:-}" ]; then
+        d="$ENVE_CACHE_DIR"
+        return 0
+    else
+        d=$(get_cachedir)
+    fi
+}
+
 get_cachedir() {
     if [ -n "${ENVE_CACHE_DIR:-}" ]; then
         echo "$ENVE_CACHE_DIR"
         return 0
     fi
-    kernal_name="$(uname -s)"
-    case "$kernal_name" in
+    # kernal_name="$(uname -s)"
+    # case "$kernal_name" in
+    fast_get_system
+    case "$ENVE_CACHED_OS" in
         Linux|FreeBSD|Darwin)
                 # macos $HOME do not have issus as in windows
                 # $HOME always contain only alphanum without space and all lowercase.
@@ -212,7 +413,7 @@ EOF
         #             echo ~/.cache/enve
         #         fi
         #     ;;
-        MINGW32*|MSYS*|CYGWIN*)
+        MINGW*|MSYS*|CYGWIN*)
                 # $LOCALAPPDATA is the temporary files of Applications.
                 # but $HOME may contain non-acsii character or space.
                 # so, we use $ProgramData
@@ -227,26 +428,43 @@ EOF
     esac
 }
 
-get_tempdir() {
+fast_get_tempdir() {
     if [ -n "${TMP:-}" ]; then
-        echo "${TMP%%/}"
+        d="${TMP%%/}"
     elif [ -n "${TMPDIR:-}" ]; then
-        echo "${TMPDIR%%/}"
+        d="${TMPDIR%%/}"
     elif [ -n "${TEMP:-}" ]; then
-        echo "${TEMP%%/}"
+        d="${TEMP%%/}"
     elif [ -n "${TEMPDIR:-}" ]; then
-        echo "${TEMPDIR%%/}"
+        d="${TEMPDIR%%/}"
     else
-        echo "/tmp"
+        d="/tmp"
     fi
 }
 
-quote () { printf %s\\n "$1" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" ; }
-
-save () {
-    for i do quote "$i"; done
-    echo " "
+get_tempdir() {
+    fast_get_tempdir
+    echo "$d"
+    unset d
+    # if [ -n "${TMP:-}" ]; then
+    #     echo "${TMP%%/}"
+    # elif [ -n "${TMPDIR:-}" ]; then
+    #     echo "${TMPDIR%%/}"
+    # elif [ -n "${TEMP:-}" ]; then
+    #     echo "${TEMP%%/}"
+    # elif [ -n "${TEMPDIR:-}" ]; then
+    #     echo "${TEMPDIR%%/}"
+    # else
+    #     echo "/tmp"
+    # fi
 }
+
+# quote () { printf %s\\n "$1" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" ; }
+# save () {
+#     for i do quote "$i"; done
+#     echo " "
+# }
+
 
 any_key_continue() {
     if [ -n "${PS1:-}" ]; then
@@ -279,24 +497,93 @@ _loglevel_form_symbol() {
     fi
 }
 
-timestamp() {
-    # date +%s%N | cut -b5-13
-    tm=$(date +%s%N)
-    # tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
-    tm=${tm#?????}
-    tm=${tm%${tm#????????}}
-    echo "$tm"
-    unset tm
+obtain_pidlock() {
+    trycnt=1
+    filename=$1
+    while ! write_file_only_nonexist "$filename" "$$"; do
+        read -r pid < "$filename" || true
+        if [ -n "$pid" ]; then
+            if [ "$pid" = "$$" ]; then
+                return 0
+            elif kill -0 "$pid"; then
+                rm -f "$filename" || return 1
+            else
+                return 1
+            fi
+        else
+            rm -f "$filename" || return 1
+        fi
+        trycnt=$((trycnt + 1))
+        if [ "$trycnt" -gt 20 ]; then
+            return 1
+        fi
+    done
+    unset trycnt filename
 }
 
-timestamp2() {
-    tm=$(date +%s%N)
-    # tm=$(/nix/store/p0zfmny1vsb4ryzn67p4rbm0nqk78yya-boot-env/bin/date +%s%N)
-    tm=${tm#?????}
-    tm=${tm%${tm#????????}}
-    echo "$tm"
-    unset tm
+
+release_pidlock() {
+    read -r pid < "$filename" || return 1
+    if [ "$pid" = "$$" ]; then
+        rm "$filename"
+    elif kill -0 "$pid"; then
+        rm -f "$filename"
+        return 1
+    else
+        return 1
+    fi
 }
+
+
+obtain_filelock() {
+    filename=$1
+    timeout=$2
+    if { read pid ts to < $filename; } 2>/dev/null; then
+        fast_timestamp_ms
+        if [ "$ts" -gt $to ]; then
+            # filelock is expire
+            rm "$filename"
+        elif [ "$pid" == "$$" ]; then
+            # same pid filelock cloud refresh
+            rm "$filename"
+        else
+            return 1
+        fi
+    fi
+    set -- $filename
+    unset filename pid ts to
+    fast_timestamp_ms
+    write_file_only_nonexist "$1" "$$ $tm $((tm + timeout))" "7077"
+    # _need_noclobber=
+    # if [ "${-#*C}" = "$-" ]; then
+    #     # need set `noclobber`
+    #     _need_noclobber=1
+    # fi
+    # if [ -n "$_need_noclobber" ]; then set -o noclobber; fi
+    # if { echo "$$ $tm $((tm + timeout))" > $filename; } 2>/dev/null; then
+    #     return 0
+    # else
+    #     return 1
+    # fi
+    # if [ -n "$_need_noclobber" ]; then set +o noclobber; fi
+}
+
+
+release_filelock() {
+    filename=$1
+    if { read pid ts to < $filename; } 2>/dev/null; then
+        if [ "$pid" == "$$" ]; then
+            rm "$filename"
+            unset filename pid ts to
+            return 0
+        fi
+    fi
+    unset filename pid ts to
+    # file is removed or obtained by other process
+    return 1
+}
+
+
 
 
 _format_head() {
@@ -307,7 +594,11 @@ _format_head() {
     if [ -n "${ENVE_TIME_PROFILE:-}" ]; then
         case ${ENVE_VERBOSE:-TRACE} in
             DEBUG)  ptime=$(date -u +"%D %T");;
-            TRACE)  ptime=$(timestamp);;
+            TRACE)
+                    timestamp_ms
+                    ptime=$tm
+                    unset tm
+                ;;
         esac
     fi
     if [ -t 2 ] && [ -z "${ENVE_NOCOLOR:-}" ]; then

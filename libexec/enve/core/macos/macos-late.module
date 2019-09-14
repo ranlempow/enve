@@ -1,0 +1,45 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+resolve_macos_late() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    (
+        # shellcheck disable=2123
+        PATH=
+        export PATH
+        eval "$(/usr/libexec/path_helper -s)"
+        IFS=':'
+        for p in $PATH; do
+            out_list PATH "$p"
+        done
+    )
+}
+
+main() {
+    info "IN $ZERO/enve.module"
+    TABLE=$(cat "${configfile:--}")
+    # for proc in first basic command nix terminal prompt macos ssh \
+    #             shell secret boundfiles; do
+    for proc in macos_late; do
+        info "IN resolve_$proc"
+        if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+            _error "error at resolve_$proc"
+            exit 1
+        fi
+        # info "OUT resolve_$proc"
+    done
+
+    info "OUT $ZERO/enve.module"
+    [ -n "$TABLE" ] && echo "$TABLE"
+}
+
+# if [ "${TEST:-}" != "test" ]; then
+# fi
+

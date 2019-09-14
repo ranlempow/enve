@@ -34,9 +34,10 @@ ensure_brew() {
 }
 
 basetool_install_command() {
-    kernal_name="$(uname -s)"
-
-    case "$kernal_name" in
+    # kernal_name="$(uname -s)"
+    # case "$kernal_name" in
+    fast_get_system
+    case "$ENVE_CACHED_OS" in
         Darwin)
                 if ensure_brew; then
                     cmd='brew install'
@@ -68,7 +69,8 @@ basetool_install_command() {
                     return 1
                 fi
             ;;
-        MINGW32*|MSYS*)
+        MINGW*|MSYS*)
+                # TODO: mingw has no pacman
                 if hascmd pacman; then
                     cmd='pacman -S'
                 else
@@ -102,10 +104,12 @@ is_need_toybox() {
 
 basic_require_ensure() {
     deps="$ENVE_DEPENDCIES"
-    kernal_name="$(uname -s)"
-    case "$kernal_name" in
+    # kernal_name="$(uname -s)"
+    # case "$kernal_name" in
+    fast_get_system
+    case "$ENVE_CACHED_OS" in
         # procps-ng for 'top'
-        MINGW32*|MSYS*|CYGWIN*) deps="$deps procps-ng cygrunsrv" ;;
+        MINGW*|MSYS*|CYGWIN*) deps="$deps procps-ng cygrunsrv" ;;
     esac
     if is_need_toybox; then
         deps="$deps toybox"

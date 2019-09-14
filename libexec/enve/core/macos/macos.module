@@ -1,0 +1,64 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+resolve_macos() {
+    out_join PATH ':'
+    [ -n "$TABLE" ] && echo "$TABLE"
+    # (
+    #     # shellcheck disable=2123
+    #     PATH=
+    #     export PATH
+    #     eval "$(/usr/libexec/path_helper -s)"
+    #     IFS=':'
+    #     for p in $PATH; do
+    #         out_list PATH "$p"
+    #     done
+    # )
+
+
+    # if [ -n "${SSH_AUTH_SOCK:-}" ]; then
+    #     out_var SSH_AUTH_SOCK "$SSH_AUTH_SOCK"
+    # fi
+    out_var enve.bound.ignore '**/.DS_Store'
+    out_var enve.bound.ignore '**/.git/**'
+
+    out_list BYPASS "SSH_AUTH_SOCK"
+    out_list BYPASS "TERMINFO"
+    out_list BYPASS "KITTY_WINDOW_ID"
+    out_list BYPASS "COLORTERM"
+
+    # out_var LC_ALL "en_US.UTF-8"
+    # out_var LC_CTYPE "en_US.UTF-8"
+    # out_var LANG "en_US.UTF-8"
+    # out_var PYTHONIOENCODING "utf-8:surrogateescape"
+
+}
+
+main() {
+    info "IN $ZERO/enve.module"
+    TABLE=$(cat "${configfile:--}")
+    # for proc in first basic command nix terminal prompt macos ssh \
+    #             shell secret boundfiles; do
+    for proc in macos; do
+        info "IN resolve_$proc"
+        if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+            _error "error at resolve_$proc"
+            exit 1
+        fi
+        # info "OUT resolve_$proc"
+    done
+
+    info "OUT $ZERO/enve.module"
+    [ -n "$TABLE" ] && echo "$TABLE"
+}
+
+# if [ "${TEST:-}" != "test" ]; then
+# fi
+

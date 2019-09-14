@@ -17,56 +17,105 @@
 . "$ENVE_HOME/enve/pathutils"
 settrace
 
-core_out_module() {
-    d=$3
-    fast_basename
-    out_module "$1" "$2#$d" "$3"
-}
 
 builtin_loader() {
+
+    normalize "$ENVE_HOME/enve/core/base"
+
+    fast_get_system
+    case "$ENVE_CACHED_OS" in
+        FreeBSD)    normalize "$ENVE_HOME/enve/core/freebsd" ;;
+        Darwin)     normalize "$ENVE_HOME/enve/core/macos" ;;
+        Linux)      normalize "$ENVE_HOME/enve/core/linux" ;;
+        MINGW*|MSYS*|CYGWIN) normalize "$ENVE_HOME/enve/core/nt-cygwin" ;;
+    esac
+
+    fast_table_tail "core\\.target"
+    target=$TABLE_TAIL
+    case "$target" in
+        shell)      normalize "$ENVE_HOME/enve/core/term" ;;
+    esac
+
+    fast_table_tail "enve\\.no_nix"
+    if [ "$TABLE_TAIL" != "true" ] && { [ "$ENVE_CACHED_OS" = 'Darwin' ] ||
+                                        [ "$ENVE_CACHED_OS" = 'Linux' ] ; }; then
+        normalize "$ENVE_HOME/enve/core/nix" ;
+    else
+        case "$ENVE_CACHED_OS" in
+            MINGW*|MSYS*) #normalize "$ENVE_HOME/enve/core/pacman"
+                ;;
+            CYGWIN) #normalize "$ENVE_HOME/enve/core/nt-cygwin"
+                ;;
+            *)
+                    fast_table_subset "enve\\.pkg-system"
+                    case ${TABLE_SUBSET:-brew} in
+                        brew) normalize "$ENVE_HOME/enve/core/brew" ;;
+                        pkgsrc) normalize "$ENVE_HOME/enve/core/pkgsrc" ;;
+                    esac
+                ;;
+        esac
+    fi
+
+    # fast_table_subset "pkgs\\..*"
+    # if [ -n "$TABLE_SUBSET" ]; then
+    #     echo "$ENVE_HOME/enve/core/brew"
+    # fi
+    # fast_table_subset "brew\\..*"
+    # if [ -n "$TABLE_SUBSET" ]; then
+    #     echo "$ENVE_HOME/enve/core/brew"
+    # fi
+
+
     # table_subset "module\\.[[:alnum:]]*" | as_postfix "module\\." | \
     # while IFS="${tab}" read -r name value; do
     # echo "$ENVE_HOME"
-    if [ -n "$(table_subset "python\\..*")" ]; then
+    fast_table_subset "python\\..*"
+    # if [ -n "$(table_subset "python\\..*")" ]; then
     # if [ -n "$(table_subset "python")" ]; then
+    if [ -n "$TABLE_SUBSET" ]; then
         echo "$ENVE_HOME/enve/core/pyvenv"
-        # core_out_module common 300 "$ENVE_HOME/enve/core/pyvenv"
     fi
-    if [ -n "$(table_subset "nodejs\\..*")" ]; then
+    fast_table_subset "nodejs\\..*"
+    # if [ -n "$(table_subset "nodejs\\..*")" ]; then
     # if [ -n "$(table_subset "nodejs")" ]; then
+    if [ -n "$TABLE_SUBSET" ]; then
         echo "$ENVE_HOME/enve/core/nodejs"
-        # core_out_module common 310 "$ENVE_HOME/enve/core/nodejs"
     fi
-    if [ -n "$(table_subset "ruby\\..*")" ]; then
+    fast_table_subset "ruby\\..*"
+    # if [ -n "$(table_subset "ruby\\..*")" ]; then
     # if [ -n "$(table_subset "ruby")" ]; then
+    if [ -n "$TABLE_SUBSET" ]; then
         echo "$ENVE_HOME/enve/core/ruby"
-        # core_out_module common 320 "$ENVE_HOME/enve/core/ruby"
     fi
+    fast_table_subset "oh-my-zsh\\..*"
     # if [ -n "$(table_subset "oh-my-zsh\\..*")" ]; then
-    #     echo "$ENVE_HOME/enve/core/oh-my-zsh"
-    # fi
+    if [ -n "$TABLE_SUBSET" ]; then
+        echo "$ENVE_HOME/enve/core/oh-my-zsh"
+    fi
     # echo "$TABLE" >&2
     # echo "$(table_subset "module" )" >&2
     # echo "$(table_subset "module" | as_value)" >&2
+    fast_table_subset "module"
+    fast_as_value
 
-    { table_subset "module" | as_value || true; } | \
+    # { table_subset "module" | as_value || true; } | \
     while read -r value; do
         # echo o${value}o >&2
-        if [ -d "$ENVE_HOME/enve/core/$value" ]; then
-            # core_out_module common 500 "$ENVE_HOME/enve/core/$value"
+        if [ -z "$value" ]; then
+            continue
+        elif [ -d "$ENVE_HOME/enve/core/$value" ]; then
             echo "$ENVE_HOME/enve/core/$value"
-            # return 0
         elif [ -d "$ENVE_HOME/enve/contrib/$value" ]; then
-            # core_out_module common 600 "$ENVE_HOME/enve/contrib/$value"
             echo "$ENVE_HOME/enve/contrib/$value"
-            # return 0
         elif [ -d "$(resolve_path "$value")" ]; then
-            # core_out_module common 700 "$value"
-            echo "$value"
-            # return 0
+            resolve_path "$value"
         fi
-    done
+    done <<EOF
+$TABLE_AS
+EOF
+
 }
+
 
 # path_loader() {
 #     table_subset "module\\.[[:alnum:]]*\\.path" | as_postfix "module\\." | {
@@ -81,18 +130,10 @@ builtin_loader() {
 #     } || return 0
 # }
 
-self_loader() {
-    # (
-        normalize "$ENVE_HOME/enve/core/base"
-        normalize "$ENVE_HOME/enve/core/term"
-    # )
-    # core_out_module common 0 "$ENVE_HOME/enve"
-}
 
 main() {
     info "IN $(basename $ZERO)/enve.loader"
     TABLE=$(cat "${configfile:--}")
-    self_loader
     builtin_loader
     # path_loader
     info "OUT $(basename $ZERO)/enve.loader"

@@ -254,6 +254,183 @@ path_rebuild() {
 }
 
 
+#
+# !!! HAS BIG BUG IN PYTOHN.REQUIRE
+#
+# path_rebuild() {
+#     f_path=${1:-}
+#     f_make=${2:-}
+#     f_vaild=${3:-}
+#     locktype=${4:-mv}
+
+#     # locktype=lock
+
+#     do_wait=1
+#     while [ "${do_wait:-0}" -lt 100 ]; do
+#         if [ ! -e "$f_path" ]; then
+#             do_make=1
+#         elif [ "$locktype" = "lock" ] && [ -e "${f_path}.lock" ]; then
+#             read -r pid timestamp < "${f_path}.lock" || {
+#                 _error "read error at ${f_path}.lock"
+#                 return 1
+#             }
+#             if [ "$pid" -eq "$$" ]; then
+#                 _error "maybe deadlock"
+#                 return 1
+#             elif ! ps -p "$pid" >/dev/null || [ "$timestamp" -gt $(($(date +%s) + 3600)) ]; then
+#                 # previous builder is dead or timeout
+#                 rm -rf "$f_path" "${f_path}.lock"
+#                 do_make=1
+#                 # break
+#             else
+#                 do_wait=$((do_wait + 1))
+#                 sleep 5
+#                 continue
+#             fi
+#         elif [ -n "$f_vaild" ]; then
+#             set +e
+#             vaild=$(
+#                 settrace
+#                 # shellcheck disable=2097 disable=2098
+#                 CACHED=$f_path f_path='' f_make='' f_vaild='' eval "$f_vaild"
+#             )
+#             retcode=$?
+#             set -e
+#             if [ "$retcode" -ne 0 ]; then
+#                 _error "execute f_vaild failed"
+#                 return 1
+#             elif [ "$vaild" = "1" ]; then
+#                 do_make=
+#             else
+#                 rm -rf "$f_path"
+#                 do_make=1
+#             fi
+#         else
+#             # cache exist, don't do anything
+#             do_make=
+#         fi
+
+#         result=
+#         if [ -n "$do_make" ]; then
+#             if [ -n "$f_make" ]; then
+#                 if [ "$locktype" = "mv" ]; then
+#                     f_making_path=$(
+#                         mkdtemp "$f_path.XXXXXX" || {
+#                             _error "cannot create $f_path.XXXXXX"
+#                             return 1
+#                         })
+#                 elif [ "$locktype" = "lock" ]; then
+#                     if mkdir "$f_path"; then
+#                         echo "$$ $(date +%s)" > "${f_path}.lock"
+#                         f_making_path=${f_path}
+#                     else
+#                         # _error "cannot create $f_path, other program created simultaneously"
+#                         # return 1
+#                         if [ -e "$f_path" ]; then
+#                             do_wait=$((do_wait + 1))
+#                             sleep 1
+#                             continue
+#                         else
+#                             result=f
+#                             _error "cannot create $f_path"
+#                         fi
+#                     fi
+#                 fi
+#                 if [ -z "$result" ]; then
+#                     set +e
+#                     (
+#                         settrace
+#                         # shellcheck disable=2097 disable=2098
+#                         CACHED=$f_making_path f_path='' f_make='' f_vaild='' eval "$f_make"
+#                     )
+#                     retcode=$?
+#                     set -e
+#                     if [ "$retcode" -eq 0 ]; then
+#                         output_none=
+#                         if [ -d "$f_making_path" ]; then
+#                             set -- "$f_making_path"/.* "$f_making_path"/*
+#                             # if [ "${3##*/}" = "*" ]; then
+#                                 # output_none=1
+#                             # fi
+#                             if [ -z "${3:-}" ]; then
+#                                 output_none=1
+#                             fi
+#                         elif [ ! -e "$f_making_path" ]; then
+#                             output_none=1
+#                         fi
+#                         if [ -n "$output_none" ]; then
+#                             result=f
+#                             _error "f_make output nothing, '$f_making_path' is empty, maybe build failed"
+#                             # rm -rf "$f_path"
+#                             # return 1
+#                         else
+#                             result=k
+#                         fi
+#                     else
+#                         result=f
+#                         _error "execute f_make failed"
+#                         # rm -rf "$f_path"
+#                         # return 1
+#                     fi
+#                 fi
+#             else
+#                 result=n
+#                 _debug "cache entry ${f_path} not found"
+#                 # return 1
+#             fi
+#         else
+#             result=e
+#         fi
+
+#         if [ "$result" = f ]; then
+#             if [ "$locktype" = "mv" ]; then
+#                 rm -rf "$f_making_path"
+#             elif [ "$locktype" = "lock" ]; then
+#                 rm -rf "$f_path" "$f_path.lock"
+#             fi
+#             unset f_path f_vaild f_make
+#             return 1
+#         elif [ "$result" = k ]; then
+#             if [ "$locktype" = "mv" ]; then
+#                 LOGTYPE=cache info mv "$f_making_path" "$f_path"
+#                 if [ ! -d "$f_path" ] && mv "$f_making_path" "$f_path"; then
+#                     return 0
+#                 else
+#                     result=
+#                     rm -rf "$f_making_path"
+#                     do_wait=$((do_wait + 1))
+#                     sleep 1
+#                     continue
+#                 fi
+#                 # mv "$f_making_path" "$f_path" || {
+#                 #     result=
+#                 #     rm -rf "$f_making_path"
+#                 #     do_wait=$((do_wait + 1))
+#                 #     sleep 1
+#                 #     continue
+#                 # }
+#                 # return 0
+#             elif [ "$locktype" = "lock" ]; then
+#                 rm -rf "$f_path.lock"
+#                 return 0
+#             fi
+#         elif [ "$result" = n ]; then
+#             return 30
+#         elif [ "$result" = e ]; then
+#             return 0
+#         else
+#             _fatal "unknown result: '$result'"
+#             return 1
+#             # do_wait=$((do_wait + 1))
+#             # sleep 1
+#             # continue
+#         fi
+#     done
+
+#     _error "wait too long"
+#     return 1
+# }
+
 
 
 cache_rebuild() {

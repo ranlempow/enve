@@ -1,3 +1,13 @@
+# Home/End
+"\e[1~": beginning-of-line
+"\e[4~": end-of-line
+"\e[7~": beginning-of-line
+"\e[8~": end-of-line
+"\eOH": beginning-of-line
+"\eOF": end-of-line
+"\e[H": beginning-of-line
+"\e[F": end-of-line
+
 # Alt+Left/Right to move by whole words.
 "\e[1;3C": forward-word
 "\e[1;3D": backward-word
@@ -6,4 +16,21 @@
 "\e[1;4C": forward-word
 "\e[1;4D": backward-word
 
+# Ctrl+Del
+"\e[3;5~": kill-word
+# Alt+Del
+"\e[3;3~": kill-word
+
+# Alt-Backspace for kill word before
+"\e\b": "\C-w"
+
+"\ez": undo
+
 set completion-ignore-case on
+set colored-stats on
+set colored-completion-prefix on
+
+set bell-style none
+set print-completions-horizontally on
+# don't want pager in bash use strangy 'y' key to scroll menu down
+set page-completions off

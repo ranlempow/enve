@@ -8,7 +8,7 @@ setup() {
         table_tail table_subset table_exclude value_substi table_substi \
         as_postfix as_rootkey as_value as_uniquekey as_concat \
         module_sort_after get_module_info \
-        out_var \
+        out_var out_var_fast \
         fire_chain \
         parse_config
 
@@ -243,7 +243,20 @@ $(mline c - : :)"
     )" ]
 }
 
-@test "tabels 1" {
+
+@test "tabels operations 1" {
+
+    [ "$(out_var A 1)" = "$(printf VAR\\tA\\t1)" ]
+    [ "$(out_var A "")" = "$(printf VAR\\tA\\t)" ]
+    [ "$(out_var "" 1)" = "$(printf VAR\\t\\t1)" ]
+    [ "$(out_var A 1;out_var B 2)" = "$(printf VAR\\tA\\t1\\nVAR\\tB\\t2)" ]
+
+    [ "$(out_var_fast A 1)" = "$(printf VAR\\tA\\t1)" ]
+    [ "$(out_var_fast A "")" = "$(printf VAR\\tA\\t)" ]
+    [ "$(out_var_fast "" 1)" = "$(printf VAR\\t\\t1)" ]
+    [ "$(out_var_fast A 1;out_var_fast B 2)" = "$(printf VAR\\tA\\t1\\nVAR\\tB\\t2)" ]
+
+
     TABLE="$(
     out_var AA 11
     out_var BB 22
@@ -251,21 +264,83 @@ $(mline c - : :)"
     out_var AA.b 1112
     out_var BB.b 2222
     )"
-    [ "$(TABLE="$TABLE" table_tail AA)" = "11" ]
-    [ "$(TABLE="$TABLE" table_tail BB)" = "22" ]
-    [ "$(TABLE="$TABLE" table_tail AA.a)" = "1111" ]
-    [ "$(TABLE="$TABLE" table_tail CC)" = "" ]
-    [ "$(TABLE="$TABLE" table_subset 'AA')" = "AA${tab}11" ]
-    [ "$(TABLE="$TABLE" table_subset 'AA\..*')" = "AA.a${tab}1111${newl}AA.b${tab}1112" ]
-    [ "$(TABLE="$TABLE" table_exclude 'AA.*')" = "BB${tab}22${newl}BB.b${tab}2222" ]
-    [ "$(TABLE="$TABLE" table_subset 'AA\..*' | as_postfix 'AA\.')" = "a${tab}1111${newl}b${tab}1112" ]
-    [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_rootkey)" = "AA${tab}11${newl}AA${tab}1111${newl}AA${tab}1112" ]
-    [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_value)" = "11${newl}1111${newl}1112" ]
-    [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_uniquekey)" = "AA${newl}AA.a${newl}AA.b" ]
-    [ "$(TABLE="$TABLE$(out_var AA 33)" table_subset 'AA.*' | as_uniquekey)" = "AA${newl}AA.a${newl}AA.b" ]
-    [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_concat ',')" = "11,1111,1112" ]
 
+    # k() {
+        [ "$(TABLE="$TABLE" table_tail AA)" = "11" ]
+        [ "$(TABLE="$TABLE" table_tail BB)" = "22" ]
+        [ "$(TABLE="$TABLE" table_tail AA\\.a)" = "1111" ]
+        [ "$(TABLE="$TABLE" table_tail CC)" = "" ]
+        [ "$(TABLE="$TABLE" table_subset 'AA')" = "AA${tab}11" ]
+        [ "$(TABLE="$TABLE" table_subset 'AA\..*')" = "AA.a${tab}1111${newl}AA.b${tab}1112" ]
+        [ "$(TABLE="$TABLE" table_exclude 'AA.*')" = "BB${tab}22${newl}BB.b${tab}2222" ]
+        [ "$(TABLE="$TABLE" table_subset 'AA\..*' | as_postfix 'AA\.')" = "a${tab}1111${newl}b${tab}1112" ]
+        [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_rootkey)" = "AA${tab}11${newl}AA${tab}1111${newl}AA${tab}1112" ]
+        [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_value)" = "11${newl}1111${newl}1112" ]
+        [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_uniquekey)" = "AA${newl}AA.a${newl}AA.b" ]
+        [ "$(TABLE="$TABLE$(out_var AA 33)" table_subset 'AA.*' | as_uniquekey)" = "AA${newl}AA.a${newl}AA.b" ]
+        [ "$(TABLE="$TABLE" table_subset 'AA.*' | as_concat ',')" = "11,1111,1112" ]
+    # }
+    # k
+    # table_tail() {
+    #     fast_table_tail "$@"
+    #     printf %s\\n "$v" >&2
+    # }
+    # table_subset() {
+    #     fast_table_subset "$@"
+    #     printf %s\\n "$kv"
+    # }
+    # k
 }
+
+
+@test "tabels operations with unset" {
+    TABLE="$(
+    out_var AA 11
+    out_var AA 22
+    out_var BB ""
+    out_var AA ""
+    out_var AA 33
+
+    out_var AA 34
+    out_var CC 44
+    out_var CC ""
+    out_var DD 55
+    out_var DD ""
+    out_var DD 66
+
+    )"
+
+    [ "$(TABLE="$TABLE" table_tail AA)" = "34" ]
+    [ "$(TABLE="$TABLE" table_tail BB)" = "" ]
+    [ "$(TABLE="$TABLE" table_tail CC)" = "" ]
+    [ "$(TABLE="$TABLE" table_tail DD)" = "66" ]
+    [ "$(TABLE="$TABLE" table_subset 'AA' | as_concat ',')" = "33,34" ]
+}
+
+@test "tabels operations with default" {
+    TABLE="$(
+    out_var AA 11
+    out_var AA 22
+    out_var BB ""
+    out_var AA ""
+    out_var AA 33
+
+    out_var AA 34
+    out_var CC 44
+    out_var CC ""
+    out_var DD 55
+    out_var DD ""
+    out_var DD 66
+
+    )"
+    [ "$(TABLE_DEFAULT="1" TABLE="$TABLE" table_tail AA)" = "34" ]
+    [ "$(TABLE_DEFAULT="1" TABLE="$TABLE" table_tail BB)" = "1" ]
+    [ "$(TABLE_DEFAULT="1" TABLE="$TABLE" table_tail CC)" = "1" ]
+    [ "$(TABLE_DEFAULT="1" TABLE="$TABLE" table_tail DD)" = "66" ]
+}
+
+
+
 
 @test "parse_config" {
 

@@ -1,0 +1,161 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+settrace
+
+
+watch_slaves() {
+    process_terminate_handler=$1
+
+    has_file=
+    for slave_file in "$livebound_dir/"*.pid; do
+        d=$slave_file
+        fast_basename
+        case "$d" in
+            # master.pid)     rm -f "$slave_file";;
+            master.pid)     ;;
+            watcher.pid)    ;;
+            '*.pid')        ;;
+            *.pid)
+                    has_file=1
+                    read -r slave_pid slave_hander < "$slave_file" || true
+                    slave_hander=${slave_hander:-kill -SIGTERM "$slave_pid"}
+                    if [ -z "${slave_pid}" ] || [ -n "${slave_pid%%[0123456789]}" ]; then
+                        rm "$slave_file" || true
+                    else [ "${slave_wait_terminate%" $slave_pid "*}" != "$slave_wait_terminate" ]; then
+                        if [ -n ${process_terminate_handler} ]; then
+                            if eval $slave_hander; then
+                                slave_wait_terminate="${slave_wait_terminate}$slave_pid "
+                                eval slave_file_memo_$slave_pid=\"$slave_file\"
+                            else
+                                rm "$slave_file" || true
+                            fi
+                        fi
+                    fi
+                ;;
+            *)              echo "MAYBE WRONG LIVEBOUND_DIR" >&2 && exit 1;;
+        esac
+    done
+    if [ -z "$has_file" ]; then
+        return 1
+    fi
+}
+
+
+clear_slaves() {
+    for slave_pid in $slave_wait_terminate; do
+        if ! kill $1 "$slave_pid"; then
+            s=$slave_wait_terminate
+            replace "$slave_pid " ' '
+            slave_wait_terminate=$s
+            { eval rm "\$slave_file_memo_$slave_pid"; } || true
+        fi
+    done
+}
+
+
+
+
+stage1() {
+    master_not_found=
+    fast_timestamp_ms
+    t=$tm
+    while [ ! -f "$livebound_dir/master.pid" ]; do
+        fast_sleep 1
+        fast_timestamp_ms
+        if [ "$tm" -gt $((t + LIVEBOUND_STAGE1_TIMEOUT)) ]; then
+            master_not_found=1
+        fi
+    done
+}
+
+stage2() {
+    if [ -z "$master_not_found" ]; then
+        read -r master_pid < "$livebound_dir/master.pid"
+        # rm "$livebound_dir/master.pid"
+        while kill -0 "$master_pid"; do
+            fast_sleep 1
+        done
+    fi
+}
+
+
+
+stage3() {
+    slave_wait_terminate=" "
+
+    fast_timestamp_ms
+    t=$tm
+    while watch_slaves "do_process_terminate_handle"; do
+        clear_slaves -0
+        fast_sleep 1
+        fast_timestamp_ms
+        if [ "$tm" -gt $((t + LIVEBOUND_STAGE3_TIMEOUT)) ]; then
+            break
+        fi
+    done
+}
+
+
+stage4() {
+    clear_slaves -SIGKILL
+    while watch_slaves; do
+        clear_slaves -0
+        fast_sleep 1
+    done
+
+    rm "master.pid"
+    release_pidlock "$livebound_dir/watcher.pid" || true
+    rmdir "$livebound_dir"
+}
+
+
+
+cmd=$1
+shift
+
+
+if [ ! -d "$livebound_dir" ]; then
+    exit 1
+fi
+
+case $cmd in
+    bind)
+            livebound_dir=$1
+            if ! obtain_pidlock "$livebound_dir/watcher.pid"; then
+                exit 1
+            fi
+            if [ "${2:-}" == "-d" ]; then
+                LIVEBOUND_STAGE1_TIMEOUT=$((${LIVEBOUND_STAGE1_TIMEOUT:-10} * 1000))
+                LIVEBOUND_STAGE3_TIMEOUT=$((${LIVEBOUND_STAGE1_TIMEOUT:-20} * 1000))
+                trap - SIGHUP
+                stage1
+                stage2
+                stage3
+                stage4
+            else
+                # double fork to detech to new perent pid 1
+                ( eval "\$0" bind "$livebound_dir" -d & ) &
+            fi
+        ;;
+    clean)
+            livebound_dir=$1
+            if ! obtain_pidlock "$livebound_dir/watcher.pid"; then
+                exit 1
+            fi
+            LIVEBOUND_STAGE1_TIMEOUT=$((${LIVEBOUND_STAGE1_TIMEOUT:-0} * 1000))
+            LIVEBOUND_STAGE1_TIMEOUT=$((${LIVEBOUND_STAGE1_TIMEOUT:-3} * 1000))
+            stage1
+            stage2
+            stage3
+            stage4
+        ;;
+    *)
+            return 1
+        ;;
+esac
+
+
+

@@ -190,24 +190,24 @@ decomp [code]
                 path="$url"
             ;;
         */*)
-                repo="${url%\#*}"
-                if [ "$repo" != "$url" ]; then
-                    branch_commit="${url##*\#}"
-                else
-                    branch_commit=.
+                # repo="${url%\#*}"
+                # if [ "$repo" != "$url" ]; then
+                #     branch_commit="${url##*\#}"
+                # else
+                #     branch_commit=.
+                # fi
+                # if [ -n "${repo#*/}" ] && [ "${repo#"${repo%/*}"}" = "/${repo#*/}" ]; then
+                #     # "user/name" pattern, try github
+                #     url="https://github.com/${repo%.git}.git"
+                #     unset repo
+                # else
+                if [ -z "$noerror" ]; then
+                    _error "unaccept relative path, use absolute path or './$url'"
                 fi
-                if [ -n "${repo#*/}" ] && [ "${repo#"${repo%/*}"}" = "/${repo#*/}" ]; then
-                    # "user/name" pattern, try github
-                    url="https://github.com/${repo%.git}.git"
-                    unset repo
-                else
-                    if [ -z "$noerror" ]; then
-                        _error "unaccept relative path, use absolute path or './$url'"
-                    fi
-                    unset repo
-                    dl=relative
-                    return 1
-                fi
+                unset repo
+                dl=relative
+                return 1
+                # fi
             ;;
         *)
                 if [ -z "$noerror" ]; then
@@ -386,9 +386,9 @@ decomp [code]
     fi
     unset needunpack noerror
 
-    if [ -n "${FETCH_DEBUG:-}" ]; then
-        echo "url='$url'; dl='$dl'; decomp='$decomp'"
-    fi
+    # if [ -n "${FETCH_DEBUG:-}" ]; then
+    #     echo "url='$url'; dl='$dl'; decomp='$decomp'"
+    # fi
 }
 
 

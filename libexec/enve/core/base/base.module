@@ -1,0 +1,263 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+# x='
+# config.clearEnv
+# config.shell
+# layout.root
+# layout.var
+# path
+# passvar
+# variable
+# command
+# require.python.pipfile
+# require.node.npmfile
+# require.ruby.gemfile
+# import
+# module
+# '
+
+# resolve_first() {
+#     [ -n "$TABLE" ] && echo "$TABLE"
+#     # out_var HOME "$HOME"
+#     # out_var USER "$USER"
+#     # out_var TERM "$TERM"
+#     out_var TMPDIR "${TMPDIR:-/tmp}"
+# }
+
+
+
+# resolve_basic() {
+#     [ -n "$TABLE" ] && echo "$TABLE"
+#     # if [ "${1:-}" != "--as_module" ]; then
+#     #     PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
+#     #     PRJVAR="$(resolve_path "$(table_tail "layout\\.var")")"
+#     # fi
+
+#     PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
+#     out_var PRJROOT "$PRJROOT"
+
+#     { table_subset "path" || true; } | as_value | \
+#     while read -r value; do
+#         if [ "${value#${value%?}}" != '$' ]; then
+#             value="$(resolve_path "$value")"
+#         fi
+#         out_list PATH "$value"
+#     done
+
+#     # out_join BYPASS ':'
+#     { table_subset "passvar" || true; } | as_value | \
+#     while read -r value; do
+#         out_list BYPASS "$value"
+#     done
+#     out_list BYPASS "PRJ_NAME"
+#     out_list BYPASS "TERMTHEME"
+#     out_list BYPASS "ENVE_CACHED_OS"
+
+#     fast_get_system
+#     out_var "ENVE_CACHED_OS" "$ENVE_CACHED_OS"
+
+#     out_list BYPASS "TERM"
+#     out_list BYPASS "TMUX"
+#     # out_list BYPASS "SHELL"
+
+#     { table_subset "dotfiles" || true; } | as_value | \
+#     while read -r value; do
+#         cnt=$((${cnt:-0} + 1))
+#         out_source "dot${cnt}" "$(resolve_path "$value")"
+#     done
+
+#     { table_subset "alias\\..*" || true; } | as_postfix "alias\\." | \
+#     while read -r name value; do
+#         eval out_alias "$name" "$value"
+#     done
+
+#     { table_subset "variable\\..*" || true; } | as_postfix "variable\\." | \
+#     while read -r name value; do
+#         out_var "$name" "$value"
+#     done
+#     config_filename=$(table_tail "enve\\.configs")
+#     if [ "${config_filename%.enve.ini}" != "$config_filename" ]; then
+#         name=$(basename "$config_filename")
+#         PRJ_NAME=${name%.enve.ini}
+#     else
+#         PRJ_NAME=$(basename "$(dirname "$(resolve_path '.')")")
+#     fi
+#     out_var "PRJ_NAME" "$PRJ_NAME"
+
+
+#     # this is for unicode character in console
+#     out_var "LC_ALL" "en_US.UTF-8"
+#     out_var "LANG" "en_US.UTF-8"
+
+#     # out_var "ENVE_PREV_PRJ_NAME" "${PRJ_NAME:-}"
+# }
+
+
+# resolve_nix() {
+#     given_shell=$(table_tail "shell")
+#     if [ "$(table_tail "enve\\.no_nix")" = "true" ]; then
+#         if [ -n "$given_shell" ]; then
+#             out_var SHELL "$(command -v $given_shell)"
+#         else
+#             out_var SHELL "$SHELL"
+#         fi
+#         [ -n "$TABLE" ] && echo "$TABLE"
+#         return
+#     fi
+
+#     PRJ_NAME="$(table_tail "PRJ_NAME")"
+
+#     nix_channel_url="$(table_tail "nix\\.channel\\.url")"
+#     # nix_channel_sha256="$(table_tail nix.channel.sha256)"
+
+#     if [ -z "${nix_channel_url:-}" ]; then
+#         nix_channel_version="$(table_tail nix.channel.version)"
+#         if [ -n "$nix_channel_version" ]; then
+#             nix_channel_url="https://github.com/NixOS/nixpkgs/archive/$nix_channel_version.tar.gz"
+#         else
+#             # nix_channel_url="https://github.com/NixOS/nixpkgs/archive/17.09.tar.gz"
+#             nix_channel_url="https://github.com/NixOS/nixpkgs/archive/18.09.tar.gz"
+#         fi
+#         # nix_channel_sha256="405f1d6ba523630c83fbabef93f0da11ea388510a576adf2ded26a744fbf793e"
+#     fi
+
+
+#     pkgs="$(table_subset "nix\\.require" | as_concat ' ')"
+#     pkgs="$pkgs $(table_subset "nix\\.packages" | as_concat ' ')"
+
+#     # echo "pkgs: $pkgs" >&2
+#     LOGTYPE=nix _info "pkgs: $pkgs"
+#     nix_root="$(resolve_path "$(table_tail "nix\\.root")")"
+#     nix_root=${nix_root:-/nix/var/nix/profiles/default}
+#     # if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
+#     #   . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+#     # fi
+
+#     # echo "$(table_subset "nix\\.files")" >&2
+#     nix_extra=
+#     for file in $(table_subset "nix\\.files" | as_value); do
+#         absfile="$(resolve_path "$file")"
+#         nix_extra="${nix_extra}${newl}$(cat "$absfile")"
+#     done
+#     if [ -n "$nix_extra" ]; then
+#         LOGLEVEL=DEBUG log "==== NIX_EXTRA ===="
+#         LOGLEVEL=DEBUG log "$nix_extra"
+#     fi
+
+#     nix_config="$(
+#         { table_subset "nix.config\\..*"; } | as_postfix "nix.config\\." | \
+#         while read -r name value; do
+#             if [ -n "$name" ]; then
+#                 echo "$name = $value;"
+#             fi
+#         done
+#     )"
+
+#     # install nix, if /nix not in system
+#     if [ ! -d /nix ]; then
+#         {
+#             echo "warning: nix is not installed on this system."
+#             echo ""
+#             echo "you should prepare the essential tools that required by enve."
+#             echo "those tools includes bash, curl, shasum, md5sum, tar, mktemp, maybe more"
+#             echo "and all tools in posix definition."
+#             echo "we recommand install nix as soon as possible with:"
+#             echo "    enve bootstrap"
+#         } >&2
+#         $ENVE_HOME/enve/script/install_nix.sh install >&2 || {
+#             _error "your system do not have nix installed, try install but failed"
+#             return 1
+#         }
+#     fi
+
+#     p_text() {
+#         printf %s\\n "v20190308v2"
+#         printf %s\\n "$nix_root"
+#         printf %s\\n "$nix_channel_url"
+#         printf %s\\n "$nix_config"
+#         printf %s\\n "$nix_extra"
+#         printf %s\\n "$PRJ_NAME"
+#         printf %s\\n "$pkgs"
+#     }
+
+#     p_make() {
+#         # TODO: I remove openssl_1_1_0 at pkgs, maybe need add back?
+#         # TODO: add findutils back
+#         if env_root="$(
+#             NIX_REMOTE=daemon \
+#             NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
+#             NIXPKGS_ALLOW_UNFREE=1 \
+#         "$nix_root"/bin/nix-build --no-out-link --show-trace - <<EOF
+#         let
+#           pkgs = import (builtins.fetchTarball {
+#             url = $nix_channel_url;
+#           }) { config = { $nix_config }; };
+#           $nix_extra
+#         in
+#           pkgs.buildEnv {
+#             name = "${PRJ_NAME:-}${PRJ_NAME:+-}env";
+#             paths = with pkgs; [
+#               coreutils diffutils which file
+#               gnused gnugrep gawkInteractive gnutar gzip bzip2 less gettext
+#               git gnupatch
+#               xz unzip
+#               bashInteractive bashCompletion
+#               time rsync
+#               $pkgs
+#             ];
+#           }
+# EOF
+#         )"; then
+#             echo "$env_root" > "$CACHED/env_root"
+#         else
+#             return 1
+#         fi
+#     }
+#     catalog=nix-env cache_path ./env_root p_text p_make
+#     fast_readtext $cached_path
+#     env_root=$text
+
+#     LOGTYPE=nix _info "env_root: $env_root"
+
+#     out_var ENV_ROOT "$env_root"
+#     if [ -n "$given_shell" ]; then
+#         out_var SHELL "$env_root/bin/$given_shell"
+#     else
+#         out_var SHELL "$env_root/bin/bash"
+#     fi
+#     [ -n "$TABLE" ] && echo "$TABLE"
+#     [ -n "${env_root:-}" ] && out_list PATH "$env_root/bin"
+# }
+
+
+
+main() {
+    info "IN $ZERO/enve.module"
+    TABLE=$(cat "${configfile:--}")
+    # for proc in first basic command nix terminal prompt macos ssh \
+    #             shell secret boundfiles; do
+    # for proc in nix; do
+
+    #     info "IN resolve_$proc"
+    #     if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+    #         _error "error at resolve_$proc"
+    #         exit 1
+    #     fi
+    #     # info "OUT resolve_$proc"
+    # done
+
+    info "OUT $ZERO/enve.module"
+    [ -n "$TABLE" ] && echo "$TABLE"
+}
+
+# if [ "${TEST:-}" != "test" ]; then
+# fi
+

@@ -1,0 +1,186 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+
+resolve_basic_late() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+
+    { table_subset "path" || true; } | as_value | \
+    while read -r value; do
+        if [ "${value#${value%?}}" != '$' ]; then
+            value="$(resolve_path "$value")"
+        fi
+        out_list PATH "$value"
+    done
+
+    { table_subset "passvar" || true; } | as_value | \
+    while read -r value; do
+        out_list BYPASS "$value"
+    done
+    out_list BYPASS "PRJ_NAME"
+    out_list BYPASS "TERMTHEME"
+    out_list BYPASS "ENVE_CACHED_OS"
+
+    fast_get_system
+    out_var "ENVE_CACHED_OS" "$ENVE_CACHED_OS"
+
+    out_list BYPASS "TERM"
+    out_list BYPASS "TMUX"
+    # out_list BYPASS "SHELL"
+
+    { table_subset "dotfiles" || true; } | as_value | \
+    while read -r value; do
+        cnt=$((${cnt:-0} + 1))
+        out_source "dot${cnt}" "$(resolve_path "$value")"
+    done
+
+    { table_subset "alias\\..*" || true; } | as_postfix "alias\\." | \
+    while read -r name value; do
+        eval out_alias "$name" "$value"
+    done
+
+    # this is for unicode character in console
+    out_var "LC_ALL" "en_US.UTF-8"
+    out_var "LANG" "en_US.UTF-8"
+}
+
+resolve_command() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+
+    if [ -n "$(table_subset "cmd\\..*" | as_concat ' ' || true)" ]; then
+        TDIR="$(mktemp -d)"
+        mkdir "$TDIR/cmd"
+        { table_subset "cmd\\..*" || true; } | as_postfix "cmd\\." | \
+        while read -r name value; do
+            # out_var "$name" "$value"
+            echo "$value" > "$TDIR/cmd/$name"
+            chmod 555 "$TDIR/cmd/$name"
+        done
+        out_list PATH "$TDIR/cmd"
+    fi
+}
+
+
+resolve_terminal() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    if [ "$(table_tail "core\\.target")" = "shell" ]; then
+        size=$(table_tail "terminal.size")
+        if [ -n "$size" ]; then
+            out_var TERMSIZE "$size"
+        fi
+        theme=$(table_tail "terminal.theme")
+        if [ -n "$theme" ]; then
+            out_var TERMTHEME "$theme"
+        fi
+    fi
+}
+
+
+
+resolve_prompt() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+
+    target="$(table_tail "core\\.target")"
+    if  [ "$target" = "shell" ]; then
+        if  [ "$(table_tail "shell")" = "bash" ]; then
+
+            ENV_ROOT="$(table_tail ENV_ROOT)"
+            for script in "$ENV_ROOT"/etc/bash_completion.d/*; do
+                if [ "${script#"${script%?}"}" != '*' ]; then
+                    out_source "$(basename "${script%.*}")" "$script"
+                fi
+            done
+            if [ -f "$ENV_ROOT/share/bash-completion/bash_completion" ]; then
+                out_source bash_completion "$ENV_ROOT/share/bash-completion/bash_completion"
+            fi
+            out_alias ls 'ls --color'
+            out_list ENVE_BASHOPTS checkwinsize
+        fi
+    fi
+}
+
+
+
+resolve_secret() {
+    #
+    # keys:
+    #   secret.variable
+    #
+
+    [ -n "$TABLE" ] && echo "$TABLE"
+    { table_subset "secret\\.variable\\..*" || true; } | as_postfix "secret\\.variable\\." | \
+    while read -r name value; do
+        out_secret "$name" "$value"
+    done
+}
+
+
+resolve_boundfiles() {
+    # TODO: 與gitignore整合, 並且考慮enve.bound.ignore
+    # 整個專案資料夾的所有檔案都理論上都是bound
+    # 當bound沒有依賴專案資料夾以外的檔案, 而且所有的submodule也都是pure bound
+    #   而且使用者沒有設定enve.bound.pure, 則此 enve.bound.pure=true
+    # ignore順序
+    # 1. +all
+    # 2. include .gitignore
+    # 3. +enve.bound
+    # 4. include enve.bound.ignore
+
+    bounds_table=
+    # TODO: PRJROOT must be abspath
+    if [ "$(table_tail "enve\\.nobound")" != "true" ]; then
+        PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
+        if [ -z "$PRJROOT" ]; then
+            error "layout.root not defiend"
+            return 1
+        fi
+        bounds="$(cd "$PRJROOT"; find . ! -type d)"
+
+        if [ -f "$PRJROOT/.gitignore" ]; then
+            bounds="$(echo "$bounds" | gitignore_filter "$(cat "$PRJROOT/.gitignore")" )"
+        fi
+        if table_subset "enve\\.bound"; then
+            bounds="$bounds${bounds:+$newl}$(table_subset "enve\\.bound" | as_concat "$newl" || true)"
+        fi
+        bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\\.bound\\.ignore" | as_concat "$newl" || true)" )"
+        # echo "== BOUND:" >&2
+        # echo "$bounds" >&2
+
+        bounds_table="$(
+            cd "$PRJROOT"
+            while read -r path; do
+                if [ -n "$path" ]; then
+                    out_var bound "$(resolve_symlinks "$path")"
+                fi
+            done <<EOF
+$bounds
+EOF
+        )"
+    fi
+
+    [ -n "$TABLE" ] && echo "$TABLE"
+    echo "$bounds_table"
+}
+
+
+main() {
+    info "IN $ZERO/base-late.module"
+    TABLE=$(cat "${configfile:--}")
+    for proc in basic_late command terminal prompt secret boundfiles; do
+        info "IN resolve_$proc"
+        if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+            _error "error at resolve_$proc"
+            exit 1
+        fi
+        # info "OUT resolve_$proc"
+    done
+    info "OUT $ZERO/base-late.module"
+    [ -n "$TABLE" ] && echo "$TABLE"
+}

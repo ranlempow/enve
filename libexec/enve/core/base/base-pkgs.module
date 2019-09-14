@@ -1,0 +1,175 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+
+: '
+
+    目前規劃幾個基本的root-pkgs系統
+
+    pkgs    | system      | support | ENV_ROOT
+    --------|-------------|----------
+    origin  | *           |  50     | /
+    pkgsrc  | unix        |         | /opt/pkg
+    nix     | linux,macos | 100%    | /nix/store/*
+    brew    | linux,macos |         | /usr/local/
+    cygwin  | cygwin      |         | $APPDATA/enve/sysroots/cygwin-*
+    pacman  | msys2       |         | $APPDATA/enve/sysroots/msys2-*{/,/usr,/mingw32,/mingw64}
+    pacman  | linux       |         |
+    apk     | Alpine Linux|         | /|/opt/sysroots/alpine-*
+    apt     | linux       |         | /
+    yum     | linux       |         | /
+
+
+    https://wiki.alpinelinux.org/wiki/Alpine_Linux_in_a_chroot
+    ./sbin/apk.static -X ${mirror}/latest-stable/main -U --allow-untrusted --root ${chroot_dir} --initdb add alpine-base
+
+
+    目前支持的root機制
+
+    settle
+
+    SETTLE_ROOT=$APPDATA/enve/sysroots/$SYSROOT_NAME
+    SETTLE_ROOT=/opt/sysroots/$SYSROOT_NAME
+
+
+
+    目前支持的映像檔機制
+
+    remake
+
+    建造映像檔流程
+    1. 規劃映像檔格式
+    2. 格式化檔案系統
+    3. 安裝bootloader
+    4. 呼叫settle
+
+
+
+    版本控制與專案管理機制
+
+    NEIB_ROOT=$APPDATA/enve/neighborhoods/$NEIB_NAME
+    NEIB_ROOT=$HOME/neighborhoods/$NEIB_NAME
+    PRJ_ROOT=$NEIB_ROOT/$PRJ_NAME
+    PRJ_ROOT=$NEIB_ROOT/$BOND_NAME/$PRJ_NAME
+    PRJ_OUT=$NEIB_ROOT/outs/$PRJ_NAME
+
+    git
+    neighbors
+    githook
+
+    專案間的依賴
+    prj.dep.$name1.uri=git@xxx.git#master
+    prj.dep.$name1.path=${NEIB_ROOT}/${CLONE_NAME}
+    prj.dep.$name1.optional=true
+    prj.dep.$name2.uri=git@yyy.git#~=v1.1.x
+    prj.dep.$bond.$name3.uri=git@zzz.git#develop
+
+    .neibpin 是一個的檔案裡面會鎖定這個提交的依賴commit
+    bond代表在菱形依賴的時候, 將共同基礎依賴repo指向同一個版本, 而不是多個獨立版本
+    如果同一個bond的共同基礎依賴repo指向不同的版本, 那共同需求repo則無法提交
+    bond如果沒有指定的話, 預設為需求的專案名
+
+
+
+
+    目前主要支援的operating system
+
+    macos
+    msys2
+    freebsd
+    linux
+    ish (iOS)
+    Termux (android)
+
+
+    目前支援的 terminal emulator 軟體
+
+    (VT100/ANSI)
+    linux(Linux built-in "virtual console")
+    ssh
+    kitty+ssh
+    tmux
+
+    termainal.app
+    kitty
+    mintty
+    alacritty
+    conemu
+
+
+
+    目前支援的 shell
+
+    ash|ksh|sh|dash
+    bash
+    zsh
+
+
+    目前主要支援的語言包管理器
+
+    python
+    ruby
+    nodejs
+    oh-my-zsh
+    lua
+
+
+
+    目前主要支援的isolator
+
+    cmd /c start
+    kitty-macos-launch-services-cmdline
+    sh-exec
+    disown-chroot
+    systemd-nspawn
+
+
+
+    目前支援的服務掛載機制
+
+    obj-tee設定法
+
+    livebound   一旦pid不存在, 發送SIGTREM給數個行程
+
+    pm
+    launchd
+    systemd
+    openrc
+    cygrunsrv
+    BSD-style init(8)
+
+
+    目前支持的建造機制
+
+    參考nix build
+    ./build.sh cp+cache
+
+    https://en.wikipedia.org/wiki/Meson_(software)
+    cmake
+    autotools
+    make
+
+
+
+    目前支持的部屬機制
+    obj-cp部署法
+
+
+    目前支持的安全機制
+
+    obj-cat認證取得
+    psk
+
+
+'
+
+main() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+}

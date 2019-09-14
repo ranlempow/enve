@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+
+
+main() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+}

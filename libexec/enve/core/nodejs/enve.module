@@ -9,26 +9,25 @@
 settrace
 
 
-# resolve_nodejs() {
-#     # TABLE=$(cat "${configfile:--}")
-#     # echo "$TABLE"
-#     NODE2NIX_TMP="$HOME/.cache/enve/node2nix-tmp"
-#     if [ -d "$NODE2NIX_TMP" ]; then
-#         rm -r "$NODE2NIX_TMP"
-#     fi
-#     mkdir -p "$NODE2NIX_TMP"
 
-#     node_version="$(table_tail "nodejs\.version")"
-#     node_version="${node_version:-6}"
+# _load_basic_variable() {
+#     node_version="$(table_tail "nodejs\\.version")"
+#     node_version="${node_version:-8}"
 #     node_version="${node_version%%.*}"
-#     if [ "$node_version" -gt 7 ]; then
+#     if [ "$node_version" -gt 11 ]; then
+#         node2nix_node_version=12
+#     elif [ "$node_version" -gt 9 ]; then
+#         node2nix_node_version=10
+#     elif [ "$node_version" -gt 7 ]; then
 #         node2nix_node_version=8
-#     else
-#         node2nix_node_version=6
 #     fi
-#     node_dev="$(table_tail "nodejs\.development")" || node_dev=
+#     # else
+#     #     node2nix_node_version=6
+#     # fi
+#     node_dev="$(table_tail "nodejs\\.development")" || node_dev=
 
-#     if [ -f "$(resolve_path "package-lock.json")" ]; then
+#     package_lock=$(resolve_path "package-lock.json")
+#     if [ -f "$package_lock" ]; then
 #         node_lockfile=1
 #     fi
 
@@ -41,96 +40,36 @@ settrace
 #     # )
 #     # exit 1
 
+#     packages="
+# $({ table_subset "nodejs\\.require\\.packages" || true; } | as_value)
+# $({ table_subset "nodejs\\.require\\.packages\\..*" | as_postfix "nodejs\\.require\\.packages\\." || true; })
+# "
 
 #     package_json="$(resolve_path "package.json")"
 #     echo "PACKAGE.JSON: $package_json" >&2
-#     if [ ! -f "$(resolve_path "package.json")" ]; then
-
-#         packages="
-# $({ table_subset "nodejs\.require\.packages" || true; } | as_value)
-# $({ table_subset "nodejs\.require\.packages\..*" | as_postfix "nodejs\.require\.packages\." || true; })
-# "
-#         if [ -z "${packages//[[:space:]]/}" ]; then
+#     if [ ! -f "$package_json" ]; then
+#         # if [ -z "${packages//[[:space:]]/}" ]; then
+#         packages_json_without_space=${packages}
+#         packages_json_without_space=${packages_json_without_space%%[:space:]}
+#         packages_json_without_space=${packages_json_without_space##[:space:]}
+#         if [ -z "${packages_json_without_space}" ]; then
 #             echo "error: package.json not found" >&2
 #             return 1
 #         fi
-#         mkdir -p "$NODE2NIX_TMP/tmp_project"
-#         package_json="$NODE2NIX_TMP/tmp_project/package.json"
-#         echo '
-# {
-#   "name": "enve-node-env",
-#   "version": "0.0.1",
-#   "description": "enve-node-env",
-#   "dependencies": {
-# ' > "$package_json"
-
-
-#         pkgs="$(echo "$packages" | while read -r name ver; do
-#             if [ -n "$name" ]; then
-#                 echo "node-packages: $name, version :${ver:-}" >&2
-#                 if [ -z "$ver" ]; then
-#                     ver=latest
-#                 fi
-#                 echo "    \"$name\": \"$ver\"${newl}"
-#             fi
-#         done)"
-#         echo "$pkgs" >&2
-#         echo "$(echo "$pkgs" | paste -sd ",${newl}" -)" >&2
-#         echo "$pkgs" | paste -sd ",${newl}" - >> "$package_json"
-#         echo "${newl}  }${newl}}" >> "$package_json"
 #     fi
-#     # exit 1
-
-#     # '--bypass-cache' maybe useful, when: cache-mode is 'only-if-cached'
-#     echo node2nix --nodejs-$node2nix_node_version \
-#              ${node_dev:+ --development} \
-#              ${node_lockfile:+ --lock "$(resolve_path "package-lock.json")"} \
-#              --input "$package_json" \
-#              --output "$NODE2NIX_TMP/node-packages.nix" \
-#              --composition "$NODE2NIX_TMP/default.nix" \
-#              --node-env "$NODE2NIX_TMP/node-env.nix" >&2
-#              # --bypass-cache
-
-#     node2nix --nodejs-$node_version \
-#              ${node_dev:+ --development} \
-#              ${node_lockfile:+ --lock "$(resolve_path "package-lock.json")"} \
-#              --input "$package_json" \
-#              --output "$NODE2NIX_TMP/node-packages.nix" \
-#              --composition "$NODE2NIX_TMP/default.nix" \
-#              --node-env "$NODE2NIX_TMP/node-env.nix"
-#              # --bypass-cache
-
-
-#     # patch to resolve collision between $out/bin
-#     # ln -s $out/lib/node_modules/.bin $out/bin
-#     sed -i '/ln -s \$out\/lib\/node_modules\/.bin/d' "$NODE2NIX_TMP/node-env.nix"
-
-#     out_var "nix.packages" "nodejs-${node_version}_x"
-#     out_var "nix.packages" "(import $NODE2NIX_TMP/default.nix {pkgs=pkgs;}).shell.nodeDependencies"
-#     out_list PATH "\$ENV_ROOT/lib/node_modules/.bin"
-#     out_join NODE_PATH ';'
-#     out_list NODE_PATH "\$ENV_ROOT/lib/node_modules"
 
 # }
 
-resolve_nodejs_two() {
-    # TABLE=$(cat "${configfile:--}")
-    # echo "$TABLE"
-    # NODE2NIX_TMP="$HOME/.cache/enve/node2nix-tmp"
-    # if [ -d "$NODE2NIX_TMP" ]; then
-    #     rm -r "$NODE2NIX_TMP"
-    # fi
-    # mkdir -p "$NODE2NIX_TMP"
-
+_load_basic_variable() {
     node_version="$(table_tail "nodejs\\.version")"
-    node_version="${node_version:-6}"
+    node_version="${node_version:-8}"
     node_version="${node_version%%.*}"
-    if [ "$node_version" -gt 9 ]; then
+    if [ "$node_version" -gt 11 ]; then
+        node2nix_node_version=12
+    elif [ "$node_version" -gt 9 ]; then
         node2nix_node_version=10
     elif [ "$node_version" -gt 7 ]; then
         node2nix_node_version=8
-    else
-        node2nix_node_version=6
     fi
     node_dev="$(table_tail "nodejs\\.development")" || node_dev=
 
@@ -138,15 +77,6 @@ resolve_nodejs_two() {
     if [ -f "$package_lock" ]; then
         node_lockfile=1
     fi
-
-    # tmp_project="$NODE2NIX_TMP/stage1"
-    # mkdir -p "$tmp_project"
-    # cp "$(resolve_path "package.json")" "$tmp_project/package.json"
-    # (
-    #     cd "$tmp_project"
-    #     npm install --package-lock-only >&2
-    # )
-    # exit 1
 
     packages="
 $({ table_subset "nodejs\\.require\\.packages" || true; } | as_value)
@@ -157,18 +87,100 @@ $({ table_subset "nodejs\\.require\\.packages\\..*" | as_postfix "nodejs\\.requi
     echo "PACKAGE.JSON: $package_json" >&2
     if [ ! -f "$package_json" ]; then
         # if [ -z "${packages//[[:space:]]/}" ]; then
-        packages_json_without_space=${packages}
-        packages_json_without_space=${packages_json_without_space%%[:space:]}
-        packages_json_without_space=${packages_json_without_space##[:space:]}
-        if [ -z "${packages_json_without_space}" ]; then
+        # packages_json_without_space=${packages}
+        # packages_json_without_space=${packages_json_without_space%%[:space:]}
+        # packages_json_without_space=${packages_json_without_space##[:space:]}
+        # if [ -z "${packages_json_without_space}" ]; then
+        if [ -z "${packages%%[:space:]}" ]; then
             echo "error: package.json not found" >&2
             return 1
         fi
     fi
 
+}
+
+_create_package_json() {
+    package_json=$1
+    packages=$2
+    echo '
+{
+  "name": "enve-node-env",
+  "version": "0.0.1",
+  "description": "enve-node-env",
+  "dependencies": {
+' > "$package_json"
+    pkgs="$(echo "$packages" | while read -r name ver; do
+        if [ -n "$name" ]; then
+            echo "node-packages: $name, version :${ver:-}" >&2
+            if [ -z "$ver" ]; then
+                ver=latest
+            fi
+            echo "    \"$name\": \"$ver\"${newl}"
+        fi
+    done)"
+    echo "$pkgs" >&2
+    echo "$pkgs" | paste -sd ",${newl}" - >&2
+    echo "$pkgs" | paste -sd ",${newl}" - >> "$package_json"
+    echo "${newl}  }${newl}}" >> "$package_json"
+}
+
+
+resolve_nodejs_npmdirect() {
+    _load_basic_variable
+
+    p_text() {
+        echo 3
+        command -v node
+        echo "$packages"
+        echo "$(table_tail "nix\\.channel\\.version")"
+        echo "PACKAGE.JSON: $package_json"
+    }
+    p_vaild() {
+        if [ ! -d "$CACHED/node_modules" ]; then
+            return 0
+        fi
+        # TODO: non-posix
+        current=$(date +%s)
+        last_modified=$(date -r "$CACHED/node_modules" +%s)
+        if [ $((current - last_modified)) -gt 360000 ]; then
+            return 0
+        fi
+        echo 1
+    }
+    p_make() {
+        if [ ! -f "$package_json" ]; then
+            package_json="$CACHED/package.json"
+            _create_package_json "$package_json" "$packages"
+        fi
+        d=$package_json
+        fast_dirname
+        cd "$CACHED"
+        npm install "$d"
+    }
+    catalog=package_json_simple cache_path "node_modules" p_text p_make p_vaild
+    node_modules_path=$cached_path
+    cached_path=
+
+    out_var "nix.packages" "nodejs-${node_version}_x"
+    out_list PATH "${node_modules_path}/.bin"
+    out_join NODE_PATH ';'
+    out_list NODE_PATH "${node_modules_path}"
+
+}
+
+
+
+
+
+
+
+resolve_nodejs_nix() {
+    _load_basic_variable
+
     p_text() {
         command -v node
         echo "$packages"
+        echo "$(table_tail "nix\\.channel\\.version")"
         echo "node_version: $node_version"
         echo "PACKAGE.JSON: $package_json"
         echo "package_lock: $package_lock"
@@ -195,37 +207,39 @@ $({ table_subset "nodejs\\.require\\.packages\\..*" | as_postfix "nodejs\\.requi
             # fi
             # mkdir -p "$NODE2NIX_TMP/tmp_project"
             package_json="$CACHED/package.json"
-            echo '
-{
-  "name": "enve-node-env",
-  "version": "0.0.1",
-  "description": "enve-node-env",
-  "dependencies": {
-' > "$package_json"
-            pkgs="$(echo "$packages" | while read -r name ver; do
-                if [ -n "$name" ]; then
-                    echo "node-packages: $name, version :${ver:-}" >&2
-                    if [ -z "$ver" ]; then
-                        ver=latest
-                    fi
-                    echo "    \"$name\": \"$ver\"${newl}"
-                fi
-            done)"
-            echo "$pkgs" >&2
-            echo "$pkgs" | paste -sd ",${newl}" - >&2
-            echo "$pkgs" | paste -sd ",${newl}" - >> "$package_json"
-            echo "${newl}  }${newl}}" >> "$package_json"
+            _create_package_json "$package_json" "$packages"
         fi
+#             echo '
+# {
+#   "name": "enve-node-env",
+#   "version": "0.0.1",
+#   "description": "enve-node-env",
+#   "dependencies": {
+# ' > "$package_json"
+#             pkgs="$(echo "$packages" | while read -r name ver; do
+#                 if [ -n "$name" ]; then
+#                     echo "node-packages: $name, version :${ver:-}" >&2
+#                     if [ -z "$ver" ]; then
+#                         ver=latest
+#                     fi
+#                     echo "    \"$name\": \"$ver\"${newl}"
+#                 fi
+#             done)"
+#             echo "$pkgs" >&2
+#             echo "$pkgs" | paste -sd ",${newl}" - >&2
+#             echo "$pkgs" | paste -sd ",${newl}" - >> "$package_json"
+#             echo "${newl}  }${newl}}" >> "$package_json"
+#         fi
 
         # '--bypass-cache' maybe useful, when: cache-mode is 'only-if-cached'
-        echo node2nix --nodejs-$node2nix_node_version \
-                ${node_dev:+ --development} \
-                ${node_lockfile:+ --lock "$package_lock"} \
-                --input "$package_json" \
-                --output "$CACHED/node-packages.nix" \
-                --composition "$CACHED/default.nix" \
-                --node-env "$CACHED/node-env.nix" >&2
-                # --bypass-cache
+        # echo node2nix --nodejs-$node2nix_node_version \
+        #         ${node_dev:+ --development} \
+        #         ${node_lockfile:+ --lock "$package_lock"} \
+        #         --input "$package_json" \
+        #         --output "$CACHED/node-packages.nix" \
+        #         --composition "$CACHED/default.nix" \
+        #         --node-env "$CACHED/node-env.nix" >&2
+        #         # --bypass-cache
 
         node2nix --nodejs-$node2nix_node_version \
                 ${node_dev:+ --development} \
@@ -258,7 +272,11 @@ main() {
     info "IN $(basename $ZERO)/enve.module"
     TABLE=$(cat)
     [ -n "$TABLE" ] && echo "$TABLE"
-    resolve_nodejs_two
+    if [ "$(table_tail "nodejs.npmdirect")" == "1" ]; then
+        resolve_nodejs_npmdirect
+    else
+        resolve_nodejs_nix
+    fi
     info "OUT $(basename $ZERO)/enve.module"
 }
 

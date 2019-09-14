@@ -55,4 +55,10 @@ prompt_command() {
     unset ps1_line retcode
     unset RED YELLOW BLUE GRAY PINK NOCOLOR
 }
-PROMPT_COMMAND=prompt_command
+
+# NOTE: `history -a` is bash only command
+if [ "$shell" = "bash" ]; then
+    PROMPT_COMMAND="history -a; prompt_command"
+else
+    PROMPT_COMMAND=prompt_command
+fi
