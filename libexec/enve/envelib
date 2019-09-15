@@ -353,10 +353,12 @@ EOF
 fast_as_value() {
     TABLE_AS=
     while IFS="${tab}" read -r name value; do
-        if [ -n "$value" ]; then
-            TABLE_AS="${TABLE_AS}$value$newl"
-        else
-            TABLE_AS=
+        if [ -n "$name" ]; then
+            if [ -n "$value" ]; then
+                TABLE_AS="${TABLE_AS}$value$newl"
+            else
+                TABLE_AS=
+            fi
         fi
     done <<EOF
 $TABLE_SUBSET
@@ -527,7 +529,7 @@ out_var_fast() {
     printf %s\\n "VAR${tab}$1${tab}$2"
 }
 out_var_just() {
-    TABLE="${TABLE}${newl}${3:-VAR}${tab}$1${tab}$2"
+    TABLE="${TABLE%%$newl}${TABLE:+$newl}${3:-VAR}${tab}$1${tab}$2"
 }
 
 # out_module() {
@@ -567,6 +569,22 @@ out_secret() {
     echo "SEC${tab}$1${tab}$(s=$2; replace "$newl" "$feed"; printf "%s" "$s")"
 }
 
+fast_system_roles() {
+    out=
+    fast_get_system
+    case "$ENVE_CACHED_OS" in
+        FreeBSD) out="$out${out:+,}freebsd,bsd,unix,posix"; ;;
+        Darwin) out="$out${out:+,}darwin,bsd,unix,posix"; ;;
+        Linux) out="$out${out:+,}linux,unix,posix"; ;;
+        MINGW32) out="$out${out:+,}nt,msystem,mingw,mingw32"; ;;
+        MINGW64) out="$out${out:+,}nt,msystem,mingw,mingw64"; ;;
+        MSYS*) out="$out${out:+,}nt,msystem,msys2"; ;;
+        CYGWIN) out="$out${out:+,}nt,cygwin,posix"; ;;
+    esac
+    out_system_roles=$out
+    unset out
+}
+
 system_roles() {
     # out=
     # if [ -n "${MSYSTEM:-}" ]; then
@@ -600,233 +618,428 @@ system_roles() {
 
 
 _parse_keyvalue() {
+    # params
+    #   $1 - line
+    # output
+    #   key
+    #   value
+
     line="$1"
 
     key=
-    if [ "${line##*^=}" = "${line}" ]; then
-        value="${line##*=}"
-        if [ "$value" != "$line" ]; then
-            key="${line%%=*}"
-        fi
+    if [ "${line##*"\\="}" != "${line}" ]; then
+        # value escape '\=' to '='
+        s=$value
+        replace "\\=" "="
+        value=$s
+        unset s
     else
-        # value="${line//^=/=}"
-        value=$(printf %s "$line" | sed 's/\^=//g')
+        value="${line#*"="}"
+        if [ "$value" != "$line" ]; then
+            key="${line%%"="*}"
+        fi
     fi
 
-    # key="${key##+([[:space:]])}"
-    # key="${key%%+([[:space:]])}"
+    if [ "${value#\\\[}" != "$value" ]; then
+        # value escape starting '\[' to '['
+        value=${value#\\}
+    fi
+
     if [ -n "$key" ]; then
         junk=${key%%[![:space:]]*}
         key=${key#"$junk"}
-        junk=${key##*[![:space:]]}
-        key=${key%"$junk"}
+        # junk=${key##*[![:space:]]}
+        # key=${key%"$junk"}
     fi
-    # echo "P:'$line' $key='$value'" >&2
+    unset line
 }
 
 
+filter_roles() {
+    # input
+    #   roles
+    # inout
+    #   key
 
-parse_config_recursive() {
+    s="$key${newl}"
+    replace "," "@"
+    # _roles=,$roles
+    OLDIFS=$IFS; IFS=","
+    for role in ${roles}; do
+        replace "@$role@" "@"
+        replace "@$role." "."
+        replace "@$role$newl" "$newl"
+    done
+    IFS=$OLDIFS
+    key=$s
+    key="${key%$newl}"
+    key="${key%\.}"
+    unset OLDIFS role s
+}
 
-    config_path="$(
-            canonicalize_symlinks "$1")" || {
-        warning "WARNING: not a resolvable path '$1'"
-        return
-    }
+
+emit2() {
+    # input
+    #   roles
+    #   key
+    #   value
+
+    key="$1"
+    value="$2"
+    filter_roles
+    if [ "$key" = "${key%%@*}" ]; then
+        if [ "$key" = "include" ] || [ "$key" = "inherit" ]; then
+            s=$value
+            replace "@" ","
+            if [ "$s" != "${s#*,}" ]; then
+                value_path=${s%%,*}
+                value_roles=${s#*,}
+            else
+                value_path=$s
+                value_roles=
+            fi
+            pass_roles=",${roles:+$roles,}"
+            OLDIFS=$IFS; IFS=","
+            for r in ${value_roles}; do
+                if [ -n "$r" ] && [ "${pass_roles%,$r,*}" = "${pass_roles}" ]; then
+                    pass_roles="$pass_roles$r,"
+                fi
+            done
+            IFS=$OLDIFS
+            pass_roles=${pass_roles%,}
+            pass_roles=${pass_roles#,}
+            # printf VAR\\t%s\\t%s\\n "__$key" "$value_path${pass_roles%,}"
+            OUT_TABLE="${OUT_TABLE}VAR${tab}__$key${tab}$value_path${pass_roles:+,$pass_roles}${newl}"
+            unset OLDIFS s r value_path value_roles pass_roles
+        else
+            # printf VAR\\t%s\\t%s\\n "$key" "$value"
+            OUT_TABLE="${OUT_TABLE}VAR${tab}$key${tab}$value${newl}"
+        fi
+    fi
+}
 
 
-    # echo "loading $config_path" >&2
-    [ -f "$config_path" ] || {
-        warning "WARNING: no such config file $config_path"
-        return
-    }
-    loaded=${loaded:-$newl}
-    if [ "${loaded#$newl$config_path$newl}" != "$loaded" ]; then
-        return
+emit() {
+    # input
+    #   roles
+    #   key
+    #   value
+
+    key="$1"
+    value="$2"
+    filter_roles
+    if [ "$key" = "${key%%@*}" ]; then
+        if [ "$key" = 'role' ]; then
+            # if [ ${key%${key#?}} = '-' ]; then
+            #     r=${key#?}
+            #     s=",$roles,"
+            #     replace ",$r," ","
+            #     roles=$s
+            # else
+            #     r=${key}
+            #     _roles=",$roles,"
+            #     if [ ${_roles%,$r,*} = "$_roles" ]; then
+            #         roles="${roles:+$roles,}$r"
+            #     fi
+            # fi
+            :
+        elif [ "$key" = "include" ] || [ "$key" = "inherit" ]; then
+            s=$value
+            replace "@" ","
+            value_path=${s%%,*}
+            value_roles=${s#*,}
+            pass_roles=",${roles},"
+            OLDIFS=$IFS; IFS=","
+            for r in ${value_roles}; do
+                IFS=$OLDIFS
+                if [ -n "$r" ] && [ "${pass_roles%,$r,*}" = "${pass_roles}" ]; then
+                    pass_roles="$pass_roles$r,"
+                fi
+            done
+            printf VAR\\t%s\\t%s\\n "__$key" "$value_path${pass_roles%,}"
+        else
+            printf VAR\\t%s\\t%s\\n "$key" "$value"
+        fi
+    fi
+}
+
+parse_config_non_recursive() {
+    #
+    # input
+    #   $1 - path
+    #   roles
+    #   parse_inherit
+    #   parse_profile_optional
+    #
+    # output
+    #   OUT_TABLE
+    #
+    # inout
+    #   loaded
+    #
+    OUT_TABLE=
+    if ! config_path="$(canonicalize_symlinks "$1")"; then
+        unset config_path
+        if [ -z "${parse_profile_optional:-}" ]; then
+            error "not a resolvable path '$1'"
+            return 1
+        else
+            warning "WARNING: not a resolvable path '$1'"
+            return
+        fi
     fi
 
-    # root_path="$(canonicalize_symlinks "$(dirname "$config_path")")"
-    # root_path="$(dirname "$config_path")"
-    # root_path="$(canonicalize_symlinks "$(dirname "$1")")"
+    if [ -z "${parse_profile_optional:-}" ] && [ ! -f "$config_path" ]; then
+        error " no such config file $config_path"
+        unset config_path
+        return 1
+    fi
+
+    loaded=${loaded:-$newl}
+    if [ "${loaded#$newl$config_path$newl}" != "$loaded" ]; then
+        unset config_path
+        return
+    else
+        loaded="$loaded$config_path$newl"
+    fi
+
     d="$1"
     fast_dirname
     root_path=$(canonicalize_symlinks "$d")
 
-    # if grep "$config_path" < "$LOADED_RECORD"; then
-    #     # echo "LOADED $config_path" >&2
-    #     return
-    # fi
     # trace "parsing [roles: ${roles}] ${config_path}"
+    if [ -n "${parse_inherit:-}" ]; then
+        # out_var_fast layout.root "$root_path"
+        OUT_TABLE="${OUT_TABLE}VAR${tab}layout.root${tab}$root_path${newl}"
+    fi
+    unset d root_path
+
+    fast_readtext "$config_path"
+    parse_config_non_recursive_text "$text"
+
+    OUT_TABLE="${OUT_TABLE}VAR${tab}bound${tab}$config_path${newl}"
+    OUT_TABLE="${OUT_TABLE}VAR${tab}enve.configs${tab}$config_path${newl}"
+    OUT_TABLE="${OUT_TABLE}VAR${tab}enve.roles${tab}$roles${newl}"
+
+    unset text config_path
+}
 
 
-    filter_roles() {
-        s="$key${newl}"
-        replace "," "@"
-        _roles=,$roles
-        IFS=','
-        for role in ${_roles}; do
-            replace "@$role@" "@"
-            replace "@$role." "."
-            replace "@$role$newl" "$newl"
-        done
-        key=$s
-        key="${key%$newl}"
-        key="${key%\.}"
-        # echo "$key"
-    }
-    # is_roles_pass() {
-    #     # [ "$1" = "${1//[@,]/}" ]
-    #     [ "$1" = "${1%%[@,]*}" ]
-    # }
-    emit() {
-        # key="$(filter_roles "$1")"
-        key="$1"
-        value="$2"
-        # filter_roles
-        # if is_roles_pass "$key"; then
-        if [ "$key" = "${key%%@*}" ]; then
-            printf VAR\\t%s\\t%s\\n "$key" "$value"
-        fi
-    }
+parse_config_non_recursive_text() {
+    # input
+    #   roles
+    #   $1 - config_text
+    # inout
+    #   OUT_TABLE
 
-    out_var_fast layout.root "$root_path"
-
-    loaded="$loaded$config_path$newl"
+    area=
     stab=
     stabkey=
-    while IFS="${newl}" read -r line; do
-        # line="${line##+([[:space:]])}"
-        # line="${line%%+([[:space:]])}"
+    while read -r line; do
         junk=${line%%[![:space:]]*}
         line=${line#"$junk"}
         junk=${line##*[![:space:]]}
         line=${line%"$junk"}
-        # [ -z "$line" ] || [ "${line:0:1}" = ";" ] || [ "${line:0:1}" = "#" ] && continue
-        { [ -z "$line" ] || [ "${line%"${line#?}"}" = ";" ] || [ "${line%"${line#?}"}" = "#" ]; } && continue
+        { [ -z "$line" ] ||
+          [ "${line%"${line#?}"}" = ";" ] ||
+          [ "${line%"${line#?}"}" = "#" ]; } && continue
 
         if [ -n "$stab$stabkey" ]; then
-            # if [ "${line: -1}" = '\' ] && [ "${line: -2}" != '\\' ]; then
-            #     stab="${stab}${line:0: -1}"
-            # else
             if [ "${line#"${line%?}"}" = "\\" ] && [ "${line#"${line%??}"}" != "\\\\" ]; then
                 stab="${stab}${line%?}"
             else
-                # [ "${line: -2}" = '\\' ] && line="${line%\\}"
                 [ "${line#"${line%??}"}" = "\\\\" ] && line="${line%\\}"
-
                 stab="${stab}${line}"
-                # echo "VAR${tab}"${stabkey}"${tab}"${stab}
+                emit2 "$stabkey" "$stab"
+                stabkey=
+                stab=
+            fi
+        elif [ "${line%"${line#?}"}" = '[' ] && [ "${line#"${line%?}"}" = ']' ]; then
+            new_area="${line#\[}"
+            new_area="${new_area%\]}"
+
+            # Note: original key should not contain character '@' or ',', otherwise role test failed
+            junk=${new_area%%[![:space:]]*}
+            new_area=${new_area#"$junk"}
+            junk=${new_area##*[![:space:]]}
+            new_area=${new_area%"$junk"}
+
+            area="$new_area"
+            unset new_area
+        elif [ "${area}" = "comment" ]; then
+            :;
+        else
+            _parse_keyvalue "$line"
+            if [ -n "${area}${key:+.}${key}" ]; then
+                if [ "${value#"${value%?}"}" = "\\" ] && [ "${value#"${value%??}"}" != "\\\\" ]; then
+                    stabkey="${area}${area:+${key:+.}}${key}"
+                    stab="${stab}${value%?}"
+                else
+                    [ "${value#"${value%??}"}" = "\\\\" ] && value="${value%\\}"
+                    emit2 "${area}${area:+${key:+.}}${key}" "$value"
+                fi
+            else
+                :
+            fi
+        fi
+    done <<EOF
+$1
+EOF
+    unset junk line area stab stabkey key value
+}
+
+
+
+
+parse_config_recursive() {
+    # input
+    #   $1 - path
+    #   parse_inherit
+    #   parse_profile_optional
+    # print
+    #   [TABLE]
+
+
+    if ! config_path="$(canonicalize_symlinks "$1")"; then
+        if [ -z "${parse_profile_optional:-}" ]; then
+            error "not a resolvable path '$1'"
+            return 1
+        else
+            warning "WARNING: not a resolvable path '$1'"
+            return
+        fi
+    fi
+
+    # echo "loading $config_path" >&2
+    # [ -f "$config_path" ] || {
+    #     warning "WARNING: no such config file $config_path"
+    #     return
+    # }
+    if [ -z "${parse_profile_optional:-}" ] && [ ! -f "$config_path" ]; then
+        error " no such config file $config_path"
+        return 1
+    fi
+
+    loaded=${loaded:-$newl}
+    if [ "${loaded#$newl$config_path$newl}" != "$loaded" ]; then
+        return
+    fi
+    # TODO: this line is not need
+    loaded="$loaded$config_path$newl"
+
+    # root_path="$(canonicalize_symlinks "$(dirname "$config_path")")"
+    # root_path="$(dirname "$config_path")"
+    # root_path="$(canonicalize_symlinks "$(dirname "$1")")"
+
+    d="$1"
+    fast_dirname
+    root_path=$(canonicalize_symlinks "$d")
+    # trace "parsing [roles: ${roles}] ${config_path}"
+    if [ -z "${parse_inherit:-}" ]; then
+        out_var_fast layout.root "$root_path"
+    fi
+
+
+
+    area=
+    stab=
+    stabkey=
+    while IFS="${newl}" read -r line; do
+        junk=${line%%[![:space:]]*}
+        line=${line#"$junk"}
+        junk=${line##*[![:space:]]}
+        line=${line%"$junk"}
+        { [ -z "$line" ] ||
+          [ "${line%"${line#?}"}" = ";" ] ||
+          [ "${line%"${line#?}"}" = "#" ]; } && continue
+
+        if [ -n "$stab$stabkey" ]; then
+            if [ "${line#"${line%?}"}" = "\\" ] && [ "${line#"${line%??}"}" != "\\\\" ]; then
+                stab="${stab}${line%?}"
+            else
+                [ "${line#"${line%??}"}" = "\\\\" ] && line="${line%\\}"
+                stab="${stab}${line}"
                 emit "$stabkey" "$stab"
                 stabkey=
                 stab=
             fi
+        elif [ "${line%"${line#?}"}" = '[' ] && [ "${line#"${line%?}"}" = ']' ]; then
+            new_area="${line#\[}"
+            new_area="${new_area%\]}"
+
+            # Note: original key should not contain character '@' or ',', otherwise role test failed
+            junk=${new_area%%[![:space:]]*}
+            new_area=${new_area#"$junk"}
+            junk=${new_area##*[![:space:]]}
+            new_area=${new_area%"$junk"}
+
+            area="$new_area"
+#         elif [ "${area}" = "include" ] || [ "${area}" = "inherit" ]; then
+#                 # TODO: not resolve, only normalize path
+#                 innerfile=$(root="$root_path" resolve_path "$line")
+#                 if ! innertable=$(
+#                             settrace
+#                             exec 3<&- || true
+#                             parse_config_recursive "$innerfile"); then
+#                     error "parse error at $innerfile"
+#                     return 1
+#                 fi
+#                 while IFS="$tab" read -r vtype key value; do
+#                     if [ "$key" = "enve.configs" ]; then
+#                         # if [ "${loaded#$newl$value$newl}" != "$loaded" ]; then
+#                         #     loaded="$loaded$value$newl"
+#                         #     printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+#                         # fi
+#                         loaded="$loaded$value$newl"
+#                         printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+#                     elif [ "$key" = "layout.root" ] && [ "${area}" != "inherit" ]; then
+#                         :
+#                     else
+#                         printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+#                     fi
+#                 done <<EOF
+# $innertable
+# EOF
+        elif [ "${area}" = "comment" ]; then
+            :;
+        # elif [ -n "${area}" ]; then
         else
-            # if [ "${line:0:1}" = '[' ] && [ "${line: -1}" = ']' ]; then
-            #     new_area="${line:1:-1}"
-            if [ "${line%"${line#?}"}" = '[' ] && [ "${line#"${line%?}"}" = ']' ]; then
-                new_area="${line#\[}"
-                new_area="${new_area%\]}"
-
-                # Note: original key should not contain character '@' or ',', otherwise role test failed
-                # new_area="${new_area##+([[:space:]])}"
-                # new_area="${new_area%%+([[:space:]])}"
-                junk=${new_area%%[![:space:]]*}
-                new_area=${new_area#"$junk"}
-                junk=${new_area##*[![:space:]]}
-                new_area=${new_area%"$junk"}
-
-                area="$new_area"
-                # if [ -n "${new_area}" ]; then
-                #     new_area="$(filter_roles "${new_area}")"
-                #     # Note: area should not contain character '-', otherwise role test failed
-                #     if [ "${new_area}" != "${new_area//-/}" ]; then
-                #         new_area=
-                #     fi
-                #     if [ -n "${new_area}" ]; then
-                #         area="$new_area"
-                #     fi
-                # fi
-            else
-                # import (Deprecated) == include
-                if [ "${area}" = "import" ] || [ "${area}" = "include" ] || [ "${area}" = "inherit" ]; then
-                    # TODO: not resolve, only normalize path
-                    innerfile=$(root="$root_path" resolve_path "$line")
-                    if ! innertable=$(
-                                settrace
-                                parse_config_recursive "$innerfile"); then
-                        error "parse error at $innerfile"
-                        return 1
-                    fi
-                    while IFS="$tab" read -r vtype key value; do
-                        if [ "$key" = "enve.configs" ]; then
-                            if [ "${loaded#$newl$value$newl}" != "$loaded" ]; then
-                                loaded="$loaded$value$newl"
-                                printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
-                            fi
-                        elif [ "$key" = "layout.root" ] && [ "${area}" != "inherit" ]; then
-                            :
-                        else
-                            printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
-                        fi
-                    done <<EOF
-$innertable
-EOF
-                elif [ "${area}" = "comment" ]; then
-                    :;
-                elif [ -n "${area}" ]; then
-                    # key=
-                    # if [ "${line##*^=}" = "${line}" ]; then
-                    #     value="${line##*=}"
-                    #     if [ "$value" != "$line" ]; then
-                    #         key="${line%%=*}"
-                    #     fi
-                    # else
-                    #     value="${line/^=/=}"
-                    # fi
-                    # key="${key##+([[:space:]])}"
-                    # key="${key%%+([[:space:]])}"
-                    _parse_keyvalue "$line"
-
-
-                    # if [ "${value: -1}" = '\' ] && [ "${value: -2}" != '\\' ]; then
-                    #     stabkey="${area}${key:+.}${key}"
-                    #     stab="${stab}${value:0: -1}"
-                    # else
-                    if [ "${value#"${value%?}"}" = "\\" ] && [ "${value#"${value%??}"}" != "\\\\" ]; then
-                        stabkey="${area}${key:+.}${key}"
-                        stab="${stab}${value%?}"
-                    else
-                        # [ "${value: -2}" = '\\' ] && value="${value%\\}"
-                        [ "${value#"${value%??}"}" = "\\\\" ] && value="${value%\\}"
-                        emit "${area}${key:+.}${key}" "$value"
-                        # echo "VAR${tab}"${area}${key:+.}${key}"${tab}"${value}
-                    fi
+            _parse_keyvalue "$line"
+            if [ -n "${area}${key:+.}${key}" ]; then
+                if [ "${value#"${value%?}"}" = "\\" ] && [ "${value#"${value%??}"}" != "\\\\" ]; then
+                    stabkey="${area}${key:+.}${key}"
+                    stab="${stab}${value%?}"
+                else
+                    [ "${value#"${value%??}"}" = "\\\\" ] && value="${value%\\}"
+                    emit "${area}${key:+.}${key}" "$value"
                 fi
+            else
+                :
             fi
         fi
     done < "$config_path"
+    # done <&3
 
-    out_var_fast bound "$config_path"
-    out_var_fast enve.configs "$config_path"
-    out_var_fast enve.roles "$roles"
-
-    # echo "$config_path" >> "$LOADED_RECORD"
+    # if [ "$1" = "-" ]; then
+    #     :
+    # else
+    #     exec 3<&-
+        out_var_fast bound "$config_path"
+        out_var_fast enve.configs "$config_path"
+        out_var_fast enve.roles "$roles"
+    # fi
 }
 
+
 parse_config() {
-    # LOADED_RECORD="$(mktemp)"
     for cfg in "$@"; do
         roles="${roles:-}${roles:+,}$(system_roles)" parse_config_recursive "$cfg"
     done
-    # rm $LOADED_RECORD >/dev/null
 }
 
 enve_parse_config() {
-    # LOADED_RECORD="$(mktemp)"
-    _trace enve_parse_config
-    OLDIFS=$IFS
-    IFS=','
-    # for cfile in $(IFS=','; echo $ENVE_PROFILE); do
+    # _trace enve_parse_config
+    OLDIFS=$IFS; IFS=','
     for cfile in $ENVE_PROFILE; do
         IFS=$OLDIFS
         if [ -n "$cfile" ]; then
@@ -837,19 +1050,140 @@ enve_parse_config() {
     if [ -n "$ENVE_CONFIG" ]; then
         echo "$ENVE_CONFIG"
     fi
-    # rm $LOADED_RECORD >/dev/null
 }
+
+
+enve_parse_config2() {
+    #
+    # input
+    #   [parse_inherit]
+    #   [parse_profile_optional]
+    #   [roles]
+    #   [loaded]
+    #   [stage1_is_text]
+    #   $1 - STAGE1_TABLE or STAGE1_TEXT
+    #
+    # inout
+    #   TABLE
+    #
+
+    if [ -n "${stage1_is_text:-}" ]; then
+        OUT_TABLE=
+        roles=$roles parse_config_non_recursive_text "$1"
+        STAGE1_TABLE=$OUT_TABLE
+        unset stage1_is_text
+    else
+        # echo "parse_inherit:$parse_inherit" >&2
+        roles="$roles" \
+        parse_inherit="${parse_inherit:-}" \
+        parse_profile_optional="${parse_profile_optional:-}" \
+        parse_config_non_recursive "$1"
+
+        STAGE1_TABLE=$OUT_TABLE
+    fi
+    unset OUT_TABLE
+
+
+    _ACC_TABLE=$TABLE
+
+    TABLE=$STAGE1_TABLE
+    fast_table_subset "__include"
+    fast_as_value
+    paths=$TABLE_AS
+    fast_table_subset "__inherit"
+    fast_as_value
+    paths="$paths$newl$TABLE_AS"
+
+    TABLE=${_ACC_TABLE}
+    unset _ACC_TABLE TABLE_AS TABLE_SUBSET
+
+    _need_stage2=
+    _need_parserenv=
+    while read -r path; do
+        if [ -n "$path" ]; then
+            _need_stage2=1
+            if [ "${path%://*}" != "$path" ]; then
+                _need_parserenv=1
+            fi
+        fi
+    done <<EOF
+$paths
+EOF
+    unset paths path
+
+    if [ -z "$_need_stage2" ]; then
+        TABLE="$TABLE${TABLE:+$newl}$STAGE1_TABLE"
+        unset _need_stage2 _need_parserenv
+        return
+    elif [ -z "$_need_parserenv" ]; then
+        unset _need_stage2 _need_parserenv
+        # TABLE=$parse_table_stage1
+        # fast_table_subset "enve\\.configs"
+        # fast_as_concat "$newl"
+        # loaded="$newl$TABLE_AS"
+        # unset TABLE TABLE_AS TABLE_SUBSET
+
+        # loaded=
+        # TABLE=
+    else
+        unset _need_stage2 _need_parserenv
+        # TODO:
+    fi
+
+    parse_inherit=
+    while IFS="$tab" read -r vtype key value; do
+        unset STAGE1_TABLE
+        # if [ "$key" = "enve.configs" ]; then
+        #     # if [ "${loaded#$newl$value$newl}" != "$loaded" ]; then
+        #     #     loaded="$loaded$value$newl"
+        #     #     printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+        #     # fi
+        #     loaded="$loaded$value$newl"
+        #     # printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+        #     # out_var_just "$key" "$value" "$vtype"
+        #     TABLE="${TABLE}$vtype${tab}$key${tab}$value${newl}"
+        if [ "$key" = "__include" ] || [ "$key" = "__inherit" ]; then
+            if [ "$key" = "__inherit" ]; then
+                if [ -z "$parse_inherit" ]; then
+                    parse_inherit=1
+                else
+                    error "cannot inherit multiple enve profile"
+                    return 1
+                fi
+            fi
+            path=${value%%,*}
+            if [ "${path%${path#?}}" = "+" ]; then
+                path=${path#?}
+                parse_profile_optional=1
+            else
+                parse_profile_optional=
+            fi
+            if ! parse_inherit=$parse_inherit \
+                 parse_profile_optional=$parse_profile_optional \
+                 roles=${value#*,} enve_parse_config2 "$path"; then
+                return 1
+            fi
+            # echo "$OUT_TABLE" >&2
+            # TABLE="$TABLE$OUT_TABLE"
+            # unset OUT_TABLE
+        elif [ -n "$key" ]; then
+            # printf %s\\t%s\\t%s\\n "$vtype" "$key" "$value"
+            # out_var_just "$key" "$value" "$vtype"
+            TABLE="${TABLE}$vtype${tab}$key${tab}$value${newl}"
+        fi
+    done <<EOF
+$STAGE1_TABLE
+EOF
+    unset parse_inherit parse_profile_optional
+}
+
+
+
+
 
 
 variable_action() {
     case $name in
-        # PRJ_NAME)
-        #         if [ -n "$r_value" ] && [ "$target" = "shell" ] && [ "$UNAME_S" = "Darwin" ]; then
-        #             eval_line 'OLD_PRJ_NAME="$PRJ_NAME"'
-        #             eval_line "printf '\\033]0;%s\\007' '$r_value'"
-        #             exithook="${exithook}${exithook:+$newl}  printf '\\033]0;%s\\007' \"\$OLD_PRJ_NAME\""
-        #         fi
-        #     ;;
         TERMSIZE)
                 if [ -n "$r_value" ] && [ "$target" = "shell" ] && [ -x "/usr/bin/tput" ]; then
                     # echo -e -n "\033[8;10;140t"
@@ -864,7 +1198,9 @@ variable_action() {
                 fi
             ;;
         TERMTHEME)
-                if [ -n "$r_value" ] && [ "$target" = "shell" ] && [ "$UNAME_S" = "Darwin" ]; then
+                fast_get_system
+                if [ -n "$r_value" ] && [ "$target" = "shell" ] && \
+                   [ "$ENVE_CACHED_OS" = "Darwin" ]; then
                     eval_line 'OLD_TERMTHEME="$TERMTHEME"'
                     eval_line "$ENVE_HOME/enve/core/macos/term_theme.applescript '$r_value'"
                     exithook="${exithook}${exithook:+$newl}  $ENVE_HOME/enve/core/macos/term_theme.applescript \"\$OLD_TERMTHEME\""
@@ -1505,6 +1841,14 @@ exec_loaders_with_info() {
     # 第一個執行的永遠是 $ENVE_HOME/evne/enve.loader
     # 被讀進來的模組如果含有enve.loader, 則會加入loader的行列
 
+    # params:
+    #   p_init_module_info
+    #   p_fire
+    #   TABLE
+    # output:
+    #   module_loaded
+    #   isolation_modules
+
     get_next_loader() {
         loader_enve=
         loader_exec=
@@ -1525,20 +1869,20 @@ $loader_infos
 EOF
     }
 
-    fire=${fire:-fire}
+    p_fire=${p_fire:-fire}
     # loader_infos="init,loader,${init_module_path},,,"
     module_loaded=
-    loader_infos="$init_module_info"
+    loader_infos=$p_init_module_info
     loader_execed=,
 
     get_next_loader
     while [ -n "$loader_exec" ]; do
         if [ -x "$loader_exec" ]; then
-            if ! module_dirs="$(echo "$TABLE" | ENVE_PROFILE="$loader_enve" \
-                                                module_loaded="" \
+            if ! module_dirs="$(unset module_loaded loader_infos isolation_modules
+                                echo "$TABLE" | ENVE_PROFILE="$loader_enve" \
                                                 ZERO="$loader_path" \
                                                 MODULE_OPTION="$loader_options" \
-                                                $fire loader "$loader_exec")"; then
+                                                $p_fire loader "$loader_exec")"; then
                 _error "loader execute failed"
                 return 1
             fi
@@ -1583,39 +1927,42 @@ EOF
 
 
 resolve_with_info() {
-    # -*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-
+    # input:
+    #   p_module_loaded
+    #   p_fire
+    # global:
+    #   TABLE
 
-    fire=${fire:-fire}
+    p_fire=${p_fire:-fire}
     # _trace "module_paths $module_paths"
-    [ -n "$module_paths" ] || {
-        _fatal "assert \$module_paths != ''"
+    [ -n "$p_module_loaded" ] || {
+        _fatal "assert \$p_module_loaded != ''"
         return 1
     }
     while IFS="," read -r   e_name e_procedure e_afters e_befores \
                             e_exec e_options e_enve e_path; do
         LOGTYPE='module' _info "$e_name/$e_procedure: $e_exec"
         if [ -x "$e_exec" ]; then
-            if ! TABLE="$(  echo "$TABLE" | ENVE_PROFILE="$e_enve" \
-                                            module_paths="" \
+            if ! TABLE="$(  unset p_module_loaded
+                            echo "$TABLE" | ENVE_PROFILE="$e_enve" \
+                                            p_fire="" \
                                             ZERO="$e_path" \
                                             MODULE_OPTION="$e_options" \
                                             MODULE_NAME="$e_name" \
-                                            $fire module "$e_exec")"; then
+                                            $p_fire module "$e_exec")"; then
                 _error "module execute error at $e_name"
                 return 1
             fi
-
         fi
         out_var_just module.loaded "$e_name"
     done <<EOF
-$module_paths
+$p_module_loaded
 EOF
 unset   e_name e_procedure e_afters e_befores \
         e_exec e_options e_enve e_path
 }
 
 
-# EXTRA_CENVE_PROFILE: user specficed config files, use as import at beginning
 
 get_rcfile_from_profiles_nocache() {
     # input:
@@ -1639,87 +1986,104 @@ get_rcfile_from_profiles_nocache() {
     #       build-rc  m       sub(b, pTABLE)          rc          genrcfile
     #   setup         m       sub(u, pTABLE)          setupmark   setup
 
-    [ -n "${UNAME_S_MEMO:-}" ] || UNAME_S_MEMO=$(uname -s)
+    # [ -n "${UNAME_S_MEMO:-}" ] || UNAME_S_MEMO=$(uname -s)
 
     if [ "$ENVE_PROFILE" = "$ENVE_HOME/enve/enve.ini" ]; then
         TABLE=
         out_var_just core.target $target
         out_var_just sh_module 1
     else
-        # TODO(untested): checkout procedure
-        # TODO: isurl
+        if false; then
+            # TODO(untested): checkout procedure
+            # TODO: isurl
 
-        # OLDIFS=$IFS; IFS=,
-        # if [ -z "${ENVE_MAIN_PROFILE:-}" ]; then
-        #     for cfile in $ENVE_PROFILE; do
-        #         ENVE_MAIN_PROFILE=$cfile
-        #     done
-        # fi
-        # IFS=$OLDIFS
-        # if is_url "$ENVE_MAIN_PROFILE"; then
-        #     ENVE_PROFILE=",$ENVE_PROFILE"
-        #     ENVE_PROFILE="${ENVE_PROFILE#*,$ENVE_MAIN_PROFILE,}${ENVE_PROFILE%%,$ENVE_MAIN_PROFILE,*}"
-        #     ENVE_PROFILE=${ENVE_PROFILE#,}
-        #     ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$(fetch "$ENVE_MAIN_PROFILE")/enve.ini"
-        # fi
+            # OLDIFS=$IFS; IFS=,
+            # if [ -z "${ENVE_MAIN_PROFILE:-}" ]; then
+            #     for cfile in $ENVE_PROFILE; do
+            #         ENVE_MAIN_PROFILE=$cfile
+            #     done
+            # fi
+            # IFS=$OLDIFS
+            # if is_url "$ENVE_MAIN_PROFILE"; then
+            #     ENVE_PROFILE=",$ENVE_PROFILE"
+            #     ENVE_PROFILE="${ENVE_PROFILE#*,$ENVE_MAIN_PROFILE,}${ENVE_PROFILE%%,$ENVE_MAIN_PROFILE,*}"
+            #     ENVE_PROFILE=${ENVE_PROFILE#,}
+            #     ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$(fetch "$ENVE_MAIN_PROFILE")/enve.ini"
+            # fi
 
-        origin_ENVE_PROFILE=$ENVE_PROFILE
-        wait_ENVE_PROFILE=$ENVE_PROFILE
-        ENVE_PROFILE=
-        OLDIFS=$IFS; IFS=,
-        for cfile in $wait_ENVE_PROFILE; do
-            parse_unified_download "$cfile" "%cache" "auto" "noerror" || true
-            if [ "${dl#cp}" != "$dl" ] || [ "$dl" = "relative" ]; then
-                # cfile is a local path
-                if [ -d "$cfile" ]; then
-                    ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$cfile/enve.ini"
+            origin_ENVE_PROFILE=$ENVE_PROFILE
+            wait_ENVE_PROFILE=$ENVE_PROFILE
+            ENVE_PROFILE=
+            OLDIFS=$IFS; IFS=,
+            for cfile in $wait_ENVE_PROFILE; do
+                IFS=$OLDIFS
+                parse_unified_download "$cfile" "%cache" "auto" "noerror" || true
+                if [ "${dl#cp}" != "$dl" ] || [ "$dl" = "relative" ]; then
+                    # cfile is a local path
+                    if [ -d "$cfile" ]; then
+                        ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$cfile/enve.ini"
+                    else
+                        ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$cfile"
+                    fi
                 else
+                    # cfile is a remote url
+                    cfile="$(settrace; fetch "$cfile" "%cache" "auto")/enve.ini"
                     ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$cfile"
                 fi
-            else
-                # cfile is a remote url
-                cfile="$(settrace; fetch "$cfile" "%cache" "auto")/enve.ini"
-                ENVE_PROFILE="${ENVE_PROFILE}${ENVE_PROFILE:+,}$cfile"
+            done
+
+
+            echo "ENVE_PROFILE:$ENVE_PROFILE" >&2
+
+            # parse procedure
+            TABLE="$(
+                        settrace
+                        ENVE_PROFILE="$ENVE_PROFILE" \
+                        ENVE_ROLES="$ENVE_ROLES" \
+                        ENVE_CONFIG="$ENVE_CONFIG" \
+                        enve_parse_config
+                        out_var_fast core.target $target)" || {
+                _error "parse_config failed"
+                return 1
+            }
+        else
+            TABLE=
+            out_var_just core.target $target
+            # echo "--- ENVE_CONFIG_TEXT ---" >&2
+            # echo "$ENVE_CONFIG_TEXT" >&2
+            # echo "" >&2
+            if !    stage1_is_text=1 \
+                    roles="" loaded="" \
+                    parse_inherit="" \
+                    parse_profile_optional="" \
+                    enve_parse_config2 "$ENVE_CONFIG_TEXT"; then
+                _error "parse_config failed"
+                return 1
             fi
-        done
-        IFS=$OLDIFS
 
-        echo "ENVE_PROFILE:$ENVE_PROFILE" >&2
+        fi
 
-        # parse procedure
-        TABLE="$(
-                    settrace
-                    ENVE_PROFILE="$ENVE_PROFILE" \
-                    ENVE_ROLES="$ENVE_ROLES" \
-                    ENVE_CONFIG="$ENVE_CONFIG" \
-                    enve_parse_config
-                    out_var_fast core.target $target)" || {
-            _error "parse_config failed"
-            return 1
-        }
         # _trace "=============$newl$TABLE"
         LOGLEVEL=DEBUG log "=== parse ???-$target ==="
         LOGLEVEL=DEBUG logtable "$TABLE"
 
-        if [ -n "$origin_ENVE_PROFILE" ] && [ -z "$(table_subset "enve\\.configs")" ]; then
-            _error "none of config file is parsed, cannot continue"
-            return 1
-        elif [ -z "$origin_ENVE_PROFILE" ]; then
+        # if [ -n "$origin_ENVE_PROFILE" ] && [ -z "$(table_subset "enve\\.configs")" ]; then
+        #     _error "none of config file is parsed, cannot continue"
+        #     return 1
+        # elif [ -z "$origin_ENVE_PROFILE" ]; then
+        #     out_var_just enve.nobound true
+        # fi
+        # TODO: decrepate nobound
+        if [ -z "$(table_subset "enve\\.configs")" ]; then
             out_var_just enve.nobound true
         fi
 
         # load procedure
-
-        # TABLE="$TABLE" init_module_path="$ENVE_HOME/enve," exec_loaders || {
-        #     _error "exec_loaders failed"
-        #     return 1
-        # }
-
-        # TODO: loader2.0
-        # while IFS="," read -r e_name e_procedure e_afters e_befores \
-        #                       e_exec e_options e_enve e_path; do
         TABLE="$TABLE" \
-        init_module_info="base,loader,:,:,$ENVE_HOME/enve/core/base/enve.loader,source_exec=1;native_exec=1;,,$ENVE_HOME/enve/core/base" \
+        p_init_module_info="base,loader,:,:,\
+$ENVE_HOME/enve/core/base/enve.loader,\
+source_exec=1;native_exec=1;,,\
+$ENVE_HOME/enve/core/base" \
         exec_loaders_with_info || {
             _error "exec_loaders failed"
             return 1
@@ -1747,29 +2111,10 @@ $isolation_modules
 EOF
     fi
 
-
-    # TODO: resolve?? procedure
-    # _trace "module_paths_loaded --> ${module_loaded:+$newl}${module_loaded:-}"
+    # resolve procedure
     if [ -n "$module_loaded" ]; then
-#         while read -r mpath; do
-#             out_var_just module.loaded "$mpath"
-#         done <<EOF
-# $module_loaded
-# EOF
-#         module_paths="${module_loaded:-}" module_loaded="" resolve || {
-#             _error "resolve failed"
-#             return 1
-#         }
-
-        # shellcheck disable=2034
-#         while IFS="," read -r e_name e_procedure _e_afters _e_befores e_exec _e_remain; do
-#             LOGTYPE='module' _info "$e_name/$e_procedure: $e_exec"
-#             out_var_just module.loaded "$e_name"
-#         done <<EOF
-# $module_loaded
-# EOF
         # shellcheck disable=2097,2098
-        module_paths="${module_loaded:-}" module_loaded="" resolve_with_info || {
+        p_module_loaded="${module_loaded:-}" resolve_with_info || {
             _error "resolve failed"
             return 1
         }
@@ -1810,7 +2155,7 @@ EOF
     IFS=$OLDIFS
 
     # generate final rcfile
-    UNAME_S=$UNAME_S_MEMO \
+    # UNAME_S=$UNAME_S_MEMO \
     PAST_TABLE="$PAST_TABLE" \
     execute_envdef "$TABLE" "$target" > "$RCFILE_PATH" || {
         _error "execute_envdef failed"
@@ -1829,25 +2174,40 @@ get_rcfile_from_profiles_usecache() {
     #   ENVE_PROFILE
     #   ENVE_ROLES
     #   ENVE_CONFIG
+    #   ENVE_CONFIG_TEXT
     # output:
     #   rcfile path
 
+    fast_system_roles
+    s="${ENVE_ROLES},${out_system_roles}"
+    replace "@" ","
+    ENVE_CONFIG_TEXT="$ENVE_CONFIG${newl}inherit=$ENVE_PROFILE,${s%%,}"
+    unset s
+
     mkrcfile() {
+        # boundfiles="$(
+        #         settrace
+        #         ENVE_PROFILE="$ENVE_PROFILE" \
+        #         ENVE_ROLES="$ENVE_ROLES" \
+        #         ENVE_CONFIG="$ENVE_CONFIG" \
+        #         RCFILE_PATH="$1" \
+        #         get_rcfile_from_profiles_nocache)" || return 1
         boundfiles="$(
                 settrace
-                ENVE_PROFILE="$ENVE_PROFILE" \
-                ENVE_ROLES="$ENVE_ROLES" \
-                ENVE_CONFIG="$ENVE_CONFIG" \
+                ENVE_CONFIG_TEXT="$ENVE_CONFIG_TEXT" \
                 RCFILE_PATH="$1" \
                 get_rcfile_from_profiles_nocache)" || return 1
+
+
     }
 
     if [ "${ENVE_CACHE_DIR:-}" != "nocache" ]; then
         p_text() {
             printf %s\\n "v20190308v1"
-            printf %s\\n "$ENVE_ROLES"
-            printf %s\\n "$ENVE_CONFIG"
-            printf %s\\n "$ENVE_PROFILE"
+            # printf %s\\n "$ENVE_ROLES"
+            # printf %s\\n "$ENVE_CONFIG"
+            # printf %s\\n "$ENVE_PROFILE"
+            printf %s\\n "$ENVE_CONFIG_TEXT"
             IFS=','
             for file in $ENVE_PROFILE; do
                 if [ -e "$file" ]; then
@@ -1917,9 +2277,22 @@ get_rcfile_from_profiles_usecache() {
 # }
 
 fire() {
+    #
+    # pass
+    #  ENVE_FIRE_DEPTH
+    #  ENVE_CACHED_OS
+    #  ENVE_CACHE_DIR
+    #  ENVE_READLINK
+    #
+    # input
+    #   [MODULE_OPTION]
+    #   [ENVE_CONFIG_TEXT]
+    #   [ENVE_ROLES]
+
+
     target=$1
     shift
-    ENVE_ROLES="${target},${ENVE_ROLES}"
+
     ENVE_FIRE_DEPTH="$((${ENVE_FIRE_DEPTH:--1} + 1))"
 
     # for ENVE_CACHED_OS
@@ -1945,7 +2318,9 @@ fire() {
         shift
     else
         # get_rcfile_from_profiles
+        ENVE_ROLES="${target}${ENVE_ROLES:+,}${ENVE_ROLES}" \
         get_rcfile_from_profiles_usecache
+
         if [ -z "$RCFILE_PATH" ]; then
             return 1
         fi
@@ -1978,13 +2353,10 @@ fire() {
                 #     ;;
                 \#"META: VAR$tab"*)
                         cuts=${line#\#"META: VAR$tab"}
-                        IFS=$tab read -r key value <<EOF
-$cuts
-EOF
+                        key=${cuts%%$tab*}
+                        value=${cuts#*$tab}
                         case $key in
-                            isolation.exec)
-                                    isoexec=$value
-                                ;;
+                            isolation.exec)     isoexec=$value ;;
                             isolation.options)
                                     # TODO:
                                     # shellcheck disable=2034
@@ -2007,14 +2379,13 @@ EOF
     fi
 
     deftext="ENVE_FIRE_DEPTH='$ENVE_FIRE_DEPTH'"
-    if [ -n "${invoke_bypass:-}" ]; then
-        OLDIFS=$IFS; IFS=':'
-        for var in $invoke_bypass; do
-            fast_append_variable_quote "$var"
-        done
-        IFS=$OLDIFS
-    fi
+    OLDIFS=$IFS; IFS=':'
+    for var in ${invoke_bypass:-}; do
+        fast_append_variable_quote "$var"
+    done
+    IFS=$OLDIFS
     bypass_envs=$deftext
+
 
     # _debug "bypass_envs: $bypass_envs"
     invoke_shell=${invoke_shell:-$SHELL}

@@ -21,3 +21,5 @@ EOF
         export PATH="$BATS_TMPDIR/cmds:$PATH"
     fi
 }
+
+ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"

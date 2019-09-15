@@ -76,7 +76,7 @@ replace() {
         fi
     done
     s="$v$s"
-    unset v
+    unset count i v
 }
 
 
