@@ -66,8 +66,14 @@ resolve_nix() {
 
     # echo "pkgs: $pkgs" >&2
     LOGTYPE=nix _info "pkgs: $pkgs"
-    nix_root="$(resolve_path "$(table_tail "nix\\.root")")"
+
+    # nix_root="$(resolve_path "$(table_tail "nix\\.root")")"
+    fast_table_tail "nix\\.root"
+    d=$TABLE_TAIL
+    fast_resolve_path
+    nix_root=$d
     nix_root=${nix_root:-/nix/var/nix/profiles/default}
+
     # if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
     #   . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
     # fi

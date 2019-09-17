@@ -73,7 +73,10 @@ _load_basic_variable() {
     fi
     node_dev="$(table_tail "nodejs\\.development")" || node_dev=
 
-    package_lock=$(resolve_path "package-lock.json")
+    d="package-lock.json"
+    fast_resolve_path
+    package_lock=$d
+    # package_lock=$(resolve_path "package-lock.json")
     if [ -f "$package_lock" ]; then
         node_lockfile=1
     fi
@@ -83,7 +86,11 @@ $({ table_subset "nodejs\\.require\\.packages" || true; } | as_value)
 $({ table_subset "nodejs\\.require\\.packages\\..*" | as_postfix "nodejs\\.require\\.packages\\." || true; })
 "
 
-    package_json="$(resolve_path "package.json")"
+    # package_json="$(resolve_path "package.json")"
+    d="package.json"
+    fast_resolve_path
+    package_json=$d
+
     echo "PACKAGE.JSON: $package_json" >&2
     if [ ! -f "$package_json" ]; then
         # if [ -z "${packages//[[:space:]]/}" ]; then

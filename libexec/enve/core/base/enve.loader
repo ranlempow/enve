@@ -98,6 +98,10 @@ builtin_loader() {
     fast_table_subset "module"
     fast_as_value
 
+    fast_table_tail "layout\\.root"
+    root=${TABLE_TAIL:-$PWD}
+    root=${root%/}
+
     # { table_subset "module" | as_value || true; } | \
     while read -r value; do
         # echo o${value}o >&2
@@ -107,9 +111,21 @@ builtin_loader() {
             echo "$ENVE_HOME/enve/core/$value"
         elif [ -d "$ENVE_HOME/enve/contrib/$value" ]; then
             echo "$ENVE_HOME/enve/contrib/$value"
-        elif [ -d "$(resolve_path "$value")" ]; then
-            resolve_path "$value"
+        else
+            d=$value
+            fast_resolve_path
+            value=$d
+            if [ -d "$value" ]; then
+                echo "$value"
+            fi
+        # elif [ "${value%"${value#?}"}" != '/' ] && [ -d "$root/$value" ]; then
+        #     echo "$root/$value"
+        # elif [ -d "$value" ]; then
+        #     echo "$value"
         fi
+        # elif [ -d "$(resolve_path "$value")" ]; then
+        #     resolve_path "$value"
+        # fi
     done <<EOF
 $TABLE_AS
 EOF

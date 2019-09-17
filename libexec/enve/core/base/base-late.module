@@ -16,10 +16,20 @@ settrace
 resolve_basic_late() {
     [ -n "$TABLE" ] && echo "$TABLE"
 
+    # fast_table_tail "layout\\.root"
+    # root=${TABLE_TAIL:-$PWD}
+    # root=${root%/}
+
     { table_subset "path" || true; } | as_value | \
     while read -r value; do
         if [ "${value#${value%?}}" != '$' ]; then
-            value="$(resolve_path "$value")"
+            d=$value
+            fast_resolve_path
+            value=$d
+            # if [ "${value%"${value#?}"}" != '/' ]; then
+            #     value="$root/$value"
+            # fi
+            # value="$(resolve_path "$value")"
         fi
         out_list PATH "$value"
     done

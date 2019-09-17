@@ -498,32 +498,45 @@ as_concat() {
 
 
 
-
-
-resolve_path() {
-    # path in config file should relative to project root (layout.root)
-    if [ -z "$1" ]; then
-        return
+fast_resolve_path() {
+    if [ -z "$d" ]; then
+        :
+    elif [ "${d%"${d#?}"}" = '/' ]; then
+        :
+    elif [ -n "$PRJROOT" ]; then
+        d="${PRJROOT%/}/$d"
+    else
+        fast_table_tail "layout\\.root"
+        PRJROOT=${TABLE_TAIL:-$PWD}
+        PRJROOT=${PRJROOT%/}
+        d="${PRJROOT}/$d"
     fi
-    if [ "${1%"${1#?}"}" = '/' ]; then
-        echo "$1"
-        return
-    fi
-    if [ -z "${root:-}" ]; then
-        root=$(table_tail layout.root)
-    fi
-    if [ -z "${root:-}" ]; then
-        root="${PRJROOT:-}"
-    fi
-    if [ -z "$root" ]; then
-        root="${CONFIGROOT:-}"
-    fi
-    if [ -z "$root" ]; then
-        root="$(pwd)"
-    fi
-    echo "${root%/}/$1"
-    unset root
 }
+
+# resolve_path() {
+#     # path in config file should relative to project root (layout.root)
+#     if [ -z "$1" ]; then
+#         return
+#     fi
+#     if [ "${1%"${1#?}"}" = '/' ]; then
+#         echo "$1"
+#         return
+#     fi
+#     if [ -z "${root:-}" ]; then
+#         root=$(table_tail layout.root)
+#     fi
+#     if [ -z "${root:-}" ]; then
+#         root="${PRJROOT:-}"
+#     fi
+#     if [ -z "$root" ]; then
+#         root="${CONFIGROOT:-}"
+#     fi
+#     if [ -z "$root" ]; then
+#         root="$(pwd)"
+#     fi
+#     echo "${root%/}/$1"
+#     unset root
+# }
 
 out_var() {
     # echo "VAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
@@ -857,7 +870,7 @@ EOF
 
 
 
-enve_parse_config2() {
+enve_parse_config() {
     #
     # input
     #   [parse_inherit]
@@ -968,7 +981,7 @@ EOF
             fi
             if ! parse_inherit=$parse_inherit \
                  parse_profile_optional=$parse_profile_optional \
-                 roles=${value#*,} enve_parse_config2 "$path"; then
+                 roles=${value#*,} enve_parse_config "$path"; then
                 return 1
             fi
         elif [ -n "$key" ]; then
@@ -1310,7 +1323,7 @@ get_module_info() {
     TABLE=
     if ! parse_inherit=1 \
          parse_profile_optional="" \
-         roles="module-info" loaded="" enve_parse_config2 "$module_root/enve.ini"; then
+         roles="module-info" loaded="" enve_parse_config "$module_root/enve.ini"; then
         return 1
     fi
 
@@ -1670,7 +1683,7 @@ get_rcfile_from_profiles_nocache() {
             roles="" loaded="" \
             parse_inherit="" \
             parse_profile_optional="" \
-            enve_parse_config2 "$ENVE_CONFIG_TEXT"; then
+            enve_parse_config "$ENVE_CONFIG_TEXT"; then
         _error "parse_config failed"
         return 1
     fi
