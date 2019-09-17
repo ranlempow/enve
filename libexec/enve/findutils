@@ -54,11 +54,35 @@ fnmatch_pathname_transform_ere() {
     # 4rd line: double ** at beginning
     # 5rd line: questmark ?, represent any character
 
+    while read -r pat; do
+        if [ -z "$pat" ]; then continue; fi
+        pat_without_endslash=${pat%/}
+        if  [ "${pat_without_endslash#*/}" = "$pat_without_endslash" ]; then
+            # If there is a separator at the beginning or middle (or both)
+            # of the pattern, then the pattern is relative to the .gitignore file
+            # > Otherwise the pattern may also match at any level below the .gitignore level
+            pat="**/${pat#/}"
+        fi
+        if [ "${pat#${pat%?}}" = "/" ]; then
+            # If there is a separator at the end of the pattern
+            # then the pattern will only match directories
+            pat="${pat}**"
+        elif [ "${pat#${pat%??}}" = "/*" ]; then
+            # /* at end should match both files and directories
+            pat="${pat%??}/**"
+        elif [ "${pat#${pat%???}}" = "/**" ]; then
+            :
+        else
+            # otherwise the pattern can match both files and directories
+            pat="${pat}${newl}${pat}/**"
+        fi
+        printf %s\\n "$pat"
+    done | \
     sed -E \
-        -e 's#([\[\]\(\)\{\}\.\^\$\+\|])#\\\1#g' \
+        -e 's#([\[\]\(\)\{\}\.\^\$\+\|\ ])#\\\1#g' \
         -e 's#([^*]|^)\*([^*]|$)#\1[^/]+\2#g' \
         -e 's#/\*\*(/?)#/.*\1#g' \
-        -e 's#\*\*/#.*#g' \
+        -e 's#\*\*/#.*/#g' \
         -e 's#\?#[^/]#g'
 
 }
@@ -155,15 +179,13 @@ EOF
             printf 'grep -E -v '
             genre "$positive"
         )
-        positive_fail=$(
-            printf 'grep -E '
-            genre "$positive"
-        )
-
-        # echo "positive_pass: $positive_pass" >&2
-        # echo "positive_fail: $positive_fail" >&2
+        echo "positive_pass: $positive_pass" >&2
         echo "$data" | eval "$positive_pass" || true
         if [ -n "$negative" ]; then
+            positive_fail=$(
+                printf 'grep -E '
+                genre "$positive"
+            )
             negative_pass=$(
                 printf 'grep -E '
                 genre "$negative"
@@ -178,11 +200,48 @@ EOF
 }
 
 
+_listdir_additem() {
+    case $line in
+        '')             _CURDIR=__READ_DIRNAME__ ;;
+        ./|../|*\\*)    ;;
+        */)             if [ -z "${fileonly:-}" ]; then _list="${_list}${_CURDIR}$line$newl"; fi ;;
+        *)              _list="${_list}${_CURDIR}$line$newl" ;;
+    esac
+}
+
+listdir() {
+    # CAUTION: `ls -b` is not posix compatible
+    #          but that is necessary to avoid control character in filename
+    # set -x
+    ls_prefix=${ls_prefix%/}
+    _list=
+    _CURDIR=__READ_DIRNAME__
+    while read -r line; do
+        case ${_CURDIR} in
+            __READ_DIRNAME__)
+                    if [ "${line#${line%?}}" != ':' ]; then
+                        _CURDIR=${ls_prefix:+$ls_prefix/}
+                        _listdir_additem
+                    else
+                        _CURDIR="${line%:}/"
+                        _CURDIR=${ls_prefix:+$ls_prefix/}${_CURDIR#./}
+                    fi
+                ;;
+            *)      _listdir_additem ;;
+        esac
+    done <<EOF
+$(ls -1abp${recursive:+R} "$@")
+EOF
+    # set +x
+}
+
+
 _files_stats() {
     content="$1"
     shift
     first=
     for path in "$@"; do
+
         dirn=
         if [ -z "$first" ]; then
             set --
@@ -263,3 +322,18 @@ files_stats_contents() {
 files_contents() {
     _files_stats "content-only" "$@"
 }
+
+files_stats_by_liens() {
+    lines=$1
+    set --
+    while read -r path; do
+        if [ -n "$path" ]; then
+            set -- "$@" "$path"
+        fi
+    done <<EOF
+$lines
+EOF
+    unset lines path
+    files_stats "$@"
+}
+
