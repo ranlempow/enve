@@ -1608,8 +1608,37 @@ resolve_with_info() {
 
         LOGTYPE='module' _info "$e_name/$e_procedure: $e_exec"
         if [ -x "$e_exec" ]; then
+            # module.$name.preconfig.*
+            # module.$name.config.*
+            # module.$name.roles
+            fast_table_subset "module\\.$e_name\\.preconfig\\..*"
+            fast_as_postfix "module\\.$e_name\\.preconfig\\."
+            module_preconfig_kv=$TABLE_AS
+            fast_table_subset "module\\.$e_name\\.config\\..*"
+            fast_as_postfix "module\\.$e_name\\.config\\."
+            module_config_kv=$TABLE_AS
+            fast_table_tail "module\\.$e_name\\.roles"
+            extra_roles=$TABLE_TAIL
+
+            ENVE_CONFIG_TEXT=
+            while read -r key value; do
+                if [ -n "$key" ]; then
+                    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}$key=$value$newl"
+                fi
+            done <<EOF
+$module_preconfig_kv
+EOF
+            ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=$e_enve$newl"
+            while read -r key value; do
+                if [ -n "$key" ]; then
+                    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}$key=$value$newl"
+                fi
+            done <<EOF
+$module_config_kv
+EOF
             if ! TABLE="$(  unset p_module_loaded
-                            echo "$TABLE" | ENVE_PROFILE="$e_enve" \
+                            echo "$TABLE" | ENVE_ROLES="$extra_roles" \
+                                            ENVE_CONFIG_TEXT=$ENVE_CONFIG_TEXT \
                                             p_fire="" \
                                             ZERO="$e_path" \
                                             MODULE_OPTION="$e_options" \
@@ -1793,7 +1822,18 @@ get_rcfile_from_profiles_usecache() {
     roles=${s%%,}
     unset s
 
-    ENVE_CONFIG_TEXT="$ENVE_CONFIG${newl}inherit=$ENVE_PROFILE"
+    if [ -z "${ENVE_CONFIG_TEXT:-}" ]; then
+        ENVE_CONFIG_TEXT="$ENVE_CONFIG${newl}inherit=$ENVE_PROFILE$newl"
+    else
+        ENVE_PROFILE=
+        while IFS='=' read -r key value; do
+            if [ "$key" = 'inherit' ]; then
+                ENVE_PROFILE=$value
+            fi
+done <<EOF
+$ENVE_CONFIG_TEXT
+EOF
+    fi
 
     mkrcfile() {
         if ! roles=$roles \

@@ -41,43 +41,66 @@ fi
 
 print_help() {
     prog="$(basename "$0")"
-    echo "Usage: $prog [COMMON_OPTIONS] <COMMAND>"
+    echo "Usage: $prog [COMMON_OPTIONS] <TARGET>"
+    echo "Environment encapsulation tool"
+    echo ""
+    echo "Common Options:"
+    echo "    -f, --file FILE         parse config from the file"
+    echo "    -i, --include FILE      include config from the file"
+    echo "    -c, --config KEY=VALUE  append a key-value pair to config"
+    echo "    -r, --role ROLE         add a role to the roles set"
+    #echo "    -p, --project <path>  default project is PWD, specfice another project folder instead"
     echo
-    echo "Common Options"
-    echo "    -f, --file <file>     parse config from the file"
-    echo "    -c, --config <key>=<value>"
-    echo "                          append a key-value pair to config"
-    echo "    -r, --role <role>     add a role to the roles set"
-    echo "    -p, --project <path>  default project is PWD, specfice another project folder instead"
-    echo
-    echo "Command"
-    echo "    noop                  not to promote any actions"
-    echo "    shell                 enter a interactive shell for the environment"
-    echo "    run                   run command in the environment"
-    echo "    launch                open a terminal for the environment"
-    echo "    boot                  enter a default shell environment"
+    echo "Target:"
+    #echo "    noop                  not to promote any actions"
+    echo "    shell                   enter a interactive shell for the environment"
+    echo "    run                     run command in the environment"
+    echo "    run-terminal            open a terminal and run command"
+    echo "    terminal                open a terminal for the environment"
+    echo "    boot                    enter a default shell environment"
 }
 
 
-ENVE_PROFILE=
-ENVE_CONFIG=
-ENVE_ROLES=
+# ENVE_PRECONFIG=
+# ENVE_CONFIG=
+# ENVE_ROLES=
+
+ENVE_CONFIG_TEXT=${ENVE_PRECONFIG:+${ENVE_PRECONFIG%$newl}$newl}
 
 # echo "args: $@" >&2
 cmd=
+
+_main_profile=
+assign_main_profile() {
+    if [ -n "$_main_profile" ]; then
+        die "cannot assign more then one main profile"
+    fi
+    _main_profile=$1
+    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=${_main_profile}$newl"
+    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}${ENVE_CONFIG:+${ENVE_CONFIG%$newl}$newl}"
+}
+
 
 while [ -n "${1:-}" ]; do
     case $1 in
         -f|--file)
                 case ${2:-} in -*|'')
-                    die "you must supply a file path" ;; esac
-                ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$2"
+                    die "you must supply a file path after $1" ;; esac
+                # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$2"
+                assign_main_profile "$2"
+                shift 2
+            ;;
+        -i|--include)
+                case ${2:-} in -*|'')
+                    die "you must supply a file path after $1" ;; esac
+                # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$2"
+                ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}include=$2$newl"
                 shift 2
             ;;
         -c|--config)
                 case ${2:-} in
                     -*)
-                            die "you must supply a vaild key-value pair"
+                            die "you must supply a vaild key-value pair after $1"
                         ;;
                     +*=*)
                             ctype=LIST
@@ -86,29 +109,34 @@ while [ -n "${1:-}" ]; do
                             ctype=VAR
                         ;;
                     *)
-                            die "you must supply a vaild key-value pair"
+                            die "you must supply a vaild key-value pair after $1"
                         ;;
                 esac
-                key="${2%%"="*}"
-                value="${2#*"="}"
-                ENVE_CONFIG="$(  printf "%s${ENVE_CONFIG:+\n}${ctype}\\t%s\\t%s" \
-                                        "${ENVE_CONFIG:-}" "$key" "$value")"
+                # key="${2%%"="*}"
+                # value="${2#*"="}"
+                ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}$2$newl"
+                # ENVE_CONFIG="$(  printf "%s${ENVE_CONFIG:+\n}${ctype}\\t%s\\t%s" \
+                #                         "${ENVE_CONFIG:-}" "$key" "$value")"
                 shift 2
             ;;
         -r|--role)
                 case ${2:-} in -*|'')
-                    die "you must supply a role" ;; esac
-                ENVE_ROLES="${ENVE_ROLES:-}${ENVE_ROLES:+,}$2"
+                    die "you must supply a role after $1" ;; esac
+                ENVE_ROLES="${ENVE_ROLES:+$ENVE_ROLES,}$2"
                 shift 2
             ;;
         -p|--procedure)
             ;;
         -t|--target)
+                case ${2:-} in -*|'')
+                    die "you must supply a target name after $1" ;; esac
+                cmd=$2
+                shift 2
             ;;
         -*)
                 die "unknown option: $1"
             ;;
-        noop|define|run|launchrun|test)
+        noop|run|launchrun|test)
                 cmd=$1
                 shift
                 break
@@ -117,7 +145,9 @@ while [ -n "${1:-}" ]; do
                 cmd=$1
                 shift
                 if [ -n "${1:-}" ]; then
-                    ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                    # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                    # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=$1$newl"
+                    assign_main_profile "$1"
                     shift
                 fi
                 break
@@ -127,22 +157,30 @@ while [ -n "${1:-}" ]; do
                 if [ -n "${1:-}" ]; then
                     subtype=$1
                 fi
-                ENVE_PROFILE="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
+                # ENVE_PROFILE="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
+                _profile="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
+                # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=${_profile}$newl"
+                assign_main_profile "$_profile"
+                unset _profile
                 cmd=shell
                 break
             ;;
         auto)
                 cmd=auto
                 shift
-                if [ -n "${1:-}" ]; then
-                    ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
-                    shift
-                fi
+                # if [ -n "${1:-}" ]; then
+                #     # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                #     # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=$1$newl"
+                #     assign_main_profile "$1"
+                #     shift
+                # fi
             ;;
         *)
                 if [ "${1##*/}" != "$1" ] || [ "${1##*.}" != "$1" ]; then
                     cmd=auto
-                    ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                    # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
+                    # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=$1$newl"
+                    assign_main_profile "$1"
                     shift
                 else
                     _error "unknown command: $1"
@@ -154,25 +192,8 @@ while [ -n "${1:-}" ]; do
     esac
 done
 
-# TODO: remove this
-if [ "$cmd" = "define" ]; then
-    return
-fi
 
-
-ENVE_PROFILE="${ENVE_EXTRA_PROFILE:-}${ENVE_EXTRA_PROFILE:+,}${ENVE_PROFILE}"
-ENVE_CONFIG="${ENVE_EXTRA_CONFIG:-}${ENVE_EXTRA_CONFIG:+$newl}${ENVE_CONFIG}"
-ENVE_ROLES="${ENVE_EXTRA_ROLES:-}${ENVE_EXTRA_ROLES:+,}${ENVE_ROLES}"
-
-export ENVE_EXTRA_PROFILE=
-export ENVE_EXTRA_CONFIG=
-export ENVE_EXTRA_ROLES=
-
-# launch_prefix="\
-# ENVE_EXTRA_PROFILE='$ENVE_PROFILE' \
-# ENVE_EXTRA_CONFIG='$ENVE_EXTRA_ROLES' \
-# ENVE_EXTRA_ROLES='$ENVE_ROLES'\
-# "
+ENVE_ROLES=${ENVE_ROLES:-}
 
 
 is_from_gui() {
