@@ -12,9 +12,12 @@ resolve_nix() {
     given_shell=$(table_tail "shell")
     if [ "$(table_tail "enve\\.no_nix")" = "true" ]; then
         if [ -n "$given_shell" ]; then
-            out_var SHELL "$(command -v $given_shell)"
+            shellpath=$(command -v $given_shell)
+            out_var SHELL "$shellpath"
+            out_raw_fast SHELL "$shellpath" META
         else
             out_var SHELL "$SHELL"
+            out_raw_fast SHELL "$SHELL" META
         fi
         [ -n "$TABLE" ] && echo "$TABLE"
         return
@@ -27,12 +30,33 @@ resolve_nix() {
 
     if [ -z "${nix_channel_url:-}" ]; then
         nix_channel_version="$(table_tail nix.channel.version)"
-        if [ -n "$nix_channel_version" ]; then
-            nix_channel_url="https://github.com/NixOS/nixpkgs/archive/$nix_channel_version.tar.gz"
-        else
-            # nix_channel_url="https://github.com/NixOS/nixpkgs/archive/17.09.tar.gz"
-            nix_channel_url="https://github.com/NixOS/nixpkgs/archive/18.09.tar.gz"
+        if [ -z "$nix_channel_version" ]; then
+            # use newest nixpkgs version
+            ym=$(date +%y/%m)
+            year=${ym%/*}
+            month=${ym#*/}
+            totalmonth=$(( ${year#0} * 12 + ${month#0} ))
+            helfyear=$(( (totalmonth - 5) / 6 ))
+            case $((helfyear % 2)) in
+                0)  nix_channel_version="$((helfyear / 2)).03" ;;
+                1)  nix_channel_version="$((helfyear / 2)).09" ;;
+            esac
+            #  0    1    2    3    4    5     (monthcycle)
+            #  ^prev-ver           ^current-ver
+            #            ^beta-ver
+            monthcycle=$(( (totalmonth - 3) % 6 ))
+            case $monthcycle in
+                2|3)        nix_channel_version="$nix_channel_version-beta" ;;
+                0|1|4|5)    ;;
+            esac
+            debug "nix_channel_version: $nix_channel_version ($totalmonth, $helfyear, $monthcycle)"
         fi
+        nix_channel_url="https://github.com/NixOS/nixpkgs/archive/$nix_channel_version.tar.gz"
+        # if [ -n "$nix_channel_version" ]; then
+        #     nix_channel_url="https://github.com/NixOS/nixpkgs/archive/$nix_channel_version.tar.gz"
+        # else
+        #     nix_channel_url="https://github.com/NixOS/nixpkgs/archive/18.09.tar.gz"
+        # fi
         # nix_channel_sha256="405f1d6ba523630c83fbabef93f0da11ea388510a576adf2ded26a744fbf793e"
     fi
 
@@ -137,8 +161,10 @@ EOF
     out_var ENV_ROOT "$env_root"
     if [ -n "$given_shell" ]; then
         out_var SHELL "$env_root/bin/$given_shell"
+        out_raw_fast SHELL "$env_root/bin/$given_shell" META
     else
         out_var SHELL "$env_root/bin/bash"
+        out_raw_fast SHELL "$env_root/bin/bash" META
     fi
     [ -n "$TABLE" ] && echo "$TABLE"
     [ -n "${env_root:-}" ] && out_list PATH "$env_root/bin"
