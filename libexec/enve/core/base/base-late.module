@@ -174,7 +174,7 @@ resolve_boundfiles() {
         PRJROOT=${PRJROOT%/}
         # bounds="$(cd "$PRJROOT"; find . ! -type d)"
         if [ "$(table_tail "enve\\.nobound")" != "true" ]; then
-            ls_prefix="$PRJROOT" fileonly=1 recursive=1 listdir "$PRJROOT"
+            fileonly=1 recursive=1 listdir "$PRJROOT"
             bounds="$bounds${bounds:+$newl}${_list}"
         fi
         # echo "PRJROOT: $PRJROOT" >&2

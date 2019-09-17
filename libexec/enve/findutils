@@ -203,36 +203,42 @@ EOF
 _listdir_additem() {
     case $line in
         '')             _CURDIR=__READ_DIRNAME__ ;;
-        ./|../|*\\*)    ;;
-        */)             if [ -z "${fileonly:-}" ]; then _list="${_list}${_CURDIR}$line$newl"; fi ;;
+        ./|../|*\?*)    ;;
+        */)             if [ -z "${fileonly:-}" ]; then
+                            _list="${_list}${_CURDIR}$line$newl";
+                        fi
+                        ;;
         *)              _list="${_list}${_CURDIR}$line$newl" ;;
     esac
 }
 
 listdir() {
-    # CAUTION: `ls -b` is not posix compatible
-    #          but that is necessary to avoid control character in filename
-    # set -x
-    ls_prefix=${ls_prefix%/}
     _list=
-    _CURDIR=__READ_DIRNAME__
+    if [ "$#" -eq 1 ]; then
+        _CURDIR=${1%/}/
+    else
+        _CURDIR=__READ_DIRNAME__
+    fi
     while read -r line; do
         case ${_CURDIR} in
             __READ_DIRNAME__)
                     if [ "${line#${line%?}}" != ':' ]; then
-                        _CURDIR=${ls_prefix:+$ls_prefix/}
-                        _listdir_additem
+                        error '`ls -1aqpR` print a non-posix compatible list, which can not be parse'
+                        return 1
                     else
                         _CURDIR="${line%:}/"
-                        _CURDIR=${ls_prefix:+$ls_prefix/}${_CURDIR#./}
+                        # TODO: more advence normalize
+                        _CURDIR=${_CURDIR#./}
+                        if [ "${_CURDIR%${_CURDIR#?}}" != '/' ]; then
+                            _CURDIR="${PWD%/}/${_CURDIR}"
+                        fi
                     fi
                 ;;
             *)      _listdir_additem ;;
         esac
     done <<EOF
-$(ls -1abp${recursive:+R} "$@")
+$(ls -1aqp${recursive:+R} "$@")
 EOF
-    # set +x
 }
 
 

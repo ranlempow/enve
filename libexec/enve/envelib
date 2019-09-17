@@ -1734,7 +1734,7 @@ EOF
 
 
     # add extra enve bound files
-    ls_prefix="${ENVE_HOME}/enve" fileonly=1 recursive="" listdir "${ENVE_HOME}/enve"
+    fileonly=1 recursive="" listdir "${ENVE_HOME}/enve"
     while read -r envebound; do
         if [ -n "$envebound" ]; then
             out_var_just enve.bound "$envebound"
