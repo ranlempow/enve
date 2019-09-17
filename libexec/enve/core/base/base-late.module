@@ -172,33 +172,37 @@ resolve_boundfiles() {
         bounds=
         # PRJROOT must be abspath
         PRJROOT=${PRJROOT%/}
-        # bounds="$(cd "$PRJROOT"; find . ! -type d)"
-        if [ "$(table_tail "enve\\.nobound")" != "true" ]; then
-            fileonly=1 recursive=1 listdir "$PRJROOT"
-            bounds="$bounds${bounds:+$newl}${_list}"
+        # _clock 'bound1'
+        fast_table_tail "enve\\.nobound"
+        if [ "$TABLE_TAIL" != "true" ]; then
+            # bounds=$(useprint=1 fileonly=1 recursive=1 listdir "$PRJROOT")
+            bounds=$(find "$PRJROOT" ! -type d)
         fi
-        # echo "PRJROOT: $PRJROOT" >&2
-        # echo "bounds: $bounds" >&2
 
+        # _clock 'bound2'
         # if table_subset "enve\\.bound"; then
         #     bounds="$bounds${bounds:+$newl}$(table_subset "enve\\.bound" | as_concat "$newl" || true)"
-        fast_table_subset "enve\\.bound"
+        usegrep=1 fast_table_subset "enve\\.bound"
+        # _clock 'bound2.1'
         if [ -n "$TABLE_SUBSET" ]; then
-            fast_as_concat "$newl"
+            fast_as_value
+            # fast_as_concat "$newl"
+            # _clock 'bound2.2'
+            _bounds=
             while read -r path; do
-                if [ -n "$path" ]; then
-                    if [ "${path%${path#??}}" = "./" ]; then
-                        path="$PRJROOT/${path#??}"
-                    elif [ "${path%${path#?}}" != "/" ]; then
-                        path="$PRJROOT/$path"
-                    fi
-                    bounds="$bounds${bounds:+$newl}$path"
-                fi
+                case $path in
+                    ./*)    _bounds="${_bounds}$PRJROOT/${path#??}$newl";;
+                    /*)     _bounds="${_bounds}$path$newl";;
+                    ?*)     _bounds="${_bounds}$PRJROOT/$path$newl";;
+                esac
             done<<EOF
 $TABLE_AS
 EOF
+            bounds="${bounds}${_bounds}"
+            unset _bounds
         fi
 
+        # _clock 'bound3'
         # TODO:
         #  1. determine gitroot=(git rootdir or PRJROOT)
         #  2. apply all .gitignore in gitroot
@@ -207,23 +211,30 @@ EOF
         if [ -f "$PRJROOT/.gitignore" ]; then
             bounds="$(echo "$bounds" | gitignore_filter "$(cat "$PRJROOT/.gitignore")" )"
         fi
+
+        # _clock 'bound4'
         fast_table_subset "enve\\.bound\\.ignore"
         if [ -n "$TABLE_SUBSET" ]; then
-            fast_as_concat "$newl"
+            fast_as_value
+            # fast_as_concat "$newl"
             bounds="$(echo "$bounds" | gitignore_filter "$TABLE_AS")"
         fi
         # bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\\.bound\\.ignore" | as_concat "$newl" || true)" )"
         # echo "== BOUND:" >&2
         # echo "$bounds" >&2
 
+        # _clock 'bound5'
+        BOUND_TABLE=
         while read -r path; do
             if [ -n "$path" ]; then
-                out_var_just bound "$path"
+                # out_var_just bound "$path"
+                BOUND_TABLE="${BOUND_TABLE}VAR${tab}bound${tab}$path$newl"
             fi
         done<<EOF
 $bounds
 EOF
-
+        TABLE="${TABLE%%$newl}${TABLE:+$newl}$BOUND_TABLE"
+        # _clock 'bound6'
     fi
 
     [ -n "$TABLE" ] && echo "$TABLE"

@@ -51,7 +51,6 @@ newl="${newl%x}"
 # }
 
 
-
 _fast_table_match() {
     _key_cond=$1
     _inverse=${inverse:-}
@@ -63,7 +62,8 @@ _fast_table_match() {
     replace '\.' 'z'
     _search_regex_symbol=$s
     _search_regex_symbol=${_search_regex_symbol%".*"}
-    if      [ "${_search_regex_symbol#*[\*\.\+\?\[\]\(\)\{\}\^\$\|]}" = "${_search_regex_symbol}" ]; then
+    if [ -z "${usegrep:-}" ] && \
+       [ "${_search_regex_symbol#*[\*\.\+\?\[\]\(\)\{\}\^\$\|]}" = "${_search_regex_symbol}" ]; then
         s=${_key_cond}
         replace '.*' '*'
         _sh_regex=${s}
@@ -120,6 +120,10 @@ fast_table_subset() {
     vtype="${2:-VAR}"
     _fast_table_match "$1"
     kv=
+    # while IFS="$tab" read -r m_vtype m_item; do
+    #     if [ -n "$m_vtype" ]; then
+    #         kv="${kv}${m_item}$newl"
+    #     fi
     while read -r line; do
         if [ -n "$line" ]; then
             kv="${kv}${line#$vtype$tab}$newl"
@@ -1050,18 +1054,6 @@ execute_envdef() {
             continue
         fi
 
-        # cwd=$(TABLE=$PAST_TABLE table_tail exec.cwd)
-        # cwd=${cwd:-%cwd}
-        # if [ "$cwd" = "%cwd" ]; then
-        #     :
-        # elif [ "${cwd%"${cwd#?????}"}" = "%root" ]; then
-        #     # echo "%root" >&2
-        #     # TABLE=$PAST_TABLE table_tail layout.root >&2
-        #     eval_line 'cd "'"$(TABLE=$PAST_TABLE table_tail layout.root)${cwd#\%root}"'"'
-        # else
-        #     eval_line 'cd "'"$cwd"'"'
-        # fi
-
         s=$value
         replace "$feed" "$newl"
         replace "'" "'\\''"
@@ -1668,13 +1660,34 @@ get_rcfile_from_profiles_nocache() {
     #       build-rc  m       sub(b, pTABLE)          rc          genrcfile
     #   setup         m       sub(u, pTABLE)          setupmark   setup
 
+    : '
+    load+ = parse(checkout) + load(depend module) + base
 
-    # if [ "$ENVE_PROFILE" = "$ENVE_HOME/enve/enve.ini" ]; then
-    #     echo "!!!! $ENVE_HOME/enve/enve.ini" >&2
-    #     TABLE=
-    #     out_var_just core.target $target
-    #     out_var_just sh_module 1
-    # else
+    fire@run|#fire@module|fire@prod-shell
+        load+
+        fire@bulid
+            load+
+            package
+            postload
+        fire@setup
+            load+
+            settle
+            install
+            post-setup
+            postload
+        reload+
+
+    fire@test
+        load+
+        fire@bulid
+            load+
+        postload
+
+    fire@shell|fire@termainal|fire@execute
+        load+
+        postload
+    '
+
 
     # parse procedure
     TABLE=
@@ -1760,45 +1773,6 @@ EOF
     fi
     chmod 755 "$RCFILE_PATH"
 
-    # fast_table_subset bound
-    # fast_as_value
-    # boundfiles=$TABLE_AS
-    # # echo "$boundfiles"
-    # unset TABLE_SUBSET TABLE_AS
-
-    # filter table finally
-#     PAST_TABLE=$TABLE
-#     TABLE=
-#     boundfiles=
-#     OLDIFS=$IFS
-#     IFS=$tab
-#     while read -r ctype key value; do
-#         case "$ctype$tab$key" in
-#             VAR"${tab}"bound)
-#                     boundfiles="${boundfiles}${boundfiles:+$newl}$value"
-#                 ;;
-#             VAR"${tab}"*'.'*|"$tab"|VAR"${tab}shell"|VAR"${tab}module")
-#                     :
-#                 ;;
-#             *)
-#                     out_var_just "$key" "$value" "$ctype"
-#                 ;;
-#         esac
-#     done <<EOF
-# $PAST_TABLE
-# EOF
-#     IFS=$OLDIFS
-
-    # generate final rcfile
-    # if ! PAST_TABLE="$PAST_TABLE" \
-    #      execute_envdef "$TABLE" "$target" > "$RCFILE_PATH"; then
-    #     _error "execute_envdef failed"
-    #     return 1
-    # fi
-
-    # _debug "RC DONE"
-    # chmod 755 "$RCFILE_PATH"
-    # echo "$boundfiles"
 }
 
 

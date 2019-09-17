@@ -200,45 +200,71 @@ EOF
 }
 
 
-_listdir_additem() {
-    case $line in
-        '')             _CURDIR=__READ_DIRNAME__ ;;
-        ./|../|*\?*)    ;;
-        */)             if [ -z "${fileonly:-}" ]; then
-                            _list="${_list}${_CURDIR}$line$newl";
-                        fi
-                        ;;
-        *)              _list="${_list}${_CURDIR}$line$newl" ;;
-    esac
-}
+# _listdir_additem() {
+#     case $line in
+#         '')             _CURDIR=__READ_DIRNAME__ ;;
+#         ./|../|*\?*)    ;;
+#         */)             if [ -z "${fileonly:-}" ]; then
+#                             _list="${_list}${_CURDIR}$line$newl";
+#                         fi
+#                         ;;
+#         *)              _list="${_list}${_CURDIR}$line$newl" ;;
+#     esac
+# }
+
 
 listdir() {
     _list=
     if [ "$#" -eq 1 ]; then
         _CURDIR=${1%/}/
     else
-        _CURDIR=__READ_DIRNAME__
+        _CURDIR=
     fi
+    ls_result=$(ls -1Aqp${recursive:+R} "$@")
+
+    fileonly=${fileonly:-}
+    useprint=${useprint:-}
+    # _clock 'listdir1'
+    _pwd=${PWD%/}
     while read -r line; do
-        case ${_CURDIR} in
-            __READ_DIRNAME__)
-                    if [ "${line#${line%?}}" != ':' ]; then
-                        error '`ls -1aqpR` print a non-posix compatible list, which can not be parse'
-                        return 1
-                    else
-                        _CURDIR="${line%:}/"
-                        # TODO: more advence normalize
-                        _CURDIR=${_CURDIR#./}
-                        if [ "${_CURDIR%${_CURDIR#?}}" != '/' ]; then
-                            _CURDIR="${PWD%/}/${_CURDIR}"
-                        fi
-                    fi
+        case ${_CURDIR}\|$line in
+            ?*\|./|?*\|../|?*\|*\?*)    ;;
+            ?*\|*/)                     if [ -z "${fileonly}" ]; then
+                                            if [ -z "$useprint" ]; then
+                                                _list="${_list}${_CURDIR}$line$newl";
+                                            else
+                                                printf %s\\n "${_CURDIR}$line"
+                                            fi
+                                        fi
+                                        ;;
+            ?*\|?*)                     if [ -z "$useprint" ]; then
+                                            _list="${_list}${_CURDIR}$line$newl";
+                                        else
+                                            printf %s\\n "${_CURDIR}$line"
+                                        fi
+                                        ;;
+            # state: __READ_DIRNAME__
+            \|/*:)
+                    # TODO: more advence normalize
+                    _CURDIR="${line%:}/"
                 ;;
-            *)      _listdir_additem ;;
+            \|*:)
+                    _CURDIR="${line%:}/"
+                    _CURDIR="${_pwd}/${_CURDIR}"
+                ;;
+            \|*)
+                    error '`ls -1aqpR` print a non-posix compatible list, which can not be parse'
+                    return 1
+                ;;
+            *)                          _CURDIR= ;;
+
+
         esac
     done <<EOF
-$(ls -1aqp${recursive:+R} "$@")
+$ls_result
 EOF
+    # echo "$_list" >&2
+    # _clock 'listdir2'
 }
 
 
