@@ -39,6 +39,65 @@ resolve_macos() {
     # out_var LANG "en_US.UTF-8"
     # out_var PYTHONIOENCODING "utf-8:surrogateescape"
 
+    if [ "$(table_tail "core\\.target")" = "shell" ]; then
+        size=$(table_tail "terminal.size")
+        if [ -n "$size" ]; then
+            out_var TERMSIZE "$size"
+        fi
+        theme=$(table_tail "terminal.theme")
+        if [ -n "$theme" ]; then
+            out_var TERMTHEME "$theme"
+        fi
+    fi
+
+    fast_table_tail "core\\.target"
+    if [ "$TABLE_TAIL" = "shell" ]; then
+
+        # TODO: linux is also suitable this code
+        fast_table_tail "terminal\\.size"
+        if [ -n "$TABLE_TAIL" ] && [ -x "/usr/bin/tput" ]; then
+            width="${TABLE_TAIL%%x*}"
+            height="${TABLE_TAIL##*x}"
+            out_code sh "OLD_COLUMNS=\$(/usr/bin/tput cols)"
+            out_code sh "OLD_LINES=\$(/usr/bin/tput lines)"
+            out_code sh "printf '\\033[8;%s;%st' \"${height}\" \"${width}\""
+            out_raw_fast exit "printf '\\033[8;%s;%st' \"\${OLD_LINES}\" \"\${OLD_COLUMNS}\"" HOOK
+            out_var TERMSIZE "$size"
+        fi
+
+        fast_table_tail "terminal\\.theme"
+        if [ -n "$TABLE_TAIL" ]; then
+            out_list BYPASS TERMTHEME
+            out_code sh "OLD_TERMTHEME=\${TERMTHEME:-}"
+            out_code sh "$ENVE_HOME/enve/core/macos/term_theme.applescript '$TABLE_TAIL'"
+            out_raw_fast exit "if [ -n \"\$OLD_TERMTHEME\" ]; then $ENVE_HOME/enve/core/macos/term_theme.applescript \"\$OLD_TERMTHEME\"; fi" HOOK
+        fi
+    fi
+
+    # case $name in
+    #     TERMSIZE)
+    #             if [ -n "$r_value" ] && [ "$target" = "shell" ] && [ -x "/usr/bin/tput" ]; then
+    #                 # echo -e -n "\033[8;10;140t"
+    #                 width="${r_value%%x*}"
+    #                 height="${r_value##*x}"
+    #                 eval_line "OLD_COLUMNS=\$(/usr/bin/tput cols)"
+    #                 eval_line "OLD_LINES=\$(/usr/bin/tput lines)"
+    #                 # eval_line "echo -e -n \"\\033[8;${height};${width}t\""
+    #                 # exithook="${exithook}${exithook:+$newl}  echo -e -n \"\\033[8;\${OLD_LINES};\${OLD_COLUMNS}t\""
+    #                 eval_line "printf '\\033[8;%s;%st' \"${height}\" \"${width}\""
+    #                 exithook="${exithook}${exithook:+$newl}  printf '\\033[8;%s;%st' \"\${OLD_LINES}\" \"\${OLD_COLUMNS}\""
+    #             fi
+    #         ;;
+    #     TERMTHEME)
+    #             fast_get_system
+    #             if [ -n "$r_value" ] && [ "$target" = "shell" ] && \
+    #                [ "$ENVE_CACHED_OS" = "Darwin" ]; then
+    #                 eval_line 'OLD_TERMTHEME="$TERMTHEME"'
+    #                 eval_line "$ENVE_HOME/enve/core/macos/term_theme.applescript '$r_value'"
+    #                 exithook="${exithook}${exithook:+$newl}  $ENVE_HOME/enve/core/macos/term_theme.applescript \"\$OLD_TERMTHEME\""
+    #             fi
+    #         ;;
+    # esac
 }
 
 main() {

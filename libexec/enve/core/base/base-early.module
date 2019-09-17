@@ -37,6 +37,7 @@ resolve_basic_early() {
         PRJ_NAME=$(basename "$(dirname "$(resolve_path '.')")")
     fi
     out_var "PRJ_NAME" "$PRJ_NAME"
+    out_escape_fast "PRJ_NAME" "$PRJ_NAME" META
 
 }
 
@@ -62,8 +63,35 @@ resolve_shell() {
         out_list "ENVE_SHELLOPTS" "$(table_subset "shell\\.set" | as_concat ":" || true)"
         out_list "ENVE_BASHOPTS" "$(table_subset "shell\\.shopt" | as_concat ":" || true)"
         out_list "ENVE_ZSHOPTS" "$(table_subset "shell\\.setopt" | as_concat ":" || true)"
-        out_list "ENVE_SHELLOPTS" "-posix"
+
+        out_code sh 'OLDIFS="$IFS"; IFS=":";'
+        out_code sh 'for opt in $ENVE_SHELLOPTS; do if [ "${opt#-}" = "$opt" ]; then set -o $opt; else set +o ${opt#-}; fi; done'
+        out_code sh 'if [ -n "${BASH_VERSION:-}" ]; then'
+        out_code sh ' set +o posix'
+        out_code sh ' for opt in $ENVE_BASHOPTS; do if [ "${opt#-}" = "$opt" ]; then shopt -s $opt; else shopt -u ${opt#-}; fi; done'
+        out_code sh 'elif [ -n "${ZSH_VERSION:-}" ]; then'
+        out_code sh ' setopt sh_word_split'
+        out_code sh ' for opt in $ENVE_ZSHOPTS; do if [ "${opt#-}" = "$opt" ]; then setopt $opt; else unsetopt ${opt#-}; fi; done'
+        out_code sh ' unsetopt sh_word_split'
+        out_code sh 'fi'
+        out_code sh 'IFS="$OLDIFS"'
+        out_code sh 'unset ENVE_SHELLOPTS'
+        out_code sh 'unset ENVE_BASHOPTS'
+        out_code sh 'unset ENVE_ZSHOPTS'
+
+        out_code sh 'if [ -n "${ENVE_RCRESOLVE_PIDFILE:-}" ]; then'
+        out_code sh '  _pid=$$'
+        out_code sh '  (set -o noclobber; '
+        out_code sh '   if ! { echo ${_pid} > "$ENVE_RCRESOLVE_PIDFILE"; } 2>/dev/null; then'
+        out_code sh '     echo "PIDFILE already exist, can not execute alone" >&2'
+        out_code sh '     exit 2'
+        out_code sh '   fi)'
+        out_code sh '  unset _pid'
+        out_code sh 'fi'
+        out_code sh 'unset ENVE_RCRESOLVE_PIDFILE'
+        # out_list "ENVE_SHELLOPTS" "-posix"
     fi
+
     # given_shell=$(table_tail "shell")
     # if [ -n "$given_shell" ]; then
     #     out_var SHELL "$given_shell"

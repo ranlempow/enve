@@ -6,6 +6,10 @@
 # shellcheck source=libexec/enve/envelib
 . "$ENVE_HOME/enve/envelib"
 
+# shellcheck source=libexec/enve/findutils
+. "$ENVE_HOME/enve/findutils"
+
+
 settrace
 
 
@@ -49,6 +53,19 @@ resolve_basic_late() {
     # this is for unicode character in console
     out_var "LC_ALL" "en_US.UTF-8"
     out_var "LANG" "en_US.UTF-8"
+
+    fast_table_tail "layout\\.root"
+    PRJROOT=$TABLE_TAIL
+
+    fast_table_tail "exec\\.cwd"
+    cwd=${TABLE_TAIL:-%cwd}
+    if [ "$cwd" = "%cwd" ]; then
+        :
+    elif [ "${cwd%"${cwd#?????}"}" = "%root" ] && [ -n "$PRJROOT" ]; then
+        out_code sh 'cd "'"$PRJROOT${cwd#\%root}"'"'
+    else
+        out_code sh 'cd "'"$cwd"'"'
+    fi
 }
 
 resolve_command() {
@@ -68,19 +85,19 @@ resolve_command() {
 }
 
 
-resolve_terminal() {
-    [ -n "$TABLE" ] && echo "$TABLE"
-    if [ "$(table_tail "core\\.target")" = "shell" ]; then
-        size=$(table_tail "terminal.size")
-        if [ -n "$size" ]; then
-            out_var TERMSIZE "$size"
-        fi
-        theme=$(table_tail "terminal.theme")
-        if [ -n "$theme" ]; then
-            out_var TERMTHEME "$theme"
-        fi
-    fi
-}
+# resolve_terminal() {
+#     [ -n "$TABLE" ] && echo "$TABLE"
+#     if [ "$(table_tail "core\\.target")" = "shell" ]; then
+#         size=$(table_tail "terminal.size")
+#         if [ -n "$size" ]; then
+#             out_var TERMSIZE "$size"
+#         fi
+#         theme=$(table_tail "terminal.theme")
+#         if [ -n "$theme" ]; then
+#             out_var TERMTHEME "$theme"
+#         fi
+#     fi
+# }
 
 
 
@@ -133,47 +150,90 @@ resolve_boundfiles() {
     # 3. +enve.bound
     # 4. include enve.bound.ignore
 
-    bounds_table=
-    # TODO: PRJROOT must be abspath
-    if [ "$(table_tail "enve\\.nobound")" != "true" ]; then
-        PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
-        if [ -z "$PRJROOT" ]; then
-            error "layout.root not defiend"
-            return 1
+    fast_table_tail "layout\\.root"
+    PRJROOT=$TABLE_TAIL
+    if [ -n "$PRJROOT" ] ; then
+        # PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
+        # if [ -z "$PRJROOT" ]; then
+        #     error "layout.root not defiend"
+        #     return 1
+        # fi
+
+        bounds=
+        # PRJROOT must be abspath
+        PRJROOT=${PRJROOT%/}
+        # bounds="$(cd "$PRJROOT"; find . ! -type d)"
+        if [ "$(table_tail "enve\\.nobound")" != "true" ]; then
+            ls_prefix="$PRJROOT" fileonly=1 recursive=1 listdir "$PRJROOT"
+            bounds="$bounds${bounds:+$newl}${_list}"
         fi
-        bounds="$(cd "$PRJROOT"; find . ! -type d)"
+        # echo "PRJROOT: $PRJROOT" >&2
+        # echo "bounds: $bounds" >&2
+
+        # if table_subset "enve\\.bound"; then
+        #     bounds="$bounds${bounds:+$newl}$(table_subset "enve\\.bound" | as_concat "$newl" || true)"
+        fast_table_subset "enve\\.bound"
+        if [ -n "$TABLE_SUBSET" ]; then
+            fast_as_concat "$newl"
+            while read -r path; do
+                if [ -n "$path" ]; then
+                    if [ "${path%${path#??}}" = "./" ]; then
+                        path="$PRJROOT/${path#??}"
+                    elif [ "${path%${path#?}}" != "/" ]; then
+                        path="$PRJROOT/$path"
+                    fi
+                    bounds="$bounds${bounds:+$newl}$path"
+                fi
+            done<<EOF
+$TABLE_AS
+EOF
+        fi
+
+        # TODO:
+        #  1. determine gitroot=(git rootdir or PRJROOT)
+        #  2. apply all .gitignore in gitroot
+        #  3. plus "enve\\.bound\\.ignore" in a oneshot
 
         if [ -f "$PRJROOT/.gitignore" ]; then
             bounds="$(echo "$bounds" | gitignore_filter "$(cat "$PRJROOT/.gitignore")" )"
         fi
-        if table_subset "enve\\.bound"; then
-            bounds="$bounds${bounds:+$newl}$(table_subset "enve\\.bound" | as_concat "$newl" || true)"
+        fast_table_subset "enve\\.bound\\.ignore"
+        if [ -n "$TABLE_SUBSET" ]; then
+            fast_as_concat "$newl"
+            bounds="$(echo "$bounds" | gitignore_filter "$TABLE_AS")"
         fi
-        bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\\.bound\\.ignore" | as_concat "$newl" || true)" )"
+        # bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\\.bound\\.ignore" | as_concat "$newl" || true)" )"
         # echo "== BOUND:" >&2
         # echo "$bounds" >&2
 
-        bounds_table="$(
-            cd "$PRJROOT"
-            while read -r path; do
-                if [ -n "$path" ]; then
-                    out_var bound "$(resolve_symlinks "$path")"
-                fi
-            done <<EOF
+        while read -r path; do
+            if [ -n "$path" ]; then
+                out_var_just bound "$path"
+            fi
+        done<<EOF
 $bounds
 EOF
-        )"
+
     fi
 
     [ -n "$TABLE" ] && echo "$TABLE"
-    echo "$bounds_table"
 }
 
+
+resolve_bypass() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+    fast_table_subset "BYPASS" "LIST"
+    fast_as_concat ":"
+    out_raw_fast "BYPASS" "$TABLE_AS" META
+
+    fast_table_tail "core\\.target"
+    out_raw_fast "target" "$TABLE_TAIL" META
+}
 
 main() {
     info "IN $ZERO/base-late.module"
     TABLE=$(cat "${configfile:--}")
-    for proc in basic_late command terminal prompt secret boundfiles; do
+    for proc in basic_late command prompt secret boundfiles bypass; do
         info "IN resolve_$proc"
         if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
             _error "error at resolve_$proc"

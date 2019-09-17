@@ -3,6 +3,9 @@
 # shellcheck source=libexec/enve/base
 . "$ENVE_HOME/enve/base"
 
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
 settrace
 
 
@@ -168,6 +171,34 @@ env -i $bypass_envs${rc_env:+" $rc_env"} \
 "
     LOGTYPE="eval" _trace "$eval_shell"
 }
+
+
+
+rcfile_parse_meta_table "$RCFILE_PATH"
+while IFS="$tab" read -r key value; do
+    case $key in
+        SHELL)              invoke_shell=$value ;;
+        BYPASS)             invoke_bypass=$value ;;
+        PRJ_NAME)           PRJ_NAME=$value ;;
+        target)             target=$value ;;
+    esac
+done <<EOF
+$META_TABLE
+EOF
+
+
+deftext="$EXTRA_ENVS"
+OLDIFS=$IFS; IFS=':'
+for var in ${invoke_bypass:-}; do
+    fast_append_variable_quote "$var"
+done
+IFS=$OLDIFS
+bypass_envs=$deftext
+
+
+# _debug "bypass_envs: $bypass_envs"
+invoke_shell=${invoke_shell:-$SHELL}
+target=${EXTRA_TARGET:-$target}
 
 
 

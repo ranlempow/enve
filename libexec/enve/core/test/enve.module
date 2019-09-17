@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+# shellcheck source=libexec/enve/envelib
+. "$ENVE_HOME/enve/envelib"
+
+settrace
+
+resolve_test() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+#     elif [ "$target" = "test" ]; then
+#         eval_line '. $ENVE_HOME/enve/testlib'
+#         eval_line 'ENVE_TEST_OUTPUT=${ENVE_TEST_OUTPUT:-$(mkdtemp "$(get_tempdir)"/enve-test.XXXXXX)}; export ENVE_TEST_OUTPUT'
+#         eval_line 'TEST_OUTPUT=$ENVE_TEST_OUTPUT; export TEST_OUTPUT'
+#         eval_line 'CACHED=$TEST_OUTPUT harness '\\
+#         while IFS="$tab" read -r casename cmd; do
+#             if [ -n "$casename" ]; then
+#                 eval_line '  "'"$casename"'" "'"$cmd"'" '\\
+#             fi
+#         done <<EOF
+# $(TABLE=$PAST_TABLE table_subset "test\\.jobs\\..*" | as_postfix "test\\.jobs\\.")
+# EOF
+#         eval_line '  ;'
+
+    # TODO: need test
+    execcmd='CACHED=$TEST_OUTPUT harness '
+    fast_table_subset "test\\.jobs\\..*"
+    fast_as_postfix "test\\.jobs\\."
+    jobs=$TABLE_AS
+    while IFS="$tab" read -r casename cmd; do
+        if [ -n "$casename$cmd" ]; then
+            execcmd="$execcmd '$casename' '$cmd'"
+        fi
+    done <<EOF
+$jobs
+EOF
+
+    out_source "$ENVE_HOME/enve/testlib"
+    out_code sh 'ENVE_TEST_OUTPUT=${ENVE_TEST_OUTPUT:-$(mkdtemp "$(get_tempdir)"/enve-test.XXXXXX)}; export ENVE_TEST_OUTPUT'
+    out_code sh 'TEST_OUTPUT=$ENVE_TEST_OUTPUT; export TEST_OUTPUT'
+    out_raw_fast exec ":$execcmd" EXEC
+}
+
+main() {
+    info "IN $(basename $ZERO)/enve.module"
+    TABLE=$(cat "${configfile:--}")
+
+    # shellcheck disable=2043
+    for proc in test; do
+        info "IN resolve_$proc"
+        if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+            _error "error at resolve_$proc"
+            exit 1
+        fi
+        # info "OUT resolve_$proc"
+    done
+
+    info "OUT $(basename $ZERO)/enve.module"
+    [ -n "$TABLE" ] && echo "$TABLE"
+}
+
+# if [ "${TEST:-}" != "test" ]; then
+# fi
+
