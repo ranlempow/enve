@@ -156,13 +156,24 @@ while [ -n "${1:-}" ]; do
                 shift
                 if [ -n "${1:-}" ]; then
                     subtype=$1
+                    shift
                 fi
+
                 # ENVE_PROFILE="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
                 _profile="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
                 # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=${_profile}$newl"
                 assign_main_profile "$_profile"
                 unset _profile
-                cmd=shell
+
+                if [ "${1:-}" = "-l" ]; then    # kitty.config.shell compatiable
+                    shift
+                fi
+                if [ "${1:-}" = "-c" ]; then    # kitty.config.shell compatiable
+                    cmd=run
+                    shift
+                else
+                    cmd=shell
+                fi
                 break
             ;;
         auto)

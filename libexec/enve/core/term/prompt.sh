@@ -1,6 +1,7 @@
 
 # POSIX prompt
-. /usr/local/etc/bash_completion.d/git-prompt.sh
+
+
 prompt_command() {
     RED='\[\e[31m\]'
     # GREEN='\[\e[32m\]'
@@ -55,6 +56,8 @@ prompt_command() {
     unset ps1_line retcode
     unset RED YELLOW BLUE GRAY PINK NOCOLOR
 }
+
+#. "$GIT_PROMPT_SH"
 
 # NOTE: `history -a` is bash only command
 if [ "$shell" = "bash" ]; then

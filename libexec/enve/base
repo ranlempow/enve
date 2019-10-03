@@ -249,6 +249,14 @@ write_file_only_nonexist() {
     return $1
 }
 
+
+fast_append_argument_quote() {
+    s=$1
+    replace "'" "'\\''"
+    printf -v deftext "%s'%s'" "$deftext${deftext:+ }" "$s"
+    unset s
+}
+
 fast_append_variable_quote() {
     var=$1
     if [ -n "$var" ] && [ "${var#*'$'}" = "${var}" ]; then
@@ -329,7 +337,7 @@ create_dir_mutex() {
     # )
 }
 
-_sixrand50() {
+sixrand50() {
     # shellcheck disable=1004
     awk 'BEGIN {  srand(); for (i = 1; i <= 50; i++)
                         printf("%c%c%c%c%c%c\n" , rand() * 26 + 97, rand() * 26 + 97 \
@@ -337,14 +345,23 @@ _sixrand50() {
                                                 , rand() * 26 + 97, rand() * 26 + 97) }'
 }
 
-_rand=$(_sixrand50)
+twentyrand1() {
+    awk 'BEGIN {  srand(); for (i = 1; i <= 20; i++) {
+                        r = rand() * 64;
+                        if (r < 26) c = r + 97; else if (r < 52) c = r - 26 + 65; else if (r < 62) c = r - 52 + 48; else if (r < 63) c = 46; else c = 45;
+                        printf("%c", c);
+                  }
+                  printf("\n"); }'
+}
+
+_rand=$(sixrand50)
 ENVE_SESSION_ID=${_rand%%"$newl"*}
 
 _mkstemp() {
     mutex_function=$1
     shift
 
-    rands="$(_sixrand50)"
+    rands="$(sixrand50)"
     prefix="${1%XXXXXX}"
     if [ "$prefix" = "$1" ]; then
         return 1
@@ -468,7 +485,7 @@ get_tempdir() {
 
 any_key_continue() {
     if [ -n "${PS1:-}" ]; then
-        echo "Press enter to continue"
+        echo "${1:-Press enter to continue}"
         # shellcheck disable=2034
         read -r X
         unset X
@@ -858,5 +875,34 @@ settrace() {
 }
 
 
+# TODO: move to isolation
 
+_exec_plain_exec() {
+    exec "$@"
+}
+
+_exec_subshell() {
+    exec /bin/sh -c "exec \"\$@\"" /bin/sh "$@"
+}
+_exec_subshell_nohup() {
+    exec /bin/sh -c "trap '' SIGHUP; exec \"\$@\"" /bin/sh "$@"
+}
+
+_exec_reparent() {
+    (exec "$@" &)
+}
+
+_exec_reparent_nohup() {
+    (trap '' SIGHUP; exec "$@" &)
+}
+
+_exec_reparent_tmux() {
+    # -s session
+    tmux -S "$TMUX_SOCKET" -2u new-session -d "$@"
+}
+
+# _invoke_tmux_maybe() {
+#     # -s session
+#     tmux -S "$TMUX_SOCKET" -2u new-session -d /bin/sh -c "exec \"\$@\"" "$@"
+# }
 

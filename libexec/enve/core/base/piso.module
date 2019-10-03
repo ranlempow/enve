@@ -113,6 +113,8 @@ EOF
     fi
 }
 
+# -S /private/tmp/tmux-501/default
+
 
 make_run_cmdline() {
     ephemeral=$(mkstemp ${TMPDIR:-/tmp}/ephemeral-$PRJ_NAME.XXXXXX)
@@ -181,6 +183,7 @@ while IFS="$tab" read -r key value; do
         BYPASS)             invoke_bypass=$value ;;
         PRJ_NAME)           PRJ_NAME=$value ;;
         target)             target=$value ;;
+        exec_method)        exec_method=$value ;;
     esac
 done <<EOF
 $META_TABLE
@@ -199,13 +202,15 @@ bypass_envs=$deftext
 # _debug "bypass_envs: $bypass_envs"
 invoke_shell=${invoke_shell:-$SHELL}
 target=${EXTRA_TARGET:-$target}
-
+exec_method=${exec_method:-plain_exec}
 
 
 case $target in
     shell)
             make_shell_cmdline
-            eval exec "$eval_shell"
+            eval set -- "$eval_shell"
+            _exec_${exec_method} "$@"
+            # eval exec "$eval_shell"
         ;;
     run)
             # args=$(save "$@")
@@ -214,46 +219,69 @@ case $target in
             # echo "rm \$0; . $RCFILE_PATH \"\$@\";" > $ephemeral
             # eval exec env -i "$bypass_envs" sh $ephemeral \"\$@\"
             make_run_cmdline
-            eval exec "$eval_shell"
+            eval set -- "$eval_shell"
+            _exec_${exec_method} "$@"
+            # eval exec "$eval_shell"
         ;;
     loader|module)
             # echo "RUN_MOD: $@"
             # exec sh "$RCFILE_PATH" "$@"
             make_module_cmdline
-            eval exec "$eval_shell"
+            eval set -- "$eval_shell"
+            _exec_${exec_method} "$@"
+            # eval exec "$eval_shell"
         ;;
     terminal)
         case ${invoke_termainal:-native} in
             native)
                     make_shell_cmdline
-                    eval exec "$ENVE_HOME/enve/core/macos/term.applescript" "\"exec $eval_shell\""
+                    eval set -- "$eval_shell"
+                    deftext='exec'
+                    for a in "$@"; do
+                        fast_append_argument_quote "$a"
+                    done
+                    set -- "$ENVE_HOME/enve/core/macos/term.applescript" "$deftext"
+                    _exec_${exec_method} "$@"
+                    # eval exec "$ENVE_HOME/enve/core/macos/term.applescript" "\"exec $eval_shell\""
+                    # eval exec "$ENVE_HOME/enve/core/macos/term.applescript" "\"exec \$eval_shell\""
                 ;;
             kitty)
-                    if [ ! -e /Applications/kitty.app ]; then
-                        # shellcheck source=libexec/enve/bootlib
-                        . "$ENVE_HOME/enve/bootlib"
-                        ensure_brew
-                        brew cask install kitty
-                    fi
+                    # if [ ! -e /Applications/kitty.app ]; then
+                    #     # shellcheck source=libexec/enve/bootlib
+                    #     . "$ENVE_HOME/enve/bootlib"
+                    #     ensure_brew
+                    #     brew cask install kitty
+                    # fi
                     make_shell_cmdline
                     #  --config <CONFIG>, -c <CONFIG>
                     #  --override <OVERRIDE>, -o <OVERRIDE>
 
-                    # shellcheck disable=2009
-                    if ps -Al | grep "[Kk]itty" >/dev/null 2>&1; then
-                        open -a /Applications/kitty.app
-                        kitty=/Applications/kitty.app/Contents/MacOS/kitty
-                        eval $kitty --single-instance /bin/sh -c "\"exec $eval_shell\""
+                    if [ -e "/Applications/kitty.app/Contents/MacOS/kitty" ]; then
+                        kitty="/Applications/kitty.app/Contents/MacOS/kitty"
+                    elif [ -e "$HOME/Applications/kitty.app/Contents/MacOS/kitty" ]; then
+                        kitty="$HOME/Applications/kitty.app/Contents/MacOS/kitty"
                     else
-                        echo "kitty --single-instance /bin/sh -c \"exec $eval_shell\"" \
-                                > ~/.config/kitty/macos-launch-services-cmdline
-                        open -a /Applications/kitty.app
-                        echo "kitty --single-instance" > \
-                                ~/.config/kitty/macos-launch-services-cmdline
+                        error "kitty application not found"
+                        return 1
                     fi
+                    eval "set -- \"\$kitty\" --single-instance $eval_shell"
+                    _exec_${exec_method} "$@"
+                    # eval $kitty --single-instance /bin/sh -c "\"exec $eval_shell\""
+                    # eval $kitty --single-instance /bin/sh -c "\"exec \$eval_shell\""
+                    # shellcheck disable=2009
+                    # if ps -Al | grep "[Kk]itty" >/dev/null 2>&1; then
+                    #     open -a /Applications/kitty.app
+                    #     kitty=/Applications/kitty.app/Contents/MacOS/kitty
+                    #     eval $kitty --single-instance /bin/sh -c "\"exec $eval_shell\""
+                    # else
+                    #     echo "kitty --single-instance /bin/sh -c \"exec $eval_shell\"" \
+                    #             > ~/.config/kitty/macos-launch-services-cmdline
+                    #     open -a /Applications/kitty.app
+                    #     echo "kitty --single-instance" > \
+                    #             ~/.config/kitty/macos-launch-services-cmdline
+                    # fi
                 ;;
             conemu)
-                    make_shell_cmdline
                     case ${MSYSTEM:-MSYS} in
                         CYGWIN)
                                 comenu_executor=$CONEMU_BASE/ConEmu/conemu-cygwin-64.exe
@@ -262,10 +290,15 @@ case $target in
                                 comenu_executor=$CONEMU_BASE/ConEmu/conemu-msys2-64.exe
                             ;;
                     esac
-                    cmd /c start "" "$CONEMU_BASE/ConEmu64.exe" -run "$comenu_executor" /usr/bin/sh -c "\"exec $eval_shell\""
+                    make_shell_cmdline
+                    eval set -- "cmd /c start \"\" \"\$CONEMU_BASE/ConEmu64.exe\" -run \"\$comenu_executor\" $eval_shell"
+                    _exec_${exec_method} "$@"
+                    # cmd /c start "" "$CONEMU_BASE/ConEmu64.exe" -run "$comenu_executor" /usr/bin/sh -c "\"exec $eval_shell\""
                 ;;
             mintty)
-                    cmd /c start "" "$MSYS_BIN_PATH/mintty.exe" -c "%USERPROFILE%/.minttyrc" -- "$MSYS_BIN_PATH/sh" -c "\"exec $eval_shell\""
+                    eval set -- "cmd /c start \"\" \"\$MSYS_BIN_PATH/mintty.exe\" -c \"\$USERPROFILE/.minttyrc\" -- $eval_shell"
+                    _exec_${exec_method} "$@"
+                    # cmd /c start "" "$MSYS_BIN_PATH/mintty.exe" -c "%USERPROFILE%/.minttyrc" -- "$MSYS_BIN_PATH/sh" -c "\"exec $eval_shell\""
                 ;;
         esac
         ;;

@@ -28,6 +28,7 @@ vtab="${vtab%x}"
 newl="$(printf '\nx')"
 newl="${newl%x}"
 
+# settrace
 
 # All function in this definition are design to compatible with posix shell.
 # External Dependencies are awk(1), tr(1), pwd(1), ls(1), basename(1), dirname(1).
@@ -151,6 +152,23 @@ EOF
     TABLE_SUBSET=$kv
     unset matchlines line
 }
+
+_fast_table_raw_subset() {
+    vtype="${2:-VAR}"
+    _fast_table_match "$1"
+    TABLE_SUBSET=$matchlines
+    unset matchlines
+}
+
+
+_fast_table_raw_exclude() {
+    vtype="${2:-VAR}"
+    inverse=1 _fast_table_match "$1"
+    TABLE_SUBSET=$matchlines
+    unset matchlines
+}
+
+
 
 table_tail() {
     vtype="${2:-VAR}"
@@ -1342,7 +1360,7 @@ get_module_info() {
             replace "," ":"
             s=${s##:}
             s=${s%%:}
-            eval "MODULE_${vname}_${proce}_${attrib}=\"\${MODULE_${vname}_${proce}_${attrib}:-}\${value}:\""
+            eval "MODULE_${vname}_${proce}_${attrib}=\"\${MODULE_${vname}_${proce}_${attrib}:-}\${s}:\""
         else
             eval "MODULE_${vname}_${proce}_${attrib}=\$value"
         fi
@@ -1370,6 +1388,8 @@ EOF
         eval enve="\${${m_dict}_enve:-./enve.ini}"
         eval after="\":\${${m_dict}_after:-}\""
         eval before="\":\${${m_dict}_before:-}\""
+
+        # echo "!!!!! $vname: $after" >&2
 
         eval [ \"\${${m_dict}_native_exec+x}\" = x ] && unset ${m_dict}_native_exec
         eval [ \"\${${m_dict}_source_exec+x}\" = x ] && unset ${m_dict}_source_exec
@@ -1426,16 +1446,21 @@ EOF
     e_index=0
     if [ -n "$modules" ]; then
         while IFS="," read -r e_name e_procedure e_afters e_befores e_remain; do
-            if [ -z "${e_afters#*":$name:"*}" ] && [ "${max:-0}" -le "$e_index" ]; then
+            # _debug "current: $e_index/$e_name"
+            if [ -z "${e_afters#*":$name:"*}" ] && [ "${max:-1000}" -ge "$e_index" ]; then
+                # _debug "order(max=$max): that $e_name($e_index) after this $name"
                 max=$((e_index))
             fi
-            if [ -z "${befores#*":$e_name:"*}" ] && [ "${max:-0}" -le "$e_index" ]; then
+            if [ -z "${befores#*":$e_name:"*}" ] && [ "${max:-1000}" -ge "$e_index" ]; then
+                # _debug "order(max=$max): this $name before that $e_name($e_index)"
                 max=$((e_index))
             fi
-            if [ -z "${e_befores#*":$name:"*}" ] && [ "${min:-1000}" -ge "$e_index" ]; then
+            if [ -z "${e_befores#*":$name:"*}" ] && [ "${min:-0}" -le "$e_index" ]; then
+                # _debug "order(min=$min): that $e_name($e_index) before this $name"
                 min=$((e_index + 1))
             fi
-            if [ -z "${afters#*":$e_name:"*}" ] && [ "${min:-1000}" -ge "$e_index" ]; then
+            if [ -z "${afters#*":$e_name:"*}" ] && [ "${min:-0}" -le "$e_index" ]; then
+                # _debug "order(min=$min): this $name after that $e_name($e_index)"
                 min=$((e_index + 1))
             fi
             e_index=$((e_index + 1))
@@ -1648,7 +1673,7 @@ EOF
                 return 1
             fi
             # TODO: move to every module code
-            ls_prefix="${e_path}" fileonly=1 recursive=1 listdir "$e_path"
+            fileonly=1 recursive=1 listdir "$e_path"
             while read -r modulebound; do
                 if [ -n "$modulebound" ]; then
                     out_var_just enve.bound "$modulebound"
@@ -2036,7 +2061,10 @@ EOF
         # bypass_envs=$bypass_envs \
         ZERO=$ZERO \
         ENVE_HOME=$ENVE_HOME \
-        EXTRA_ENVS="ENVE_FIRE_DEPTH='$ENVE_FIRE_DEPTH'${EXTRA_ENVS:+ $EXTRA_ENVS}" \
+        EXTRA_ENVS="ENVE_FIRE_DEPTH='$ENVE_FIRE_DEPTH' \
+ENVE_SESSION_ID='$ENVE_SESSION_ID' \
+ENVE_SESSION_SECRET='$(twentyrand1)'\
+${EXTRA_ENVS:+ $EXTRA_ENVS}" \
         EXTRA_TARGET=${EXTRA_TARGET:-} \
         RCFILE_PATH=$RCFILE_PATH \
         exec "$isoexec" "$@"

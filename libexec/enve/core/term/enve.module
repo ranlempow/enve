@@ -8,8 +8,9 @@
 
 settrace
 
-resolve_terminal() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+
+hook_on_history() {
+    # every project has his own history
     d=$(table_tail "SHELL")
     fast_basename
     shell=$d
@@ -42,7 +43,54 @@ resolve_terminal() {
                 out_list ENVE_ZSHOPTS "-extended_history"
             ;;
     esac
-    if [ "$shell" != "zsh" ]; then
+}
+
+
+resolve_tmux() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+
+    tmux_mode=
+    fast_table_tail "shell\\.tmux"
+    tmux_mode=$TABLE_TAIL
+    if [ "$tmux_mode" = "false" ]; then
+        return
+    fi
+    fast_table_subset "shell\\.tmux\\..*"
+    if [ -n "$TABLE_SUBSET" ]; then
+        tmux_mode=1
+    fi
+
+
+    if [ -n "$tmux_mode" ]; then
+        fast_out_var "cmd.tmux" "exec tmux -S \"\$TMUX_SOCKET\" \"\$@\""
+        PRJ_NAME="$(table_tail "PRJ_NAME")"
+        fast_out_var TMUX_SOCKET "/private/tmp/tmux-501/$PRJ_NAME"
+    fi
+}
+
+resolve_terminal() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+
+    hook_on_history
+
+    # TODO: detect git-prompt.sh location
+    fast_table_tail "ENV_ROOT"
+    ENV_ROOT=$TABLE_TAIL
+    fast_table_tail "HOMEBREW_PREFIX"
+    HOMEBREW_PREFIX=$TABLE_TAIL
+    # echo "!!! $ENV_ROOT" >&2
+
+    GIT_PROMPT_SH=
+    if   [ -n "$ENV_ROOT" ] &&
+         [ -f "$ENV_ROOT/share/git/contrib/completion/git-prompt.sh" ]; then
+        GIT_PROMPT_SH=$ENV_ROOT/share/git/contrib/completion/git-prompt.sh
+    elif [ -n "$HOMEBREW_PREFIX" ] &&
+         [ -f "$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh" ]; then
+        GIT_PROMPT_SH=$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh
+    fi
+
+    if [ "$shell" != "zsh" ] && [ -f "$GIT_PROMPT_SH" ]; then
+        out_code sh ". \"$GIT_PROMPT_SH\""
         while read -r line; do
             out_code sh "$line"
         done < "$ZERO/prompt.sh"
