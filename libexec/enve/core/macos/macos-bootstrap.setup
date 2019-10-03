@@ -1,10 +1,10 @@
 
 # setup brew
-# setup cask
-# setup firefox
-# setup kitty | .config/kitty/kitty.conf | .inputrc
-# setup sublime-text | sublime-life
-# setup borgbackup | .borgignore
+# (O)setup cask
+# (O)setup firefox
+# (O)setup kitty | .config/kitty/kitty.conf | .inputrc
+# (O)setup sublime-text | sublime-life
+# (X)setup borgbackup | .borgignore
 
 
 # introduce file system
@@ -35,13 +35,15 @@
 # brew install duti
 # duti -x com.apple.Terminal enve
 
-/Users/pengweiqi/.config/kitty/kitty.conf
-/Users/pengweiqi/.config/kitty/macos-launch-services-cmdline
-/Users/pengweiqi/.skhdrc
-/Users/pengweiqi/.inputrc
-/Users/pengweiqi/.tmux.conf
-/Users/pengweiqi/Desktop/uncatalog/.macos
-/Users/pengweiqi/Desktop/uncatalog/brewinit.sh
+(O)/Users/pengweiqi/.config/kitty/kitty.conf
+(O)/Users/pengweiqi/.config/kitty/macos-launch-services-cmdline
+(O)/Users/pengweiqi/.skhdrc
+(O)/Users/pengweiqi/.inputrc
+(O)/Users/pengweiqi/.tmux.conf
+(X)/Users/pengweiqi/Desktop/uncatalog/.macos
+(X)/Users/pengweiqi/Desktop/uncatalog/brewinit.sh
 
 
-brew install curl --with-libssh2
+(?)brew install curl --with-libssh2
+
+

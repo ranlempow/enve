@@ -1,6 +1,6 @@
 
 TODO:
-1.利用註解說明gitignore_filter與gitignore實作上不相符的部分
+1.(X)利用註解說明gitignore_filter與gitignore實作上不相符的部分
 2.(O)廣泛使用table_substi
 3.(X)include指令移到前期resolve執行, loadconfig因為不用遞迴而更加清淨
 4.(X)將pm整合入enve, 也就是說pm只是enve一個小外掛, ci也是enve小外掛
@@ -112,9 +112,10 @@ inherit             like include, but use inherit config as layout.root
 
 (X)module.import(LIST)
 module(LIST)
-module.$name.path
-module.param.*
-module.roles(LIST)
+(X)module.$name.path
+module.$name.preconfig.*
+module.$name.config.*
+module.$name.roles
 
 
 

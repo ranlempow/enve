@@ -1,0 +1,61 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+settrace
+
+config_path=$1
+shift
+if [ "${config_path%*.enve.ini}" != "${config_path}" ]; then
+    prj=$(basename "$config_path")
+    prj=${prj%.enve.ini}
+elif [ "${config_path%/enve.ini}" != "${config_path}" ]; then
+
+    # shellcheck source=libexec/enve/pathutils
+    . "$ENVE_HOME/enve/pathutils"
+
+    config_path=$(canonicalize_symlinks "$config_path")
+    prj=$(dirname "$config_path")
+    prj=$(basename "$prj")
+else
+    return 1
+fi
+
+
+getwintitle="$ENVE_HOME/enve/core/macos/getwintitle.applescript"
+if [ -e "/Applications/kitty.app/Contents/MacOS/kitty" ]; then
+    kitty="/Applications/kitty.app/Contents/MacOS/kitty"
+elif [ -e "$HOME/Applications/kitty.app/Contents/MacOS/kitty" ]; then
+    kitty="$HOME/Applications/kitty.app/Contents/MacOS/kitty"
+else
+    error "kitty application not found"
+    return 1
+fi
+
+
+do_daemonlize() {
+
+    # shellcheck source=libexec/enve/base
+    . "$ENVE_HOME/enve/envelib"
+
+    ENVE_CONFIG_TEXT="inherit=$ENVE_HOME/enve/preset/kitty.enve.ini$newl"
+    if [ -n "${TMUX_SOCKET:-}" ]; then
+        ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}exec.method=reparent_tmux$newl" \
+            enve_fire run "kitty" "$@"
+    else
+        ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}exec.method=reparent_nohup$newl" \
+            enve_fire run "kitty" "$@"
+    fi
+}
+
+
+if [ -n "$(/usr/bin/osascript "$getwintitle" "kitty"  "$prj" --raise)" ]; then
+    :
+elif [ -n "$(/usr/bin/osascript "$getwintitle" "kitty")" ]; then
+    kitty --single-instance "$@"
+else
+    do_daemonlize
+fi
+
+

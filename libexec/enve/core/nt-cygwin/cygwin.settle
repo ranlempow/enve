@@ -1,0 +1,24 @@
+#!/bin/sh
+
+
+CACHEDIR=
+MIRROR=http://ftp.gwdg.de/pub/linux/sources.redhat.com/cygwin/
+SETUPEXE=setup-x86_64.exe
+NAME=cygwin-$ARCH-$SUFFIX
+TARGETDIR=$APPDATA/enve/sysroots/$NAME
+BASH=$TARGETDIR/bin/bash
+
+
+"$SETUPEXE" -q -X -O -s "$MIRROR" -R "$TARGETDIR" -l "$CACHEDIR" -P \
+    bison,curl,flex,cygport,git,git-completion,libbz2-devel,libcrypt-devel,libcurl-devel,libsqlite3-devel,openssh,openssl-devel,perl-DBD-SQLite,pkg-config,tmux,vim,wget
+
+echo Please wait until the cygwin installer has finished, then press any key to continue;
+
+cp "$SETUPEXE" "$TARGETDIR/$SETUPEXE"
+cp -r skel "$TARGETDIR/etc/skel"
+
+echo start "" "%%~dp0bin/mintty.exe" - > "$TARGETDIR/mintty.bat"
+echo "%%~dp0%SETUPEXE%" -q -X -O -s $MIRROR -R "$TARGETDIR" -l "$CACHEDIR" \$@ > "$TARGETDIR/setup.bat"
+
+echo Your cygwin is at "%TARGETDIR%\mintty"
+

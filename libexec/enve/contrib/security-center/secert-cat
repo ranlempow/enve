@@ -1,0 +1,17 @@
+#!/bin/sh
+
+if [ -z "${ENVE_WORKSPACE:-}" ]; then
+    echo "ENVE_WORKSPACE not set" >&2
+    return 1
+fi
+
+if [ ! -d "${ENVE_WORKSPACE}/secret" ]l then
+    echo "$ENVE_WORKSPACE not init" >&2
+    return 1
+fi
+
+cat "${ENVE_WORKSPACE}/secret/db/$1"
+
+
+# TODO: print ssh public key
+

@@ -1,0 +1,90 @@
+#!/bin/sh
+
+if [ -z "${ENVE_HOME:-}" ]; then
+    echo "fatal: ENVE_HOME not set." >&2
+    exit 1
+fi
+ENVE_PROGRAM=enve/ws
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+settrace
+
+# shellcheck source=libexec/enve/wslib
+. "$ENVE_HOME/enve/wslib"
+
+
+
+
+getarg2() {
+    prefix=$1
+    shift
+    argshift=1
+    arg2=
+    if [ "${1#--$prefix=}" != "${1}" ]; then
+        arg2=${1#--$prefix=}
+        argshift=1
+    elif [ -n "${2:-}" ] && [ "${2#-}" = "$2" ]; then
+        arg2=$2
+        argshift=2
+    fi
+    eval "$prefix=\"\$arg2\""
+    unset prefix arg2
+}
+
+die() {
+    echo "$@" >&2
+    exit 1
+}
+
+
+
+cmd=
+while [ -n "${1:-}" ]; do
+    case $1 in
+        init)       cmd=init; shift; break;;
+        clone)      cmd=clone; shift; break;;
+        open)       cmd=open; shift; break;;
+        setup)      cmd=setup; shift; break;;
+        *)
+                if [ -z "$cmd" ]; then
+                    die "unknown command $1"
+                fi
+            ;;
+    esac
+done
+
+
+psc=1
+
+while [ -n "${1:-}" ]; do
+    case $cmd!$1 in
+        # init) ;;
+        # clone) ;;
+        # open) ;;
+        # setup)
+        setup!--level=?*|setup!--level)
+                getarg2 level "$@"
+                shift "$argshift"
+                case $level in
+                    system|user|workspace|project|environ) ;;
+                    *)
+                        die "--level should follow {system,user,workspace,project,environ}"
+                    ;;
+                esac
+            ;;
+        setup!--minlevel=?*|setup!--minlevel)
+                getarg2 minlevel "$@"
+                shift "$argshift"
+                case $minlevel in
+                    system|user|workspace|project|environ) ;;
+                    *)
+                        die "--minlevel should follow {system,user,workspace,project,environ}"
+                    ;;
+                esac
+            ;;
+        -*)     die "unknown option '$1'" ;;
+        *)      eval "posarg$psc=\"\$1\""; shift 1; psc=$((psc + 1));;
+    esac
+done
+

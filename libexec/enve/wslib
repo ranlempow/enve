@@ -1,0 +1,176 @@
+#!/bin/sh
+
+# shellcheck disable=2016
+true
+
+if [ -n "${HAVE_ENVE_WSLIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_WSLIB=1
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+# # shellcheck source=libexec/enve/findutils
+# . "$ENVE_HOME/enve/findutils"
+
+# shellcheck source=libexec/enve/pathutils
+. "$ENVE_HOME/enve/pathutils"
+
+# # shellcheck source=libexec/enve/cachelib
+# . "$ENVE_HOME/enve/cachelib"
+# # shellcheck source=libexec/enve/urlutils
+# . "$ENVE_HOME/enve/urlutils"
+
+
+settrace
+
+
+_where_into() {
+    case ${path%/*} in
+        project)
+        extra)
+        out)    loctype=out
+        sub)
+                o=${path#sub}
+                if [ -z "$o" ] || [ "$o" = "/" ]; then
+                    loctype=sub
+                # elif [ -n "${o#/*}" ]; then
+                else
+                    loctype=subroot
+                    parent_project=${o%/*}
+                    parent_project=${parent_project#/}
+                fi
+                o=${o#/*}
+                if [ -z "$o" ] || [ "$o" = "/" ]; then
+                    return
+                else
+                    depth=$((depth + 1))
+                    path=$o _where_into
+                fi
+            ;;
+        *)
+                return
+            ;;
+    esac
+}
+
+
+ws_where() {
+    path=$1
+    path=$(canonicalize_symlinks "$1")
+    if [ -z "${path#$WS_BASE*}" ]; then
+        return 1
+    fi
+    path=${path#$WS_BASE}
+
+    case ${path%/*} in
+        project)
+        extra)
+        out)
+        sub)
+    esac
+
+    depth=
+    project=
+    loctype=
+}
+
+ws_init() {
+    base=$1
+    for sub in config secret home local; do
+        mkdir -p "$1/$sub"
+    done
+
+    for sub in extra project out sub; do
+        mkdir -p "$1/$sub"
+    done
+
+}
+
+ws_clone() {
+    :
+}
+
+_should_install_command_line_tools() {
+    macos_version=$(sw_vers -productVersion)
+    IFS='.' read -r macos_major macos_minor <<EOF
+$macos_version
+EOF
+    if [ "$macos_major" -gt 10 ] || { [ "$macos_major" -eq 10 ] && [ "$macos_minor" -gt 13 ]; }; then
+        [ -e "/Library/Developer/CommandLineTools/usr/bin/git" ]
+    else
+        [ -e "/Library/Developer/CommandLineTools/usr/bin/git" ] || \
+        [ -e "/usr/include/iconv.h" ]
+    fi
+}
+
+
+
+
+
+
+setup_command_line_tools() {
+    if _should_install_command_line_tools && [ -t 0 ]; then
+        echo "Installing the Command Line Tools (expect a GUI popup):" >&2
+        sudo "/usr/bin/xcode-select" --install
+        any_key_continue "Press any key when the installation has completed."
+        sudo "/usr/bin/xcode-select" --switch "/Library/Developer/CommandLineTools"
+    fi
+}
+
+deps='tmux->homebrew@user | tmux->msys2'
+deps='sublime->homebrew@user'
+deps='kitty->homebrew@user'
+deps='skhd->homebrew@user'
+
+
+install_at_userlevel_homebrew() {
+    enve_fire -f "$ENVE_HOME/enve/preset/homebrew.enve.ini" run "$@"
+}
+
+install_at_workspacelevel() {
+    enve_fire -f "$ENVE_HOME/enve/contrib/security-center/enve.ini" \
+        -c "variable.ENVE_WORKSPACE=$ENVE_WORKSPACE" run "$@"
+}
+
+ws_setup() {
+    true '
+    (O)setup command-line-tools
+    setup xcode
+    setup android-sdk
+    setup curl
+    setup 7z
+
+    (O)setup nix
+    (O)setup homebrew
+    setup cygwin
+    setup msya2
+    (O)setup sublime|sublime-life
+    (O)setup tmux
+    (O)setup kitty(font-hack-nerd-font)
+    setup comemu(font-hack-nerd-font)
+    (O)setup skhd
+    (.)setup github
+    (.)setup google
+    setup enve
+'
+
+    # TODO: make workspace directory structure
+
+
+    setup_command_line_tools
+
+    "$ENVE_HOME/enve/core/nix/install_nix.sh"
+
+    install_at_userlevel_homebrew "$ENVE_HOME/enve/core/macos/homebrew.setup"
+    install_at_userlevel_homebrew "$ENVE_HOME/enve/contrib/sublime/sublime.setup"
+    install_at_userlevel_homebrew "$ENVE_HOME/enve/core/term/term.setup"
+    install_at_userlevel_homebrew "$ENVE_HOME/enve/core/macos/skhd.setup"
+
+    install_at_workspacelevel "$ENVE_HOME/enve/contrib/security-center/google.setup"
+    install_at_workspacelevel "$ENVE_HOME/enve/contrib/security-center/ssh-key.setup"
+    install_at_workspacelevel "$ENVE_HOME/enve/contrib/security-center/github.setup"
+
+
+}
+

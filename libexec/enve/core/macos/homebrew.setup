@@ -1,0 +1,57 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/base
+. "$ENVE_HOME/enve/base"
+
+settrace
+
+
+# install_homebrew_inlocal() {
+#     if [ -n "${LOCAL_DIR:-}" ]; then
+#         LOCAL_DIR="$HOME/.local"
+#     fi
+#     HOMEBREW_PREFIX=$LOCAL_DIR install_homebrew
+# }
+
+
+install_homebrew() {
+    if [ -z "${HOMEBREW_PREFIX:-}" ]; then
+        return 1
+    else
+        _HOMEBREW_PREFIX=$HOMEBREW_PREFIX
+        unset HOMEBREW_PREFIX
+    fi
+    # echo "$_HOMEBREW_PREFIX"
+    if [ -e "${_HOMEBREW_PREFIX}/bin/brew" ] && \
+       [ "$(${_HOMEBREW_PREFIX}/bin/brew --prefix)" = "${_HOMEBREW_PREFIX}" ]; then
+        notice "homebrew at ${_HOMEBREW_PREFIX} already installed"
+        return 0
+    fi
+
+    if [ "${_HOMEBREW_PREFIX}" = "/usr/local" ]; then
+        /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+    else
+        # for c in bin etc include lib opt sbin share linked Cellar; do
+        for c in bin etc include lib opt sbin share Cellar var var/homebrew/linked; do
+            mkdir -p "${_HOMEBREW_PREFIX}/$c"
+        done
+        _HOMEBREW_REPOSITORY=${_HOMEBREW_PREFIX}/Homebrew
+        mkdir -p "$_HOMEBREW_REPOSITORY"
+        curl -L https://github.com/Homebrew/brew/tarball/master | \
+            tar xz --strip 1 -C "${_HOMEBREW_REPOSITORY}"
+
+        ln -sf ../Homebrew/bin/brew "${_HOMEBREW_PREFIX}/bin/brew"
+    fi
+    ${_HOMEBREW_PREFIX}/bin/brew update
+    ${_HOMEBREW_PREFIX}/bin/brew update --preinstall
+    ${_HOMEBREW_PREFIX}/bin/brew doctor || true
+
+}
+
+HOMEBREW_PREFIX=${1:-$HOMEBREW_PREFIX}
+HOMEBREW_PREFIX=${HOMEBREW_PREFIX:-~/.homebrew}
+if ! install_homebrew; then
+    error "homebrew at ${_HOMEBREW_PREFIX} is not install"
+    exit 1
+fi
+# HOMEBREW_CASK_OPTS='--appdir='"$HOME"'/Applications' ${HOMEBREW_PREFIX}/bin/brew cask install

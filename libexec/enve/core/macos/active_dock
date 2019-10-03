@@ -1,0 +1,78 @@
+#!/bin/sh
+
+replace() {
+    if [ -z "$1" ]; then
+        return 0
+    fi
+
+    count=${3:-}
+    i=0
+    v=
+    while [ "$s" != "${s%%"$1"*}" ]; do
+        v="$v${s%%"$1"*}$2"
+        s="${s#*"$1"}"
+        i=$((i+1))
+        if [ -n "$count" ] && [ "$count" -eq "$i" ]; then
+            break
+        fi
+    done
+    s="$v$s"
+    unset count i v
+}
+
+# cachefile=/tmp/dockapps.cache
+
+# num=$1
+
+# if [ ! -e "$cachefile" ] || \
+#    [ $(stat -c %Y "$cachefile") -le $(stat -c %Y ~/Library/Preferences/com.apple.dock.plist) ]; then
+
+#     $(dirname "$0")/active_dock.applescript > "$cachefile"
+#     OLDIFS=$IFS; IFS=', '
+#     set -- $($(dirname "$0")/active_dock.applescript)
+#     IFS=$OLDIFS
+# else
+#     OLDIFS=$IFS; IFS=', '
+#     set -- $(cat "$cachefile")
+#     IFS=$OLDIFS
+# fi
+
+# s=${path#file://}
+# s=${s%/}
+# replace "%20" " "
+# path=$s
+
+
+
+gencode() {
+    gen_skhdrc="# -- below is automatic render by numdock (do not edit)$newl"
+    cnt=1
+    for path in "$@"; do
+        s=${path#file://}
+        s=${s%/}
+        replace "%20" " "
+        path=$s
+        gen_skhdrc="${gen_skhdrc}cmd - $cnt : open -a \"$path\"$newl"
+        cnt=$((cnt + 1))
+    done
+    gen_skhdrc="${gen_skhdrc}# --"
+}
+
+OLDIFS=$IFS; IFS=', '
+set -- $($(dirname "$0")/active_dock.applescript)
+IFS=$OLDIFS
+
+if grep "# -- below is automatic render by numdock (do not edit)" < ~/.skhdrc; then
+    newl="$(printf '\nx')"
+    newl="\\${newl%x}"
+    gencode "$@"
+    sed '/# -- below is automatic render by numdock (do not edit)/,/# --/c'"$gen_skhdrc" ~/.skhdrc > /tmp/skhdrc
+    mv /tmp/skhdrc ~/.skhdrc
+    # cat /tmp/skhdrc > ~/.skhdrc
+    # rm /tmp/skhdrc
+else
+    newl="$(printf '\nx')"
+    newl="${newl%x}"
+    gencode "$@"
+    printf %s\\n "$gen_skhdrc" >> ~/.skhdrc
+fi

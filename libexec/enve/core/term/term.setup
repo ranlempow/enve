@@ -1,0 +1,32 @@
+#!/bin/sh
+
+
+_install_config() {
+    path=$1
+    template=$2
+    if [ -e "$path" ] ; then
+        fast_readtext "$path"
+        existing_text=$text
+        fast_readtext "$template"
+        if [ "$text" != "$existing_text" ]; then
+            mv "$path" "$path.bak.1"
+            cp "$template" "$path"
+            _info "create $path"
+        fi
+    else
+        cp "$template" "$path"
+        _info "create $path"
+    fi
+}
+
+
+terminal_config() {
+    _install_config ~/.tmux.conf "$ZERO/../term/tmux.conf"
+    _install_config ~/.inputrc "$ZERO/../term/inputrc"
+    if [ -d ~/.config/kitty ] ; then
+        _install_config ~/.config/kitty/kitty.conf "$ZERO/../term/kitty.conf"
+        _install_config ~/.config/kitty/macos-launch-services-cmdline "$ZERO/../term/kitty.macos-launch-services-cmdline"
+    fi
+}
+
+terminal_config

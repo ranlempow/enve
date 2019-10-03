@@ -22,9 +22,38 @@ curl --max-time 20 --head -x tanet.proxy.shu.edu.tw:3128 -L http://github.com
 (O)enve boot zsh, (O)boot script to system rc
 (O)grep: empty (sub)expression
 
+#TODO: setups
+
+1. (O)nix|(?)cygwin
+2. (O)homebrew
+3. (O)sublime-text|(O)sublime-merge
+4. (O)terminal (O?)tmux
+5. git - by clone
+6. ssh
+7. enve
+
+
+system level
+user level
+workspace level
+project level
+environ level
+
+
+#TODO: autologin
+
+(O)google -> get-sheet-inventory
+(O)github -> git-clone-config
+--------
+redns(aws)
+lets-encrypt(acme.sh)
+ssh
+sshd
+
 
 
 #TODO
+enve ws
 enve project open - autosave shell enve, and can be reenter by interactive selecting
 enve project clone
 enve ssh-add - start ssh-agent & add key from $ENVE_USERHOME/.ssh/id_XXX
@@ -40,11 +69,70 @@ sidecar with livebound:
 
 sidecar with tmux
 
-module import *ALTER*
+(O)module import *ALTER*
 psk.setup
 
-(O)ENVE_RCRESOLVE_PIDFILE - write pid to ENVE_RCRESOLVE_PIDFILE when run rcfile
+boot tmux
+boot zsh-tmux
+boot security-center
 
+(O)ENVE_RCRESOLVE_PIDFILE - write pid to ENVE_RCRESOLVE_PIDFILE when run rcfile
+(O)Deprecated import
+
+https://jichu4n.com/posts/debug-trap-and-prompt_command-in-bash/
+hook pre_prompt
+hook post_prompt
+
+
+clipboard operation:
+someCommand | pbcopy
+someCommand | C:\Windows\system32\clip.exe
+someCommand | xclip -i -selection clip > /dev/null
+
+Bash completion has been installed to:
+  /usr/local/etc/bash_completion.d
+
+zsh completions have been installed to:
+  /usr/local/share/zsh/site-functions
+
+to nodejs package-lock.json lack on userhome
+
+HOMEBREW_CASK_OPTS='--appdir='"$HOME"'/Applications' brew cask install
+
+
+discretescroll                   openemu                          virtualbox
+firefox                          osxfuse                          virtualbox-extension-pack
+font-hack-nerd-font              steam                            xquartz
+google-chrome                    sublime-merge
+java8                            sublime-text
+
+
+$HOME/
+- workspace
+  - config(XDG)
+  - secret/db
+  - home
+    - profile/*.evne.ini
+    - sublime/*.sublime-project
+  - local (Caskroom bin include opt sbin var Cellar Homebrew etc lib share)
+    - enve/.git
+    - Homebrew/.git
+    - var/log
+    - var/run (XDG_RUNTIME_DIR)
+    - var/lib: holds state information pertaining to an application or the system
+      - sublime/*.sublime-project
+  - project
+    - P1/.git
+    - P3/.git
+  - extra
+    - P1/*.txt
+    - P3
+  - out/P1
+  - sub/P1/project/P2/.git
+  - sub/P1/out/P2
+  - sub/P1/download
+  - sub/P1/sub/P2/project/P4/.git
+  - sub/P1/sub/P2/sub/P4/project/P5/.git
 
 
 
@@ -69,11 +157,11 @@ psk.setup
 
 (X)enve clone介面, 先放在urlutils
 (O)is_url
-    inherit, import, with lazy, 延後到resolve前期執行
-    -c也延後到resolve前期執行
-    -c順序有影響, 在-f之前為提供預設值, 在-f之後為覆蓋
-    這個順序在import, include, 也會採用相同的做法
-    利用ENVE_CONFIG_PRE_XXX, ENVE_CONFIG_XXX影響環境中的子環境
+    (O)inherit, import, with lazy, 延後到resolve前期執行
+    (O)-c也延後到resolve前期執行
+    (O)-c順序有影響, 在-f之前為提供預設值, 在-f之後為覆蓋
+    (O)這個順序在import, include, 也會採用相同的做法
+    (O)利用ENVE_CONFIG_PRE_XXX, ENVE_CONFIG_XXX影響環境中的子環境
 
 
 (O)新增SEC變數類型, 這些變數不會寫入rcfile, 每次都要重新求值, sec.variable
@@ -162,7 +250,7 @@ https://github.com/pre-commit/pre-commit
 #收尾
 more test
 統一'_info', 'info', '_log', 'log'
-偵測variable lack的問題
+(O)偵測variable lack的問題
 預設的logging level到底要怎麼設定
 (O)change #!/bin/bash -> #!/usr/bin/env bash 或是 #/bin/sh
 (O)全面進行editorconfig檢查, 換行檢查, 字元檢查, 行尾空白檢查
@@ -458,10 +546,11 @@ final-rc        -       url|profile             rc+marks    genrcfile
   post
 
 
+
 2019最終決定版
 ------------
 
-load+ = checkout + parse + load(depend module) + base
+load+ = parse(checkout) + load(depend module) + base
 
 fire@run|#fire@module|fire@prod-shell
     load+

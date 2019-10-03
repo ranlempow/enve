@@ -100,12 +100,19 @@ resolve_macos() {
     # esac
 }
 
+resolve_sublime() {
+    [ -n "$TABLE" ] && echo "$TABLE"
+
+    out_var GIT_EDITOR "$ENVE_HOME/enve/contrib/subliem/stopen -w"
+}
+
+
 main() {
     info "IN $ZERO/enve.module"
     TABLE=$(cat "${configfile:--}")
     # for proc in first basic command nix terminal prompt macos ssh \
     #             shell secret boundfiles; do
-    for proc in macos; do
+    for proc in macos sublime; do
         info "IN resolve_$proc"
         if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
             _error "error at resolve_$proc"
