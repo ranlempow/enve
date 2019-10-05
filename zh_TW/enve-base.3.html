@@ -3,10 +3,7 @@
 <head>
   <meta http-equiv='content-type' value='text/html;charset=utf8'>
   <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
-  <title>&lt;p&gt;enve(1)                 enve.1
-enve-config(5)          enve-config.5&lt;/p&gt;
-
-enve-module(5)</title>
+  <title>enve-base(3) - basic functions</title>
   <style type='text/css' media='all'>
   /* style: man */
   body#manpage {margin:0}
@@ -56,50 +53,62 @@ enve-module(5)</title>
   <div class='mp' id='man'>
 
   <div class='man-navigation' style='display:none'>
+    <a href="#NAME">NAME</a>
   </div>
 
   <ol class='man-decor man-head man head'>
-    <li class='tl'>index</li>
+    <li class='tl'>enve-base(3)</li>
     <li class='tc'></li>
-    <li class='tr'>index</li>
+    <li class='tr'>enve-base(3)</li>
   </ol>
 
-  <h1><p><a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>                 enve.1
-<a class="man-ref" href="enve-config.5.html">enve-config<span class="s">(5)</span></a>          enve-config.5</p>
+  <h2 id="NAME">NAME</h2>
+<p class="man-name">
+  <code>enve-base</code> - <span class="man-whatis">basic functions</span>
+</p>
 
-enve-module(5)</h1>
-<p><a class="man-ref" href="enve-table.3.html">enve-table<span class="s">(3)</span></a>           enve-table.3
-<a class="man-ref" href="enve-base.3.html">enve-base<span class="s">(3)</span></a>            enve-base.3</p>
+<p><code>hascmd</code> <var>command</var>
+<code>replace</code> s=? <var>old</var> <var>new</var> [<var>count</var>]
+<code>hashstr</code> s=?
+<code>fast_readtext</code> <var>file</var>
+<code>fast_dirname</code> d=?
+<code>fast_basename</code> d=?</p>
 
-<h1>enve-base-module(7)</h1>
+<p><code>mkstemp</code> <var>name</var>.XXXXXX
+<code>mkdtemp</code> <var>name</var>.XXXXXX</p>
 
-<h1>enve-package-module(7)</h1>
+<p><code>fast_get_cachedir</code>
+<code>get_cachedir</code>
+<code>fast_get_tempdir</code>
+<code>get_tempdir</code></p>
 
-<h1>enve-nix-module(7)</h1>
+<p><code>save</code> [<var>args</var>...]</p>
 
-<h1>enve-nodejs-module(7)</h1>
+<p>save args to string</p>
 
-<h1>enve-oh-my-zsh-module(7)</h1>
+<p><code>any_key_continue</code></p>
 
-<h1>enve-python-module(7)</h1>
+<p><code>log</code> loglevel=? [<var>text</var>...]
+<code>logtable</code> loglevel=? <var>TABLE</var></p>
 
-<h1>enve-ruby-module(7)</h1>
+<p><code>_fatal</code> <var>text</var>
+<code>_critical</code> <var>text</var>
+<code>_error</code> <var>text</var>
+<code>_warning</code> <var>text</var>
+<code>_notice</code> <var>text</var>
+<code>_info</code> <var>text</var>
+<code>_debug</code> <var>text</var>
+<code>_trace</code> <var>text</var></p>
 
-<h1>enve-aws-module(7)</h1>
+<p><code>die</code> [<var>text</var> [<var>exitcode</var>]]</p>
 
-<h1>enve-gcp-module(7)</h1>
-
-<h1>enve-term-module(7)</h1>
-
-<h1>enve-test-module(7)</h1>
-
-<h1>githook?</h1>
+<p><code>settrace</code></p>
 
 
   <ol class='man-decor man-foot man foot'>
     <li class='tl'></li>
     <li class='tc'>October 2019</li>
-    <li class='tr'>index</li>
+    <li class='tr'>enve-base(3)</li>
   </ol>
 
   </div>

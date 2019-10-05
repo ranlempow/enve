@@ -1,6 +1,21 @@
 enve(1) -- enve command line
 ==================================
 
+## Primitives functions
+
+enve_fire
+cache_rebuild
+
+
+## support functions
+
+fetch
+isolate
+
+
+## 環境變數 ENVIRONMENT
+
+
 ## 創造恆定不變的執行環境
 
 enve的主要用途在於創造一個執行環境，讓使用者在這個新創的環境中執行一連串的命令。

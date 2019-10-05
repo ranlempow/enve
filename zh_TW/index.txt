@@ -1,3 +1,21 @@
-enve(1)             enve.1
-enve-config(5)      enve-config.5
+enve(1)                 enve.1
+enve-config(5)          enve-config.5
+
+# enve-module(5)
+enve-table(3)           enve-table.3
+enve-base(3)            enve-base.3
+
+
+# enve-base-module(7)
+# enve-package-module(7)
+# enve-nix-module(7)
+# enve-nodejs-module(7)
+# enve-oh-my-zsh-module(7)
+# enve-python-module(7)
+# enve-ruby-module(7)
+# enve-aws-module(7)
+# enve-gcp-module(7)
+# enve-term-module(7)
+# enve-test-module(7)
+# githook?
 

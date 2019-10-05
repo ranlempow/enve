@@ -1,4 +1,4 @@
-enve-config(5) -- configure file syntax
+enve-config(3) -- configure file syntax
 ==================================
 
 ## 對設定檔求值概念
