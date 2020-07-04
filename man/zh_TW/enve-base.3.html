@@ -3,7 +3,7 @@
 <head>
   <meta http-equiv='content-type' value='text/html;charset=utf8'>
   <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
-  <title>enve-table(3) - table manipulation functions</title>
+  <title>enve-base(3) - basic functions</title>
   <style type='text/css' media='all'>
   /* style: man */
   body#manpage {margin:0}
@@ -54,77 +54,61 @@
 
   <div class='man-navigation' style='display:none'>
     <a href="#NAME">NAME</a>
-    <a href="#-SYNOPSIS">提要 SYNOPSIS</a>
-    <a href="#Constance">Constance</a>
-    <a href="#Function">Function</a>
   </div>
 
   <ol class='man-decor man-head man head'>
-    <li class='tl'>enve-table(3)</li>
+    <li class='tl'>enve-base(3)</li>
     <li class='tc'></li>
-    <li class='tr'>enve-table(3)</li>
+    <li class='tr'>enve-base(3)</li>
   </ol>
 
   <h2 id="NAME">NAME</h2>
 <p class="man-name">
-  <code>enve-table</code> - <span class="man-whatis">table manipulation functions</span>
+  <code>enve-base</code> - <span class="man-whatis">basic functions</span>
 </p>
 
-<h2 id="-SYNOPSIS">提要 SYNOPSIS</h2>
+<p><code>hascmd</code> <var>command</var>
+<code>replace</code> s=? <var>old</var> <var>new</var> [<var>count</var>]
+<code>hashstr</code> s=?
+<code>fast_readtext</code> <var>file</var>
+<code>fast_dirname</code> d=?
+<code>fast_basename</code> d=?</p>
 
-<p><code>. "$ENVE_HOME/enve/envelib"</code></p>
+<p><code>mkstemp</code> <var>name</var>.XXXXXX
+<code>mkdtemp</code> <var>name</var>.XXXXXX</p>
 
-<h2 id="Constance">Constance</h2>
+<p><code>fast_get_cachedir</code>
+<code>get_cachedir</code>
+<code>fast_get_tempdir</code>
+<code>get_tempdir</code></p>
 
-<pre><code>tab='\t'
-feed='\f'
-vtab='\v'
-newl='\n'
-</code></pre>
+<p><code>save</code> [<var>args</var>...]</p>
 
-<h2 id="Function">Function</h2>
+<p>save args to string</p>
 
-<p><code>table_tail</code> <var>match</var> [<var>type</var>]</p>
+<p><code>any_key_continue</code></p>
 
-<p><code>table_subset</code> <var>match</var> [<var>type</var>]</p>
+<p><code>log</code> loglevel=? [<var>text</var>...]
+<code>logtable</code> loglevel=? <var>TABLE</var></p>
 
-<p><code>table_exclude</code> <var>match</var> [<var>type</var>]</p>
+<p><code>_fatal</code> <var>text</var>
+<code>_critical</code> <var>text</var>
+<code>_error</code> <var>text</var>
+<code>_warning</code> <var>text</var>
+<code>_notice</code> <var>text</var>
+<code>_info</code> <var>text</var>
+<code>_debug</code> <var>text</var>
+<code>_trace</code> <var>text</var></p>
 
-<p><code>table_substi</code> <var>var_table</var></p>
+<p><code>die</code> [<var>text</var> [<var>exitcode</var>]]</p>
 
-<p>接下來的<code>as_*</code>系列都是管道函數，接收TABLE作為input，輸出特定格式的內容。</p>
-
-<p><code>as_postfix</code> <var>postfix</var></p>
-
-<p><code>as_rootkey</code></p>
-
-<p><code>as_value</code></p>
-
-<p><code>as_uniquekey</code></p>
-
-<p><code>as_concat</code></p>
-
-<p><code>out_item</code> <var>type</var> <var>key</var> <var>value</var>
-<code>out_var</code> <var>key</var> <var>value</var>
-<code>out_var_fast</code> <var>key</var> <var>value</var>
-<code>out_var_just</code> <var>key</var> <var>value</var></p>
-
-<p><code>out_alias</code> <var>key</var> <var>value</var>
-<code>out_list</code> <var>key</var> <var>value</var>
-<code>out_join</code> <var>key</var> <var>value</var>
-<code>out_source</code> <var>key</var> <var>value</var>
-<code>out_code</code> <var>key</var> <var>value</var>
-<code>out_secret</code> <var>key</var> <var>value</var></p>
-
-<p><code>parse_config_recursive</code> roles=? <var>file</var></p>
-
-<p><code>enve_fire</code> ENVE_PROFILE=? ENVE_ROLES=? ENVE_CONFIG=? <var>RCFILE_PATH</var></p>
+<p><code>settrace</code></p>
 
 
   <ol class='man-decor man-foot man foot'>
     <li class='tl'></li>
-    <li class='tc'>October 2019</li>
-    <li class='tr'>enve-table(3)</li>
+    <li class='tc'>July 2020</li>
+    <li class='tr'>enve-base(3)</li>
   </ol>
 
   </div>
