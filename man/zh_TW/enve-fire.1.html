@@ -3,7 +3,7 @@
 <head>
   <meta http-equiv='content-type' value='text/html;charset=utf8'>
   <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
-  <title>enve-table(3) - table manipulation functions</title>
+  <title>enve-fire(1) - execute program in environment</title>
   <style type='text/css' media='all'>
   /* style: man */
   body#manpage {margin:0}
@@ -40,7 +40,7 @@
   ol.man-decor li.tl {text-align:left}
   ol.man-decor li.tc {text-align:center;letter-spacing:4px}
   ol.man-decor li.tr {text-align:right;float:right}
-  </style>
+  .mp { text-align: left; } #SYNOPSIS + pre code { font-weight:bold;color:#131211; }</style>
 </head>
 <!--
   The following styles are deprecated and will be removed at some point:
@@ -54,77 +54,30 @@
 
   <div class='man-navigation' style='display:none'>
     <a href="#NAME">NAME</a>
-    <a href="#-SYNOPSIS">提要 SYNOPSIS</a>
-    <a href="#Constance">Constance</a>
-    <a href="#Function">Function</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
   </div>
 
   <ol class='man-decor man-head man head'>
-    <li class='tl'>enve-table(3)</li>
-    <li class='tc'></li>
-    <li class='tr'>enve-table(3)</li>
+    <li class='tl'>enve-fire(1)</li>
+    <li class='tc'>enve manual</li>
+    <li class='tr'>enve-fire(1)</li>
   </ol>
 
   <h2 id="NAME">NAME</h2>
 <p class="man-name">
-  <code>enve-table</code> - <span class="man-whatis">table manipulation functions</span>
+  <code>enve-fire</code> - <span class="man-whatis">execute program in environment</span>
 </p>
 
-<h2 id="-SYNOPSIS">提要 SYNOPSIS</h2>
+<h2 id="SYNOPSIS">SYNOPSIS</h2>
 
-<p><code>. "$ENVE_HOME/enve/envelib"</code></p>
-
-<h2 id="Constance">Constance</h2>
-
-<pre><code>tab='\t'
-feed='\f'
-vtab='\v'
-newl='\n'
-</code></pre>
-
-<h2 id="Function">Function</h2>
-
-<p><code>table_tail</code> <var>match</var> [<var>type</var>]</p>
-
-<p><code>table_subset</code> <var>match</var> [<var>type</var>]</p>
-
-<p><code>table_exclude</code> <var>match</var> [<var>type</var>]</p>
-
-<p><code>table_substi</code> <var>var_table</var></p>
-
-<p>接下來的<code>as_*</code>系列都是管道函數，接收TABLE作為input，輸出特定格式的內容。</p>
-
-<p><code>as_postfix</code> <var>postfix</var></p>
-
-<p><code>as_rootkey</code></p>
-
-<p><code>as_value</code></p>
-
-<p><code>as_uniquekey</code></p>
-
-<p><code>as_concat</code></p>
-
-<p><code>out_item</code> <var>type</var> <var>key</var> <var>value</var>
-<code>out_var</code> <var>key</var> <var>value</var>
-<code>out_var_fast</code> <var>key</var> <var>value</var>
-<code>out_var_just</code> <var>key</var> <var>value</var></p>
-
-<p><code>out_alias</code> <var>key</var> <var>value</var>
-<code>out_list</code> <var>key</var> <var>value</var>
-<code>out_join</code> <var>key</var> <var>value</var>
-<code>out_source</code> <var>key</var> <var>value</var>
-<code>out_code</code> <var>key</var> <var>value</var>
-<code>out_secret</code> <var>key</var> <var>value</var></p>
-
-<p><code>parse_config_recursive</code> roles=? <var>file</var></p>
-
-<p><code>enve_fire</code> ENVE_PROFILE=? ENVE_ROLES=? ENVE_CONFIG=? <var>RCFILE_PATH</var></p>
+<h2 id="DESCRIPTION">DESCRIPTION</h2>
 
 
   <ol class='man-decor man-foot man foot'>
     <li class='tl'></li>
-    <li class='tc'>August 2019</li>
-    <li class='tr'>enve-table(3)</li>
+    <li class='tc'>August 2020</li>
+    <li class='tr'>enve-fire(1)</li>
   </ol>
 
   </div>

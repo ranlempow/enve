@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv='content-type' value='text/html;charset=utf8'>
+  <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
+  <title>envepersona(7) - 人物與上鎖的資源</title>
+  <style type='text/css' media='all'>
+  /* style: man */
+  body#manpage {margin:0}
+  .mp {max-width:100ex;padding:0 9ex 1ex 4ex}
+  .mp p,.mp pre,.mp ul,.mp ol,.mp dl {margin:0 0 20px 0}
+  .mp h2 {margin:10px 0 0 0}
+  .mp > p,.mp > pre,.mp > ul,.mp > ol,.mp > dl {margin-left:8ex}
+  .mp h3 {margin:0 0 0 4ex}
+  .mp dt {margin:0;clear:left}
+  .mp dt.flush {float:left;width:8ex}
+  .mp dd {margin:0 0 0 9ex}
+  .mp h1,.mp h2,.mp h3,.mp h4 {clear:left}
+  .mp pre {margin-bottom:20px}
+  .mp pre+h2,.mp pre+h3 {margin-top:22px}
+  .mp h2+pre,.mp h3+pre {margin-top:5px}
+  .mp img {display:block;margin:auto}
+  .mp h1.man-title {display:none}
+  .mp,.mp code,.mp pre,.mp tt,.mp kbd,.mp samp,.mp h3,.mp h4 {font-family:monospace;font-size:14px;line-height:1.42857142857143}
+  .mp h2 {font-size:16px;line-height:1.25}
+  .mp h1 {font-size:20px;line-height:2}
+  .mp {text-align:justify;background:#fff}
+  .mp,.mp code,.mp pre,.mp pre code,.mp tt,.mp kbd,.mp samp {color:#131211}
+  .mp h1,.mp h2,.mp h3,.mp h4 {color:#030201}
+  .mp u {text-decoration:underline}
+  .mp code,.mp strong,.mp b {font-weight:bold;color:#131211}
+  .mp em,.mp var {font-style:italic;color:#232221;text-decoration:none}
+  .mp a,.mp a:link,.mp a:hover,.mp a code,.mp a pre,.mp a tt,.mp a kbd,.mp a samp {color:#0000ff}
+  .mp b.man-ref {font-weight:normal;color:#434241}
+  .mp pre {padding:0 4ex}
+  .mp pre code {font-weight:normal;color:#434241}
+  .mp h2+pre,h3+pre {padding-left:0}
+  ol.man-decor,ol.man-decor li {margin:3px 0 10px 0;padding:0;float:left;width:33%;list-style-type:none;text-transform:uppercase;color:#999;letter-spacing:1px}
+  ol.man-decor {width:100%}
+  ol.man-decor li.tl {text-align:left}
+  ol.man-decor li.tc {text-align:center;letter-spacing:4px}
+  ol.man-decor li.tr {text-align:right;float:right}
+  .mp { text-align: left; } #SYNOPSIS + pre code { font-weight:bold;color:#131211; }</style>
+</head>
+<!--
+  The following styles are deprecated and will be removed at some point:
+  div#man, div#man ol.man, div#man ol.head, div#man ol.man.
+
+  The .man-page, .man-decor, .man-head, .man-foot, .man-title, and
+  .man-navigation should be used instead.
+-->
+<body id='manpage'>
+  <div class='mp' id='man'>
+
+  <div class='man-navigation' style='display:none'>
+    <a href="#NAME">NAME</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#SECRET-">SECRET 機密</a>
+    <a href="#RESOURCE-">RESOURCE 資源</a>
+    <a href="#LOCKS-">LOCKS 鎖具</a>
+    <a href="#RESOURCE-LOCATOR-">RESOURCE LOCATOR 資源尋址</a>
+    <a href="#CREED-">CREED 信條</a>
+    <a href="#PERSONA-">PERSONA 人物</a>
+    <a href="#ENTITY-">ENTITY 個人</a>
+    <a href="#CRYPTOGRAPHY-COMPONENT-">CRYPTOGRAPHY COMPONENT 密碼學元件</a>
+    <a href="#SECRETBASE-">SECRETBASE 機密庫</a>
+    <a href="#SEE-ALSO-">SEE ALSO 參見</a>
+  </div>
+
+  <ol class='man-decor man-head man head'>
+    <li class='tl'>envepersona(7)</li>
+    <li class='tc'>enve manual</li>
+    <li class='tr'>envepersona(7)</li>
+  </ol>
+
+  <h2 id="NAME">NAME</h2>
+<p class="man-name">
+  <code>envepersona</code> - <span class="man-whatis">人物與上鎖的資源</span>
+</p>
+
+<h2 id="SYNOPSIS">SYNOPSIS</h2><pre>enve *</pre><h2 id="DESCRIPTION">DESCRIPTION</h2>
+
+<p>我們在這裡討論安全性相關的問題，以<a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>提供的授權機制為主軸，描述<code>enve</code>如何提供一個去中央化的機密分享系統來補足UNIX最弱的一環。而有關於相互認證機制留到<a class="man-ref" href="enveclub.7.html">enveclub<span class="s">(7)</span></a>的再做介紹。</p>
+
+<h2 id="SECRET-">SECRET 機密</h2>
+
+<p>如果有一個恬靜怡情的旅遊秘境全世界只有你一個人知道路線，即使這個景點公開存在於世界上，但它事實上如同是你的專屬聖地，不會有你以外的人能夠佔用。像這樣以機密資訊來代表資源的存取權，是<code>enve</code>對於安全性的主要概念。同樣的方式也不但容易透過人工方式建立，傳統概念上也很好理解，例如一個公開伺服器但需要特定密碼才能登入。</p>
+
+<p>機密也可以用來代表身份。假如你被政府秘密綁架做出了跟你年齡與基因相同的複製人，你的親友要怎麼知道哪個是真正的你（或者說原來的你）？很簡單，只要你能回答一些應該只有你知道的事情。由於無法輕易知道他人想法，也無法隔空竊取硬碟上的資訊，機密可以代表一個人無法被假冒的身份，就如同傳統上簽名難以仿造所以見到簽名如同見到本人。</p>
+
+<p>有了上面的前提之後，我們就能這把<em>授權</em>理解為：「你用你的身份把屬於你的機密資訊以加密方式傳送給另一個代表他人的身份，讓另一個人能夠存取你的機密資訊。」</p>
+
+<h2 id="RESOURCE-">RESOURCE 資源</h2>
+
+<p>所謂的機密<em>資源</em>不但只是普通的機密訊息。訊息可以無限制的拷貝、儲存與傳輸，而不消耗任何代價。
+而相對的，配置新的<em>資源</em>要消耗實體物資或空間，雖然增加<strong>可伸縮性</strong>讓資源得以更低成本的方式擴展，但整體來說，資源還是有限的。這包含像是硬體設備，主機（請參考<a class="man-ref" href="envehost.7.html">envehost<span class="s">(7)</span></a>），含狀態的具名服務，身份與社團。</p>
+
+<p>簡單來說，<em>資源</em>是我們要保護獨佔的對象，我們可以用<a class="man-ref" href="enve-create.1.html">enve-create<span class="s">(1)</span></a>建立新的資源，這會同時存放到<em>機密庫</em>中，並且綁定<em>鎖具</em>。</p>
+
+<h2 id="LOCKS-">LOCKS 鎖具</h2>
+
+<p>資源只能讓已獲授權的對象所存取，因此我們為<em>資源</em>加上<em>鎖具</em>來管控它能被誰接觸，並且分別以兩類鑰匙來代表兩種權利：</p>
+
+<dl>
+<dt class="flush">存取鑰</dt><dd>解鎖來存取<em>鎖具</em>背後的資源，代表著資源的使用權。</dd>
+<dt class="flush">管理鑰</dt><dd>解鎖來存取<em>鎖具</em>本身，代表著資源的所有權。</dd>
+</dl>
+
+
+<p>持有這種管理鑰的人物叫做資源的<em>擁有者</em>，<em>擁有者</em>產生新資源的同時也會鎖上新的<em>鎖具</em>，並且為自己保留存取鑰與管理鑰存放到<em>機密庫</em>，而<em>擁有者</em>可以把存取鑰放到<em>信條</em>上，這樣做就可以授權給需要存取資源的其他人物。</p>
+
+<p><em>擁有者</em>也可以把管理鑰授權給其他人物，這樣就可以與他人共同管理這個新資源。之後如果想把資源讓渡給另一人物，<em>擁有者</em>可以接著放棄<em>管理鑰</em>並且請另一個人物透過<a class="man-ref" href="enve-key.1.html">enve-key<span class="s">(1)</span></a>用管理鑰重置資源的<em>鎖具</em>。</p>
+
+<p>其中一個優良的安全性原則是定期更換鎖具，因此整個團隊中可以依照各資源的敏感程度來訂定一個期限，週期性利用<a class="man-ref" href="enve-key.1.html">enve-key<span class="s">(1)</span></a>來更換鎖具。</p>
+
+<h2 id="RESOURCE-LOCATOR-">RESOURCE LOCATOR 資源尋址</h2>
+
+<p>我們用[URI][]來作為資源的名稱與所在位址。通常可以從名稱格式中辨別出該資源的類型，例如<code>ssh://*</code>代表某個主機。可識別的資源類型可以透過額外模組擴充，參考<a class="man-ref" href="envemodule.7.html">envemodule<span class="s">(7)</span></a>。而內建支援的類型請參考<a class="man-ref" href="enve-create.1.html">enve-create<span class="s">(1)</span></a>。</p>
+
+<p><code>enve</code>提供一些多目標命令，這些命令可以辨識出目標是資源來執行對應操作，<a class="man-ref" href="enve-mv.1.html">enve-mv<span class="s">(1)</span></a>可以把資源從一個信條移動到另一個信條，<a class="man-ref" href="enve-cp.1.html">enve-cp<span class="s">(1)</span></a>則是可以把資源從信條拷貝到另外一個信條，用<a class="man-ref" href="enve-rm.1.html">enve-rm<span class="s">(1)</span></a>把資源從信條中移除，<a class="man-ref" href="enve-less.1.html">enve-less<span class="s">(1)</span></a>可以查看信條中的資源或是其他機密資訊。</p>
+
+<p>另外也有一些多目標命令，不是能以資源作為目標，像是<a class="man-ref" href="enve-cat.1.html">enve-cat<span class="s">(1)</span></a> <a class="man-ref" href="enve-monitor.1.html">enve-monitor<span class="s">(1)</span></a> <a class="man-ref" href="enve-open.1.html">enve-open<span class="s">(1)</span></a>。</p>
+
+<h2 id="CREED-">CREED 信條</h2>
+
+<p>信條中的條目記錄著可分享的資源與機密，人物之間透過交換機密庫來共享信條中的資源。每個人物都可以透過<a class="man-ref" href="enve-creed.1.html">enve-creed<span class="s">(1)</span></a>來建立自己的信條，只有信條的擁有者可以修改信條。</p>
+
+<p><span class="man-ref">enve-give<span class="s">(1)</span></span>把資源授權給到信條中。</p>
+
+<p>？信條中的條目記錄著可分享的資源與機密，一個人物可以自由的加入多個社團，並能將多個信條依序套用到同一個作業區內。</p>
+
+<p>？社團負責管理的整個組織對於各成員的互相識別，而信條有點像社團中的小組，管理著某部分成員的權限。信條由擁有者所創建，只有擁有者才可以修改信條中的內容。擁有者可以和社團中的其它人物分享信條，收到信條的人物可以自行決定要不要把它套用到作業區中。</p>
+
+<p>？信條可以透過套用其它同社團中的信條來做結合，並且為套用的信條設下篩選條件。認識可以互相套用，這種方法讓互相套用每一方等價，但分成多個管理人分別管控各自所屬的條目。如果只想分享少許特殊資源給另一人物，可以用一對一信條，每個人物與人物之間都有這樣一個預設的管道，這個信條不會被其他第三者所知曉。</p>
+
+<h2 id="PERSONA-">PERSONA 人物</h2>
+
+<p>？身份是一個能夠持有鑰匙的對象，也是能夠彼此分享鑰匙的對象。</p>
+
+<p>人物是可被授權資源的對象。分為兩大類：</p>
+
+<ol>
+<li>真人 - 真實的人類，可以在電腦前用互動的方式來驗證身份。</li>
+<li>代理者 - 由程式所假扮的人，在虛擬世界中模仿人類進行各項操作。視為一種資源，由人類所管理。</li>
+</ol>
+
+
+<p>一站登入</p>
+
+<p>透過<a class="man-ref" href="enve-persona.1.html">enve-persona<span class="s">(1)</span></a>來產生新的人物，可以選擇要從哪一個<em>個人</em>來產生新人物。</p>
+
+<h2 id="ENTITY-">ENTITY 個人</h2>
+
+<p>我們不推薦在各個主機之間複製人物的金鑰，也不建議將人物金鑰上傳網路。但一個真人使用多個設備是一個很常見的狀況，其實，每個真人人物背後都有一個稱作為<em>個人</em>的金鑰，而<em>個人</em>才是真正被識別身份的對象，<em>人物</em>則像是<em>個人</em>的分身。同一個<em>個人</em>產生的不同人物，會被認為是同一個身份。</p>
+
+<p>我們更推薦在外部隨身碟上建立與儲存<em>個人</em>，而不是在本機上。這樣，如果沒有隨身碟，任何人都無法冒用你的身份，就算主機上的人物遺失或是遭到破解，也可以透過隨身碟復原。透過<a class="man-ref" href="enve-born.1.html">enve-born<span class="s">(1)</span></a>來讓新的個人誕生或是將個人金鑰移動到外部隨身碟。</p>
+
+<h2 id="CRYPTOGRAPHY-COMPONENT-">CRYPTOGRAPHY COMPONENT 密碼學元件</h2>
+
+<p>首先我們要建立一個安全性上的重要的原則，那就是，只有你自己能知道自己的密鑰。至於要怎麼保護密鑰不至於外洩，我們不在這裡討論。</p>
+
+<p>你把屬於你的東西用自己的密鑰加密，除了你以外的人只會看到亂碼而無法利用。而你可以把解密的密鑰寄給你的朋友，這樣你朋友也跟你一樣看到原文了。<code>enve</code>提供一系列的方法來協助上述過程更加安全、更加方便與更加彈性。</p>
+
+<p>去中央化: 維護實體設備的安全但最終無法掌控
+無密碼: 密碼違反人性總是會被破解，而且密碼會阻礙自動化</p>
+
+<p>機密庫實際上是公開資訊</p>
+
+<p><a href="https://its.ny.gov/sites/default/files/documents/2bruce_barnett.pptx.pdf">密碼學</a>上的基礎：</p>
+
+<ul>
+<li>對稱式加密: 例如[ChaCha20][]、[AES-CTR][]（計數器模式）。</li>
+<li>數位簽章: 例如[RSA數位簽章][]、[橢圓曲線數位簽章][]。</li>
+<li>密鑰交換: 例如[迪菲-赫爾曼密鑰交換][]、[橢圓曲線迪菲-赫爾曼金鑰交換][]。</li>
+</ul>
+
+
+<p>對稱式加密之後資訊只有知道密鑰的人能夠解開。我們以這個特性來達成所謂的存取權，</p>
+
+<p>數位簽章</p>
+
+<h2 id="SECRETBASE-">SECRETBASE 機密庫</h2>
+
+<p>？？新資源的鎖與鑰匙將先記錄在本地端，<em>擁有者</em>可以把這個紀錄推送到遠端倉庫</p>
+
+<h2 id="SEE-ALSO-">SEE ALSO 參見</h2>
+
+<p><a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a> <a class="man-ref" href="envetutorial.7.html">envetutorial<span class="s">(7)</span></a> <a class="man-ref" href="enveconcept.7.html">enveconcept<span class="s">(7)</span></a> <a class="man-ref" href="envehost.7.html">envehost<span class="s">(7)</span></a></p>
+
+
+  <ol class='man-decor man-foot man foot'>
+    <li class='tl'></li>
+    <li class='tc'>August 2020</li>
+    <li class='tr'>envepersona(7)</li>
+  </ol>
+
+  </div>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv='content-type' value='text/html;charset=utf8'>
+  <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
+  <title>envehost(7) - 主機作業區的安裝設定與備份還原</title>
+  <style type='text/css' media='all'>
+  /* style: man */
+  body#manpage {margin:0}
+  .mp {max-width:100ex;padding:0 9ex 1ex 4ex}
+  .mp p,.mp pre,.mp ul,.mp ol,.mp dl {margin:0 0 20px 0}
+  .mp h2 {margin:10px 0 0 0}
+  .mp > p,.mp > pre,.mp > ul,.mp > ol,.mp > dl {margin-left:8ex}
+  .mp h3 {margin:0 0 0 4ex}
+  .mp dt {margin:0;clear:left}
+  .mp dt.flush {float:left;width:8ex}
+  .mp dd {margin:0 0 0 9ex}
+  .mp h1,.mp h2,.mp h3,.mp h4 {clear:left}
+  .mp pre {margin-bottom:20px}
+  .mp pre+h2,.mp pre+h3 {margin-top:22px}
+  .mp h2+pre,.mp h3+pre {margin-top:5px}
+  .mp img {display:block;margin:auto}
+  .mp h1.man-title {display:none}
+  .mp,.mp code,.mp pre,.mp tt,.mp kbd,.mp samp,.mp h3,.mp h4 {font-family:monospace;font-size:14px;line-height:1.42857142857143}
+  .mp h2 {font-size:16px;line-height:1.25}
+  .mp h1 {font-size:20px;line-height:2}
+  .mp {text-align:justify;background:#fff}
+  .mp,.mp code,.mp pre,.mp pre code,.mp tt,.mp kbd,.mp samp {color:#131211}
+  .mp h1,.mp h2,.mp h3,.mp h4 {color:#030201}
+  .mp u {text-decoration:underline}
+  .mp code,.mp strong,.mp b {font-weight:bold;color:#131211}
+  .mp em,.mp var {font-style:italic;color:#232221;text-decoration:none}
+  .mp a,.mp a:link,.mp a:hover,.mp a code,.mp a pre,.mp a tt,.mp a kbd,.mp a samp {color:#0000ff}
+  .mp b.man-ref {font-weight:normal;color:#434241}
+  .mp pre {padding:0 4ex}
+  .mp pre code {font-weight:normal;color:#434241}
+  .mp h2+pre,h3+pre {padding-left:0}
+  ol.man-decor,ol.man-decor li {margin:3px 0 10px 0;padding:0;float:left;width:33%;list-style-type:none;text-transform:uppercase;color:#999;letter-spacing:1px}
+  ol.man-decor {width:100%}
+  ol.man-decor li.tl {text-align:left}
+  ol.man-decor li.tc {text-align:center;letter-spacing:4px}
+  ol.man-decor li.tr {text-align:right;float:right}
+  .mp { text-align: left; } #SYNOPSIS + pre code { font-weight:bold;color:#131211; }</style>
+</head>
+<!--
+  The following styles are deprecated and will be removed at some point:
+  div#man, div#man ol.man, div#man ol.head, div#man ol.man.
+
+  The .man-page, .man-decor, .man-head, .man-foot, .man-title, and
+  .man-navigation should be used instead.
+-->
+<body id='manpage'>
+  <div class='mp' id='man'>
+
+  <div class='man-navigation' style='display:none'>
+    <a href="#NAME">NAME</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#HOST-">HOST 主機</a>
+    <a href="#WORKSPACE-">WORKSPACE 作業區</a>
+    <a href="#-">作業區偵測</a>
+    <a href="#-">備份與還原</a>
+    <a href="#SEE-ALSO-">SEE ALSO 參見</a>
+  </div>
+
+  <ol class='man-decor man-head man head'>
+    <li class='tl'>envehost(7)</li>
+    <li class='tc'>enve manual</li>
+    <li class='tr'>envehost(7)</li>
+  </ol>
+
+  <h2 id="NAME">NAME</h2>
+<p class="man-name">
+  <code>envehost</code> - <span class="man-whatis">主機作業區的安裝設定與備份還原</span>
+</p>
+
+<h2 id="SYNOPSIS">SYNOPSIS</h2><pre>enve *</pre><h2 id="DESCRIPTION">DESCRIPTION</h2>
+
+<p>？我們在這裡講述有關於軟體開發的基本概念，以及如何簡單的利用版本控制系統來協助管理原始碼。並且介紹<a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>有那些功能可以協助使用者更方便的發揮這些基本概念。</p>
+
+<h2 id="HOST-">HOST 主機</h2>
+
+<p>主機是一個可執行軟體的平台，由電腦硬體與作業系統所組成。無論是實體主機或是虛擬主機，除了提供執行程式的能力外，還能提供檔案系統與網路介面，就是一台主機。你現在正在用來閱讀本文件的設備就是一台主機。。以現代軟體來說，通常會連上網路，因此主機也當作是一個網路上可被辨識的節點。</p>
+
+<p>更確切來說主機是一個可以運行<a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>的平台，只要該系統能夠提供POSIX殼層，以及部分POSIX命令列工具，再加上<span class="man-ref">git<span class="s">(1)</span></span> <span class="man-ref">curl<span class="s">(1)</span></span> <span class="man-ref">openssl<span class="s">(1)</span></span>，即可運行<a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>的基本功能。</p>
+
+<p>主機是有狀態的，主機的狀態與設置保存在根目錄檔案系統上。主機也是有名字的而且是能被辨識的個體。透過主機身份將自已的密鑰也保存在檔案系統中，讓自己的身份不可被仿造。</p>
+
+<p>一個主機中有多個作業區，而一個作業區中可以有多個碼彙</p>
+
+<h2 id="WORKSPACE-">WORKSPACE 作業區</h2>
+
+<p>enve-init
+enve-clone
+enve-install</p>
+
+<p>新建立的作業區如果不特別指定會同時產生一個預設的新人物，如果你有自己的人物可以用<a class="man-ref" href="enve-init.1.html">enve-init<span class="s">(1)</span></a>來替換作業區中的人物。</p>
+
+<p>主機作業區的兩大功能，一個用來開發，另外還可用來部署</p>
+
+<p>作業區是人物與主機的交集，而且一個主機可以有多個有著相同人物的工作區
+作業區的設定 = (主機設定 + 人物信條xＮ + 主機x人物信條xＮ)
+作業區的設定會傳遞到
+  1. 主線版本挑選
+  2. 建造參數
+  3. 運行參數與運行資源</p>
+
+<h2 id="-">作業區偵測</h2>
+
+<p>（介紹自動偵測所在地而執行不同功能的命令）</p>
+
+<h2 id="-">備份與還原</h2>
+
+<p>備份是一件特別容易的事情，因為所有資料都在本地端，網路上其他端點只是副本。
+enve已經完美的切割了可重現的資料，而所有不可重現的資料都已經收集在作業區之中。
+因此備份只要單純的把作業區部分資料夾拷貝到其他硬碟即可，</p>
+
+<p>還原比備份稍微複雜，但與其他方法相比仍然簡單很多。首先將作業區拷貝回系統之中，再來執行<code>enve install</code>來還原不可重現資料，這也可能包含重新進行系統設置。如果系統中沒有作業區的Persona則再產生新的Persona後執行<code>enve init -P &lt;persona></code>，最後進行<code>enve enter --exit</code>即可自動重建所有必要的環境了。<code>enve backup -u</code>可以自動完成上述的過程。</p>
+
+<p>backup --list</p>
+
+<h2 id="SEE-ALSO-">SEE ALSO 參見</h2>
+
+<p><a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a> <a class="man-ref" href="envetutorial.7.html">envetutorial<span class="s">(7)</span></a> <a class="man-ref" href="enveconcept.7.html">enveconcept<span class="s">(7)</span></a> <a class="man-ref" href="enveservice.7.html">enveservice<span class="s">(7)</span></a></p>
+
+
+  <ol class='man-decor man-foot man foot'>
+    <li class='tl'></li>
+    <li class='tc'>August 2020</li>
+    <li class='tr'>envehost(7)</li>
+  </ol>
+
+  </div>
+</body>
+</html>

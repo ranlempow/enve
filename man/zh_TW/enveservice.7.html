@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv='content-type' value='text/html;charset=utf8'>
+  <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
+  <title>enveservice(7) - 服務的部署與監測</title>
+  <style type='text/css' media='all'>
+  /* style: man */
+  body#manpage {margin:0}
+  .mp {max-width:100ex;padding:0 9ex 1ex 4ex}
+  .mp p,.mp pre,.mp ul,.mp ol,.mp dl {margin:0 0 20px 0}
+  .mp h2 {margin:10px 0 0 0}
+  .mp > p,.mp > pre,.mp > ul,.mp > ol,.mp > dl {margin-left:8ex}
+  .mp h3 {margin:0 0 0 4ex}
+  .mp dt {margin:0;clear:left}
+  .mp dt.flush {float:left;width:8ex}
+  .mp dd {margin:0 0 0 9ex}
+  .mp h1,.mp h2,.mp h3,.mp h4 {clear:left}
+  .mp pre {margin-bottom:20px}
+  .mp pre+h2,.mp pre+h3 {margin-top:22px}
+  .mp h2+pre,.mp h3+pre {margin-top:5px}
+  .mp img {display:block;margin:auto}
+  .mp h1.man-title {display:none}
+  .mp,.mp code,.mp pre,.mp tt,.mp kbd,.mp samp,.mp h3,.mp h4 {font-family:monospace;font-size:14px;line-height:1.42857142857143}
+  .mp h2 {font-size:16px;line-height:1.25}
+  .mp h1 {font-size:20px;line-height:2}
+  .mp {text-align:justify;background:#fff}
+  .mp,.mp code,.mp pre,.mp pre code,.mp tt,.mp kbd,.mp samp {color:#131211}
+  .mp h1,.mp h2,.mp h3,.mp h4 {color:#030201}
+  .mp u {text-decoration:underline}
+  .mp code,.mp strong,.mp b {font-weight:bold;color:#131211}
+  .mp em,.mp var {font-style:italic;color:#232221;text-decoration:none}
+  .mp a,.mp a:link,.mp a:hover,.mp a code,.mp a pre,.mp a tt,.mp a kbd,.mp a samp {color:#0000ff}
+  .mp b.man-ref {font-weight:normal;color:#434241}
+  .mp pre {padding:0 4ex}
+  .mp pre code {font-weight:normal;color:#434241}
+  .mp h2+pre,h3+pre {padding-left:0}
+  ol.man-decor,ol.man-decor li {margin:3px 0 10px 0;padding:0;float:left;width:33%;list-style-type:none;text-transform:uppercase;color:#999;letter-spacing:1px}
+  ol.man-decor {width:100%}
+  ol.man-decor li.tl {text-align:left}
+  ol.man-decor li.tc {text-align:center;letter-spacing:4px}
+  ol.man-decor li.tr {text-align:right;float:right}
+  .mp { text-align: left; } #SYNOPSIS + pre code { font-weight:bold;color:#131211; }</style>
+</head>
+<!--
+  The following styles are deprecated and will be removed at some point:
+  div#man, div#man ol.man, div#man ol.head, div#man ol.man.
+
+  The .man-page, .man-decor, .man-head, .man-foot, .man-title, and
+  .man-navigation should be used instead.
+-->
+<body id='manpage'>
+  <div class='mp' id='man'>
+
+  <div class='man-navigation' style='display:none'>
+    <a href="#NAME">NAME</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#SERVICE-">SERVICE 服務</a>
+    <a href="#WORKSPACE-SETUP-">WORKSPACE SETUP 作業區設置</a>
+    <a href="#INVOCATION-">INVOCATION 啟動</a>
+    <a href="#DEPLOYMENT-">DEPLOYMENT 部署</a>
+    <a href="#PROXY-">PROXY 渠道</a>
+    <a href="#SEE-ALSO-">SEE ALSO 參見</a>
+  </div>
+
+  <ol class='man-decor man-head man head'>
+    <li class='tl'>enveservice(7)</li>
+    <li class='tc'>enve manual</li>
+    <li class='tr'>enveservice(7)</li>
+  </ol>
+
+  <h2 id="NAME">NAME</h2>
+<p class="man-name">
+  <code>enveservice</code> - <span class="man-whatis">服務的部署與監測</span>
+</p>
+
+<h2 id="SYNOPSIS">SYNOPSIS</h2><pre>enve *</pre><h2 id="DESCRIPTION">DESCRIPTION</h2>
+
+<p>？我們在這裡講述有關於軟體開發的基本概念，以及如何簡單的利用版本控制系統來協助管理原始碼。並且介紹<a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>有那些功能可以協助使用者更方便的發揮這些基本概念。</p>
+
+<h2 id="SERVICE-">SERVICE 服務</h2>
+
+<p>服務是一種執行在各個主機上的背景程式，通常由一套特殊機制來發配執行，而不是由使用者自行啟動，我們定義以下四種類型服務，這些服務都可以部署為間歇執行、定時執行與觸發執行。</p>
+
+<ul>
+<li>寵物 - 有狀態的服務，有名字可以被識別，實體通常會綁定在特定主機上執行。</li>
+<li>牲畜 - 無狀態的服務，不需使用儲存系統來保留狀態，實體可以複製延伸或移到任意主機上重新啟動。</li>
+<li>任務 - 會結束的行程，一次性成功執行結束後回報自己的輸出。</li>
+<li>櫃檯 - 互動的命令列，使用者可以與它連線後進行交談。</li>
+</ul>
+
+
+<p><span class="man-ref">enve-roll<span class="s">(1)</span></span>提供一種掛載與監控服務的守護進程叫做翻滾守護者，肩負類似PID1的工作。透過<a class="man-ref" href="enve-install.1.html">enve-install<span class="s">(1)</span></a>可以讓在主機安裝服務守護進程，以便主機開機時自動執行。翻滾守護者除了自己負責監控所有服務以外，同時會發起一個大廳以及供應者，大廳透過超文字協定提供最重要的控制介面，但只限本地存取。而供應者負責提供系統資源，例如渠道供應者、儲存供應者。</p>
+
+<p>使用<a class="man-ref" href="enve-service.1.html">enve-service<span class="s">(1)</span></a>直接對翻滾守護者發送命令，可以取得所有主機上服務的狀態、開始服務、停止服務與暫停服務。</p>
+
+<h2 id="WORKSPACE-SETUP-">WORKSPACE SETUP 作業區設置</h2>
+
+<h2 id="INVOCATION-">INVOCATION 啟動</h2>
+
+<p>使用工藝品進行部署，或是直接從碼庫開始建造。</p>
+
+<p>日誌收集
+<a class="man-ref" href="enve-monitor.1.html">enve-monitor<span class="s">(1)</span></a></p>
+
+<p>enve montior -- &lt;FILTER_CMDARGS...></p>
+
+<h2 id="DEPLOYMENT-">DEPLOYMENT 部署</h2>
+
+<p>除了直接對翻滾守護者發送命令以外，我們以部屬檔這種更加全面詳盡的方式來部署新服務。部屬檔與環境檔有著相同的格式，我們在只要部署檔中描述出部署總數量、延伸方式以、可部署版本的條件及可部署主機的條件，<a class="man-ref" href="enve-deploy.1.html">enve-deploy<span class="s">(1)</span></a>就可以自動協調眾多主機，配對版本條件與主機條件，以特定方式滿足部署的數量。</p>
+
+<p>部署檔還可以描述以下</p>
+
+<ol>
+<li>系統資源供應與限制與系統隔離</li>
+<li>批次定時</li>
+<li><p>建造環境改寫與執行環境改寫</p></li>
+<li><p>日誌收集方式</p></li>
+<li>(X)執行的人物與信條</li>
+</ol>
+
+
+<h2 id="PROXY-">PROXY 渠道</h2>
+
+<p>透過tls</p>
+
+<p>httpproxy
+負載平衡
+簡化防火牆設置</p>
+
+<h2 id="SEE-ALSO-">SEE ALSO 參見</h2>
+
+<p><a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a> <a class="man-ref" href="envetutorial.7.html">envetutorial<span class="s">(7)</span></a> <a class="man-ref" href="enveconcept.7.html">enveconcept<span class="s">(7)</span></a> <a class="man-ref" href="enveclub.7.html">enveclub<span class="s">(7)</span></a></p>
+
+
+  <ol class='man-decor man-foot man foot'>
+    <li class='tl'></li>
+    <li class='tc'>August 2020</li>
+    <li class='tr'>enveservice(7)</li>
+  </ol>
+
+  </div>
+</body>
+</html>

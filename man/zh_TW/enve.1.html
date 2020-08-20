@@ -3,7 +3,7 @@
 <head>
   <meta http-equiv='content-type' value='text/html;charset=utf8'>
   <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
-  <title>enve(1) - enve command line</title>
+  <title>enve(1) - encourage people working together via the simplest idea</title>
   <style type='text/css' media='all'>
   /* style: man */
   body#manpage {margin:0}
@@ -40,7 +40,7 @@
   ol.man-decor li.tl {text-align:left}
   ol.man-decor li.tc {text-align:center;letter-spacing:4px}
   ol.man-decor li.tr {text-align:right;float:right}
-  </style>
+  .mp { text-align: left; } #SYNOPSIS + pre code { font-weight:bold;color:#131211; }</style>
 </head>
 <!--
   The following styles are deprecated and will be removed at some point:
@@ -54,120 +54,149 @@
 
   <div class='man-navigation' style='display:none'>
     <a href="#NAME">NAME</a>
-    <a href="#Primitives-functions">Primitives functions</a>
-    <a href="#support-functions">support functions</a>
-    <a href="#-ENVIRONMENT">環境變數 ENVIRONMENT</a>
-    <a href="#-">創造恆定不變的執行環境</a>
-    <a href="#-Scenario-">使用情境（Scenario）</a>
-    <a href="#-">設定檔</a>
-    <a href="#-">角色</a>
-    <a href="#-">動詞</a>
-    <a href="#-">可重入與可遞迴</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#COMMANDS-">COMMANDS 子命令</a>
+    <a href="#OPTIONS">OPTIONS</a>
   </div>
 
   <ol class='man-decor man-head man head'>
     <li class='tl'>enve(1)</li>
-    <li class='tc'></li>
+    <li class='tc'>enve manual</li>
     <li class='tr'>enve(1)</li>
   </ol>
 
   <h2 id="NAME">NAME</h2>
 <p class="man-name">
-  <code>enve</code> - <span class="man-whatis">enve command line</span>
+  <code>enve</code> - <span class="man-whatis">encourage people working together via the simplest idea</span>
 </p>
 
-<h2 id="Primitives-functions">Primitives functions</h2>
+<h2 id="SYNOPSIS">SYNOPSIS</h2><pre><code>enve</code> <var>command</var> [-h|--help] [-D|-V|-Q] [--debug=<var>debug</var>]
+     [--verbose-level=<var>level</var>] [--progress=<var>progress</var>]
+     [--color=<var>color</var>] [--logfile=<var>file</var>] [--logfile-level=<var>filelevel</var>]
+     [<var>args</var>]
+<code>enve</code> -v
+<code>enve</code> -h|--help</pre><h2 id="DESCRIPTION">DESCRIPTION</h2>
 
-<p>enve_fire
-cache_rebuild</p>
+<p><code>enve</code>是一系列的命令工具用來協助位處於不同地點的開發者們共同維護著一致的開發環境、分享團隊中的資源與工具、管理團隊中的服務與工作。初次使用可參見<a class="man-ref" href="envetutorial.7.html">envetutorial<span class="s">(7)</span></a>中的引導教程，或是從<a class="man-ref" href="enveconcept.7.html">enveconcept<span class="s">(7)</span></a>中開始一系列的概念介紹，也可以<a class="man-ref" href="enve-init.1.html">enve-init<span class="s">(1)</span></a>與<a class="man-ref" href="enve-enter.1.html">enve-enter<span class="s">(1)</span></a>這幾兩個常用指令作為起點。</p>
 
-<h2 id="support-functions">support functions</h2>
+<p>這裡講述的是<code>enve</code>的通用選項，<var>command</var>可以是之後小節中的命令，每個命令都可以使用這些通用選項。通用選項主要是用來調整輸出訊息，或是用來查詢命令的幫助訊息。</p>
 
-<p>fetch
-isolate</p>
+<h2 id="COMMANDS-">COMMANDS 子命令</h2>
 
-<h2 id="-ENVIRONMENT">環境變數 ENVIRONMENT</h2>
-
-<h2 id="-">創造恆定不變的執行環境</h2>
-
-<p>enve的主要用途在於創造一個執行環境，讓使用者在這個新創的環境中執行一連串的命令。</p>
-
-<p>在準備環境的過程<em>enve</em>讓使用者透過設定檔，把後來的命令中所需要的程式軟體、軟體設定、依賴的函示庫等等預先準備到環境之中。</p>
-
-<p>每次<em>enve</em>創造環境前要求的輸入是：</p>
-
-<ul>
-<li>一個設定檔</li>
-<li>一個動詞</li>
-<li>幾個角色</li>
-<li>（可選）一組命令行</li>
-<li>（隱含）一組檔案依賴。</li>
-</ul>
-
-
-<p>設定檔、角色、動詞會利用依賴的檔案創造一個環境。用這個環境來執行命令行，或是已經預先定義的命令。</p>
-
-<p>如果給定一樣設定檔、角色、動詞與檔案，會創造完全一模一樣的執行環境，不論何時創造、哪個平台創造，甚至是創造的作業系統是如何安裝如何設定等等，這些因素都不會讓創造出來的環境有所不同。</p>
-
-<h2 id="-Scenario-">使用情境（Scenario）</h2>
-
-<p><em>enve</em>最常用在「創造軟體開發環境」，<em>enve</em>之中的大部分模組與軟體開發的用途有所相關。</p>
-
-<p>將<em>enve</em>用在這種情境時，環境設定檔通常位於專案資料夾的最頂層，並且命名為<code>enve.ini</code>。選定這個名稱是因為在<em>Windows</em>時可以直接以記事本開啟，而且大部分的文字編輯軟體會正確的識別ini副檔名。</p>
-
-<p>開發人員從版本控制同步專案之後，在終端機輸入<code>enve -f ./enve.ini shell</code>，來進入到與其他專案成員所相同的開發環境之中。如果需要修改環境，只需要編輯環境設定檔<code>enve.ini</code>後再同步專案，這樣其他成員就可以在同步專案之後也使用新修正的環境了。</p>
-
-<h2 id="-">設定檔</h2>
-
-<p>為了要定義一個執行環境，使用者必須編寫一個設定檔，在這個設定檔裡會指出環境中要有怎麼樣的要素與配置。</p>
-
-<p>詳細參見 <a href="./enve-config.5.html#-Dependency-On-Evaluation-">enve-config(5)</a></p>
-
-<p><a href="#-Scenario-" data-bare-link="true">to put it another way</a></p>
-
-<h2 id="-">角色</h2>
-
-<p>角色像是一個過濾器一樣，會刪除設定檔中所不符合角色的值鍵。</p>
-
-<p>下面這兩種類型的角色是預先定義的，會在每次enve發起時自動加入：</p>
-
-<ul>
-<li>作業系統與平台所定義的角色</li>
-<li>動詞而衍生的角色</li>
-</ul>
-
-
-<p>使用者也能夠自己定義新角色。</p>
-
-<p>詳細參見 <a href="https://eddiekao.github.io/last/enve-table.html#roles">enve-table(1)</a></p>
-
-<h2 id="-">動詞</h2>
-
-<p>enve會為每一種動詞產生不同的環境，而不同的動詞也可能會用不同的方式來解釋設定檔。</p>
-
-<p>以下的預先定義動詞是常用的：</p>
+<p>作業區相關的命令:</p>
 
 <dl>
-<dt><code>run</code> <var>commands</var></dt><dd><p>在環境中執行命令。</p></dd>
-<dt class="flush"><code>shell</code></dt><dd><p>打開屬於該環境的命令列。</p></dd>
+<dt><a class="man-ref" href="enve-init.1.html">enve-init<span class="s">(1)</span></a></dt><dd>create an empty workspace/repository or reinitialize an existing one</dd>
+<dt><a class="man-ref" href="enve-clone.1.html">enve-clone<span class="s">(1)</span></a></dt><dd>clone a workspace/repository into a new directory</dd>
+<dt><a class="man-ref" href="enve-fire.1.html">enve-fire<span class="s">(1)</span></a></dt><dd>execute program in environment</dd>
+<dt><a class="man-ref" href="enve-enter.1.html">enve-enter<span class="s">(1)</span></a></dt><dd>enter environment shell</dd>
+<dt><a class="man-ref" href="enve-open.1.html">enve-open<span class="s">(1)</span></a></dt><dd>open target by proper application</dd>
+<dt><a class="man-ref" href="enve-backup.1.html">enve-backup<span class="s">(1)</span></a></dt><dd>backup workspace to external location</dd>
+<dt><a class="man-ref" href="enve-install.1.html">enve-install<span class="s">(1)</span></a></dt><dd>install software package at workspace</dd>
+<dt><a class="man-ref" href="enve-uninstall.1.html">enve-uninstall<span class="s">(1)</span></a></dt><dd>remove software package at workspace</dd>
+<dt><a class="man-ref" href="enve-list.1.html">enve-list<span class="s">(1)</span></a></dt><dd>list software package at workspace</dd>
 </dl>
 
 
-<p>以下的動詞需要額外載入特定的模組才能使用：</p>
+<p>UNIX傳統命令:</p>
 
 <dl>
-<dt class="flush"><code>test</code></dt><dd><p>用於自動化測試，詳細請參見 <a class="man-ref" href="enve-config.5.html">enve-config<span class="s">(5)</span></a></p></dd>
-<dt class="flush"><code>build</code></dt><dd><p>用於自動化建造，詳細請參見 <a class="man-ref" href="enve-config.5.html">enve-config<span class="s">(5)</span></a></p></dd>
-<dt class="flush"><code>deploy</code></dt><dd><p>用於自動化發佈，詳細請參見 <a class="man-ref" href="enve-config.5.html">enve-config<span class="s">(5)</span></a></p></dd>
+<dt><a class="man-ref" href="enve-cp.1.html">enve-cp<span class="s">(1)</span></a></dt><dd>copy target between endpoints</dd>
+<dt><a class="man-ref" href="enve-mv.1.html">enve-mv<span class="s">(1)</span></a></dt><dd>move target between endpoints</dd>
+<dt><a class="man-ref" href="enve-mv.1.html">enve-mv<span class="s">(1)</span></a></dt><dd>remove target safely</dd>
+<dt><a class="man-ref" href="enve-less.1.html">enve-less<span class="s">(1)</span></a></dt><dd>view target with scroll</dd>
+<dt><a class="man-ref" href="enve-cat.1.html">enve-cat<span class="s">(1)</span></a></dt><dd>concatenate targets and print on the standard output</dd>
+<dt><a class="man-ref" href="enve-env.1.html">enve-env<span class="s">(1)</span></a></dt><dd>securely listing environment varible</dd>
+<dt><a class="man-ref" href="enve-help.1.html">enve-help<span class="s">(1)</span></a></dt><dd>show help message</dd>
 </dl>
 
 
-<h2 id="-">可重入與可遞迴</h2>
+<p>資源相關的命令:</p>
+
+<dl>
+<dt><a class="man-ref" href="enve-create.1.html">enve-create<span class="s">(1)</span></a></dt><dd>create resource at creed</dd>
+<dt><a class="man-ref" href="enve-get.1.html">enve-get<span class="s">(1)</span></a></dt><dd>get resource content at creed secretly</dd>
+<dt><a class="man-ref" href="enve-key.1.html">enve-key<span class="s">(1)</span></a></dt><dd>reseting the resouce lock</dd>
+<dt><a class="man-ref" href="enve-share.1.html">enve-share<span class="s">(1)</span></a></dt><dd>share creed to other persona</dd>
+<dt><a class="man-ref" href="enve-creed.1.html">enve-creed<span class="s">(1)</span></a></dt><dd>create new creed at secretbase</dd>
+</dl>
+
+
+<p>人物相關的命令:</p>
+
+<dl>
+<dt><a class="man-ref" href="enve-born.1.html">enve-born<span class="s">(1)</span></a></dt><dd>create new entity</dd>
+<dt><a class="man-ref" href="enve-persona.1.html">enve-persona<span class="s">(1)</span></a></dt><dd>create new persona</dd>
+</dl>
+
+
+<p>社團相關的命令:</p>
+
+<dl>
+<dt><a class="man-ref" href="enve-member.1.html">enve-member<span class="s">(1)</span></a></dt><dd>accept new member to your club</dd>
+<dt><a class="man-ref" href="enve-found.1.html">enve-found<span class="s">(1)</span></a></dt><dd>create new club</dd>
+<dt><a class="man-ref" href="enve-join.1.html">enve-join<span class="s">(1)</span></a></dt><dd>join to other club</dd>
+<dt><a class="man-ref" href="enve-news.1.html">enve-news<span class="s">(1)</span></a></dt><dd>show team progress today on board</dd>
+<dt><span class="man-ref">enve-message<span class="s">(1)</span></span></dt><dd>send message to other member</dd>
+<dt><a class="man-ref" href="enve-work.1.html">enve-work<span class="s">(1)</span></a></dt><dd>create new work</dd>
+</dl>
+
+
+<p>服務相關的命令:</p>
+
+<dl>
+<dt><a class="man-ref" href="enve-service.1.html">enve-service<span class="s">(1)</span></a></dt><dd>contorl rolling services</dd>
+<dt><span class="man-ref">enve-roll<span class="s">(1)</span></span></dt><dd>roll the service management master process</dd>
+<dt><a class="man-ref" href="enve-monitor.1.html">enve-monitor<span class="s">(1)</span></a></dt><dd>monitor logs and status</dd>
+</dl>
+
+
+<p>碼彙動作相關的命令:</p>
+
+<dl>
+<dt><a class="man-ref" href="enve-build.1.html">enve-build<span class="s">(1)</span></a></dt><dd>build codebase</dd>
+<dt><a class="man-ref" href="enve-test.1.html">enve-test<span class="s">(1)</span></a></dt><dd>test codebase</dd>
+<dt><a class="man-ref" href="enve-pack.1.html">enve-pack<span class="s">(1)</span></a></dt><dd>create artifact and/or upload to registry</dd>
+<dt><a class="man-ref" href="enve-deploy.1.html">enve-deploy<span class="s">(1)</span></a></dt><dd>depoly codebase to service management system</dd>
+</dl>
+
+
+<p>碼彙歷史相關的命令:</p>
+
+<dl>
+<dt><span class="man-ref">enve-commit<span class="s">(1)</span></span></dt><dd>commit change at codebase</dd>
+<dt><a class="man-ref" href="enve-switch.1.html">enve-switch<span class="s">(1)</span></a></dt><dd>switch codebase to other branch</dd>
+<dt><a class="man-ref" href="enve-branch.1.html">enve-branch<span class="s">(1)</span></a></dt><dd>create or list branch</dd>
+<dt><span class="man-ref">enve-rebase<span class="s">(1)</span></span></dt><dd>rebase current branch to front</dd>
+<dt><a class="man-ref" href="enve-publish.1.html">enve-publish<span class="s">(1)</span></a></dt><dd>let branch be public</dd>
+<dt><a class="man-ref" href="enve-undo.1.html">enve-undo<span class="s">(1)</span></a></dt><dd>undo last commit</dd>
+</dl>
+
+
+<h2 id="OPTIONS">OPTIONS</h2>
+
+<dl>
+<dt class="flush"><code>-v</code></dt><dd>印出<code>enve</code>的版本訊息。</dd>
+<dt class="flush"><code>-h</code></dt><dd>印出<var>command</var>的簡易幫助訊息，或是<code>enve</code>的幫助訊息。</dd>
+<dt class="flush"><code>--help</code></dt><dd>等同於<a class="man-ref" href="enve-help.1.html">enve-help<span class="s">(1)</span></a>，顯示較完整的幫助訊息。</dd>
+<dt class="flush"><code>-D</code></dt><dd>輸出更多的除錯資訊，可以重複使用多次。</dd>
+<dt class="flush"><code>-V</code></dt><dd>輸出更多的詳細資訊，可以重複使用多次。</dd>
+<dt class="flush"><code>-Q</code></dt><dd>輸出更少的資訊，可以重複使用多次。</dd>
+<dt><code>--verbose-level</code>=<var>level</var></dt><dd>指定事紀的輸出等級，選項有error, warning, info, detail, debug, trace。</dd>
+<dt><code>--debug</code>=auto</dt><dd>預設值，產生廣泛的除錯訊息</dd>
+<dt><code>--output-format</code>=auto</dt><dd>預設值，互動時輸出整齊格式，管道時輸出標準事紀格式</dd>
+<dt><code>--progress</code>=auto</dt><dd>預設值，互動時且非必需時以一行空間重複列印文字，否則輸出完整文字</dd>
+<dt><code>--color</code>=auto</dt><dd>預設值，互動而且支援色彩時輸出有色文字，否則輸出黑白文字</dd>
+<dt><code>--logfile</code>=<var>file</var></dt><dd>額外產生一份事紀到<var>file</var></dd>
+<dt><code>--logfile-level</code>=<var>level</var></dt><dd>指定額外事紀的輸出等級</dd>
+</dl>
+
 
 
   <ol class='man-decor man-foot man foot'>
     <li class='tl'></li>
-    <li class='tc'>August 2019</li>
+    <li class='tc'>August 2020</li>
     <li class='tr'>enve(1)</li>
   </ol>
 

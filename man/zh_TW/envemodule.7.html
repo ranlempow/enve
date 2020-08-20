@@ -3,7 +3,7 @@
 <head>
   <meta http-equiv='content-type' value='text/html;charset=utf8'>
   <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
-  <title>index</title>
+  <title>envemodule(7) - 開發自訂的額外功能</title>
   <style type='text/css' media='all'>
   /* style: man */
   body#manpage {margin:0}
@@ -54,44 +54,87 @@
 
   <div class='man-navigation' style='display:none'>
     <a href="#NAME">NAME</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#-reexec">有關於資料夾結構與reexec</a>
   </div>
 
   <ol class='man-decor man-head man head'>
-    <li class='tl'>index</li>
+    <li class='tl'>envemodule(7)</li>
     <li class='tc'>enve manual</li>
-    <li class='tr'>index</li>
+    <li class='tr'>envemodule(7)</li>
   </ol>
 
   <h2 id="NAME">NAME</h2>
 <p class="man-name">
-  <code>index</code>
+  <code>envemodule</code> - <span class="man-whatis">開發自訂的額外功能</span>
 </p>
 
-<h1>enve-package-module(7)</h1>
+<h2 id="SYNOPSIS">SYNOPSIS</h2><pre>enve *</pre><h2 id="DESCRIPTION">DESCRIPTION</h2>
 
-<h1>enve-nix-module(7)</h1>
+<p>TODO:</p>
 
-<h1>enve-nodejs-module(7)</h1>
+<h2 id="-reexec">有關於資料夾結構與reexec</h2>
 
-<h1>enve-oh-my-zsh-module(7)</h1>
+<p>TODO:</p>
 
-<h1>enve-python-module(7)</h1>
+<p>將enve-core的部分縮得更小, 大部分的東西移到contrib
+而contrib必須要額外下載安裝, 而enve-core有能力管理這些額外安裝
+(libexec|opt|tmp)/enve-[MODULE]</p>
 
-<h1>enve-ruby-module(7)</h1>
+<p>安裝方法很簡單
+1. 從現有的安裝複製必須的檔案
+2. 從github下載zip檔, 解壓縮到opt或是tmp
+3. 使用git clone</p>
 
-<h1>enve-aws-module(7)</h1>
+<p>$ENVE_ROOT/reexec
+    ENVE_REEXEC_RESTRICT=restrict  只能使用此資料夾的enve, 而且不能讀取任何非core的module
+    ENVE_REEXEC_RESTRICT=local     只能使用此資料夾的enve
+    ENVE_REEXEC_RESTRICT=update    可以視情況自動下載新版</p>
 
-<h1>enve-gcp-module(7)</h1>
+<p>另外enve會自動偵測自己安裝的位置來決定要不要載入~/.config/enve/enve.ini,/etc/enve/enve.ini</p>
 
-<h1>enve-term-module(7)</h1>
+<p>$ENVE_ROOT/.git                 有這個代表enve可以自我自動更新
+$ENVE_ROOT/../envemodules       預設的額外模組位置
+$ENVE_ROOT/bin/enve             定位用
+$ENVE_ROOT/libexec/enve/*       主程式
+$ENVE_ROOT/libexec/enve/core    主要模組</p>
 
-<h1>enve-test-module(7)</h1>
+<p>掃描module的方法是
+    for m in opt/enve-*; do load $m; done</p>
+
+<p>MODULE_ROOT/module.ini      模組設定
+MODULE_ROOT/README.md
+MODULE_ROOT/bin/enve-<em>      可執行檔
+MODULE_ROOT/bin/</em>           其他可執行檔
+MODULE_ROOT/libexec/<em>lib
+MODULE_ROOT/libexec/</em>       其他可執行檔</p>
+
+<p>用來尋找loader,module等等可以載入的模組
+ENVE_MODULES</p>
+
+<p>用來尋找可執行工具
+ENVE_WIDGETS</p>
+
+<p>(O)enve-$cmd call
+  1. (O)check ENVE_HOME is SET and ENVE_PROGRAM is self else <code>exec enve $cmd</code>
+  2. (O)ENVE<em>*</em>VERBOSE option parsed
+  3. 保證$0是絕對路徑</p>
+
+<pre><code>        prefix    dependency  maintain    location    autoimport sh_module
+</code></pre>
+
+<p>core/       optinal   enve-libs   enve-owner  enve-repo   yes        require
+contrib/    optinal   posix       contributor enve-repo   yes        optional
+thirdparty/ optinal   no resist   other       public-repo no         optional</p>
+
+<p>thirdparty maintain a ordered key-value map module name to module repository url.</p>
 
 
   <ol class='man-decor man-foot man foot'>
     <li class='tl'></li>
     <li class='tc'>August 2020</li>
-    <li class='tr'>index</li>
+    <li class='tr'>envemodule(7)</li>
   </ol>
 
   </div>

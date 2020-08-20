@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv='content-type' value='text/html;charset=utf8'>
+  <meta name='generator' value='Ronn/v0.7.3 (http://github.com/rtomayko/ronn/tree/0.7.3)'>
+  <title>envecodebase(7) - 軟體開發與版本控制</title>
+  <style type='text/css' media='all'>
+  /* style: man */
+  body#manpage {margin:0}
+  .mp {max-width:100ex;padding:0 9ex 1ex 4ex}
+  .mp p,.mp pre,.mp ul,.mp ol,.mp dl {margin:0 0 20px 0}
+  .mp h2 {margin:10px 0 0 0}
+  .mp > p,.mp > pre,.mp > ul,.mp > ol,.mp > dl {margin-left:8ex}
+  .mp h3 {margin:0 0 0 4ex}
+  .mp dt {margin:0;clear:left}
+  .mp dt.flush {float:left;width:8ex}
+  .mp dd {margin:0 0 0 9ex}
+  .mp h1,.mp h2,.mp h3,.mp h4 {clear:left}
+  .mp pre {margin-bottom:20px}
+  .mp pre+h2,.mp pre+h3 {margin-top:22px}
+  .mp h2+pre,.mp h3+pre {margin-top:5px}
+  .mp img {display:block;margin:auto}
+  .mp h1.man-title {display:none}
+  .mp,.mp code,.mp pre,.mp tt,.mp kbd,.mp samp,.mp h3,.mp h4 {font-family:monospace;font-size:14px;line-height:1.42857142857143}
+  .mp h2 {font-size:16px;line-height:1.25}
+  .mp h1 {font-size:20px;line-height:2}
+  .mp {text-align:justify;background:#fff}
+  .mp,.mp code,.mp pre,.mp pre code,.mp tt,.mp kbd,.mp samp {color:#131211}
+  .mp h1,.mp h2,.mp h3,.mp h4 {color:#030201}
+  .mp u {text-decoration:underline}
+  .mp code,.mp strong,.mp b {font-weight:bold;color:#131211}
+  .mp em,.mp var {font-style:italic;color:#232221;text-decoration:none}
+  .mp a,.mp a:link,.mp a:hover,.mp a code,.mp a pre,.mp a tt,.mp a kbd,.mp a samp {color:#0000ff}
+  .mp b.man-ref {font-weight:normal;color:#434241}
+  .mp pre {padding:0 4ex}
+  .mp pre code {font-weight:normal;color:#434241}
+  .mp h2+pre,h3+pre {padding-left:0}
+  ol.man-decor,ol.man-decor li {margin:3px 0 10px 0;padding:0;float:left;width:33%;list-style-type:none;text-transform:uppercase;color:#999;letter-spacing:1px}
+  ol.man-decor {width:100%}
+  ol.man-decor li.tl {text-align:left}
+  ol.man-decor li.tc {text-align:center;letter-spacing:4px}
+  ol.man-decor li.tr {text-align:right;float:right}
+  .mp { text-align: left; } #SYNOPSIS + pre code { font-weight:bold;color:#131211; }</style>
+</head>
+<!--
+  The following styles are deprecated and will be removed at some point:
+  div#man, div#man ol.man, div#man ol.head, div#man ol.man.
+
+  The .man-page, .man-decor, .man-head, .man-foot, .man-title, and
+  .man-navigation should be used instead.
+-->
+<body id='manpage'>
+  <div class='mp' id='man'>
+
+  <div class='man-navigation' style='display:none'>
+    <a href="#NAME">NAME</a>
+    <a href="#SYNOPSIS">SYNOPSIS</a>
+    <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#ENVIRONMENT-">ENVIRONMENT 環境</a>
+    <a href="#DEVELOP-ACTION-">DEVELOP ACTION 行動</a>
+    <a href="#CODEBASE-AND-HISTORY-">CODEBASE AND HISTORY 歷史</a>
+    <a href="#DEPENDENCY-BETWEEN-CODEBASES-">DEPENDENCY BETWEEN CODEBASES 碼彙之間的相依</a>
+    <a href="#AVOID-CONFLICT-">AVOID CONFLICT 避免衝突</a>
+    <a href="#SWITCHING-TRUNK-">SWITCHING TRUNK 換配枝幹</a>
+    <a href="#ABOUT-BUILD-">ABOUT BUILD 建造</a>
+    <a href="#ABOUT-TEST-">ABOUT TEST 測試</a>
+    <a href="#ABOUT-PACK-">ABOUT PACK 打包</a>
+    <a href="#CACHE-STORE-">CACHE STORE 快取存放地</a>
+    <a href="#SEE-ALSO-">SEE ALSO 參見</a>
+  </div>
+
+  <ol class='man-decor man-head man head'>
+    <li class='tl'>envecodebase(7)</li>
+    <li class='tc'>enve manual</li>
+    <li class='tr'>envecodebase(7)</li>
+  </ol>
+
+  <h2 id="NAME">NAME</h2>
+<p class="man-name">
+  <code>envecodebase</code> - <span class="man-whatis">軟體開發與版本控制</span>
+</p>
+
+<h2 id="SYNOPSIS">SYNOPSIS</h2><pre>enve *</pre><h2 id="DESCRIPTION">DESCRIPTION</h2>
+
+<p>我們在這裡講述有關於軟體開發的基本概念，以及如何簡單的利用版本控制系統來協助管理原始碼。並且介紹<a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>有那些功能可以協助使用者更方便的發揮這些基本概念。</p>
+
+<h2 id="ENVIRONMENT-">ENVIRONMENT 環境</h2>
+
+<p>當你要運行一個程式時，傳統的做法是在<em>主機</em>上安裝這個程式與他的相依套件，並且在<em>主機</em>中加入有關於該程式的設置。所謂的<em>環境</em>指的正是上述的相依套件與設定，但是把<em>環境</em>綁死在<em>主機</em>的做法會有很多令人倍感困擾的小缺陷。理想上，程式的輸出只由三項因素所決定：外部輸入、環境與程式自身。</p>
+
+<p>這些困擾包含：</p>
+
+<ol>
+<li><p>相容 - 相同軟體只能安裝一種版本甚至是特定版本:
+你無法因為向下相容而安裝舊版，或是因為bugfix而安裝新版。
+如果兩個程式相依於同個程式的不同版本時，會產生衝突。</p></li>
+<li><p>隔離 - 系統的設定會對全部程式造成影響:
+有時候你的程式需要更改系統設定，但這樣可能會在你無法察覺的情況下影響到其他程式。</p></li>
+<li><p>安全 - 系統提供的安全機制不足以用於現代化的部署流程:
+只有管理員可以安裝程式，用主機的儲存的密碼來認證使用者。</p></li>
+<li><p>擴展 - 系統的管理概念侷限於本機。
+無論是行程還是網路的管理都是以本機為主，把自動擴展性留給應用程式或是其他系統服務解決。
+預設的軟體設定檔放在主機的檔案系統內，每次更改設定都必須登入主機。</p></li>
+<li><p>開放 - 平台專屬的部署「相依與設定」的方法:
+你必須依靠系統的打包機制來管理依賴，以及依靠商用系統的設定管理機制來管理設定。
+而這些機制往往非常複雜而且沒有共同標準。</p></li>
+</ol>
+
+
+<p><code>enve</code>提供一個方法讓你能用文字檔來描述環境，並且<code>enve</code>負責在執行程式之前建立起這樣的環境。如此，<em>環境</em>再也不受制於<em>主機</em>，而是一個可以保存在<em>碼彙</em>中的檔案。環境檔以INI格式記錄著鍵值設定，通常命名為<code>enve.ini</code>。</p>
+
+<p>在解析環境檔時，可以在鍵後面加上過濾器<code>@&lt;role></code>，只有輸入符合角色<code>&lt;role></code>時，才會套用該鍵的設定。過濾器使用多次，這表示每個寫上的角色都要符合。</p>
+
+<p>透過環境檔，開發者可以更容易分享的日常的開發環境，將開發環境寫在碼彙的環境檔中，所有開發者只要輸出<code>enve enter</code>即可進入該環境專屬的命令列。透過一些設定，甚至可以讓外部工具像是文字編輯器之類的也在環境中運作。如此，就能夠分享程式碼檢查之類的外掛。</p>
+
+<h2 id="DEVELOP-ACTION-">DEVELOP ACTION 行動</h2>
+
+<p>軟體開發是一個創造程式碼並且將程式碼變成軟體的過程。除了撰寫程式碼以外，其他的主要事件不外乎圍繞在以下幾個日常行動中：</p>
+
+<ol>
+<li>提交 - 將原始碼變動保存於<em>碼彙</em>的歷史中。</li>
+<li>建造 - 將原始碼建造成可執行的程式。</li>
+<li>測試 - 執行程式碼檢查與自動化單元測試。</li>
+<li>打包 - 將程式打包成工藝品。</li>
+<li>部署 - 讓線上主機把該程式或工藝品視為服務來運行。</li>
+</ol>
+
+
+<p>你可以將這些行動的運作方式與所需的<em>環境</em>將存放於<em>碼彙</em>中的環境檔。<code>enve</code>不只提供方便的指令來協助開發者進行這些日常行動，例如<a class="man-ref" href="enve-build.1.html">enve-build<span class="s">(1)</span></a>、<a class="man-ref" href="enve-test.1.html">enve-test<span class="s">(1)</span></a>、<a class="man-ref" href="enve-pack.1.html">enve-pack<span class="s">(1)</span></a>、<span class="man-ref">enve-depoly<span class="s">(1)</span></span>，<code>enve</code>更重要目地是要將這些行動自動化。進行這些行動時，<code>enve</code>會把行動名稱作為角色來解析環境檔。</p>
+
+<p>行動是可重入以及可遞迴的。如果某個行動依賴於另一個行動，由於環境已經包含在行動的描述之中，<code>enve</code>同樣的會自動建立相依行動的環境。例如：碼彙Ａ的測試依賴於碼彙Ｂ的測試，碼彙Ｂ的測試依賴於碼彙Ｃ的安裝，碼彙Ｃ的安裝的安裝依賴於碼彙Ｃ自身的建造。<code>enve</code>會從下到上先建造Ｃ在安裝Ｃ於Ｂ的測試環境中，完成Ｂ的測試，最後完成Ａ的測試。一但環境檔安排好相關指示後，這一切只要在碼彙Ａ底下<code>enve test</code>即可自動遞迴執行上述一切。</p>
+
+<h2 id="CODEBASE-AND-HISTORY-">CODEBASE AND HISTORY 歷史</h2>
+
+<p><em>碼彙</em>是將程式碼彙整成一條版本歷史，只能建立出一個應用程式。即使這個這個應用程式可以部署到多個目標或是在多個平台建立，也仍然由同一個<em>碼彙</em>所收藏。<em>碼彙</em>中除了包含應用程式本身的原始碼以外，也透過環境檔記錄著碼彙中的<em>行動</em>所需要的環境。</p>
+
+<p>歷史中的每個提交都是<em>碼彙</em>某一時刻的快照，這不單單只是程式碼，也包含當時環境的快照，簽出歷史中的提交後不只可以看到過去的原始碼，還能夠還原與當時同樣的環境，並且建造出與當時相同的工藝品。</p>
+
+<p>這些特性讓<a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a>應用<a href="https://www.bitsnbites.eu/a-stable-mainline-branching-model-for-git/">穩健主線</a>的分枝管理策略時，副作用更少。開發者總是在主線上進行開發工作，如果不能立即通過主線測試，可以先在本地分岔出短期的<em>功能分枝</em>，當分枝成長至足以併回主線時再做歸併，之後把該分枝刪除。以下是穩健主線的基本守則：</p>
+
+<ul>
+<li>在<em>碼彙</em>之中的測試行動必須確認提交的正確性。參見下面有關測試的小節。</li>
+<li>公開的分枝絕對不改變歷史，創立新分枝是改寫歷史唯一的做法。</li>
+<li>功能分枝總是從主線的一部份分岔出來。</li>
+<li>功能分枝併入主線前總是先嫁接到主線的頭部，整理分枝並讓所有的提交通過測試。或再以非快進的方式歸併，同時保留歸併訊息。沒能在全部平台通過整合測試的提交，不能併入主線。</li>
+</ul>
+
+
+<h2 id="DEPENDENCY-BETWEEN-CODEBASES-">DEPENDENCY BETWEEN CODEBASES 碼彙之間的相依</h2>
+
+<p>開發或建造過程中有時候會需要使用到其它碼彙中的程式或原始碼，這時，我們可以把這些外部的碼彙描述為碼彙的相依碼彙。在進行<a class="man-ref" href="enve-clone.1.html">enve-clone<span class="s">(1)</span></a>克隆時會連帶一起克隆所有相依碼彙，<a class="man-ref" href="enve-switch.1.html">enve-switch<span class="s">(1)</span></a>切換版本時，也會同時切換所有相依碼彙。</p>
+
+<p>一個比較不同的是同儕依賴，此時不能指定版本，這代表兩個碼彙需要用到彼此。</p>
+
+<p>無論是環境依賴、開發依賴、建造依賴，我們可以在最頭部進行依賴注入，這讓我們可以更改依賴的設定甚至是改變依賴的依賴。</p>
+
+<h2 id="AVOID-CONFLICT-">AVOID CONFLICT 避免衝突</h2>
+
+<p>在使用版本控制系統時，不同開發者常常會在碼彙中共同修改原始碼而產生衝突，我們認為應該要盡可能達成以下目標來減少衝突：</p>
+
+<ol>
+<li>採用各語言的<a href="https://zh-google-styleguide.readthedocs.io/en/latest/google-shell-styleguide/contents/" title="Google Shell 風格指南">編程風格指南</a>，標準化個區塊分行格式，不要一次做出太大範圍的編輯。</li>
+<li>盡量為檔案分配專屬的開發者。</li>
+<li>時常推進自己的分支。（重新嫁接到主線最前端）</li>
+<li>在簽入之前做一些[快速測試與檢查][ABOUT TEST]。</li>
+<li>做出大範圍跟更動前提醒夥伴先推進到最新。</li>
+<li>使用換配枝幹。</li>
+</ol>
+
+
+<h2 id="SWITCHING-TRUNK-">SWITCHING TRUNK 換配枝幹</h2>
+
+<p>所謂的換配枝幹是一種先在程式碼做出區分的方式，</p>
+
+<h2 id="ABOUT-BUILD-">ABOUT BUILD 建造</h2>
+
+<p>準備好建造環境所需的依賴後，<a class="man-ref" href="enve-build.1.html">enve-build<span class="s">(1)</span></a>利用建造框架來從碼彙中原始碼進行自動建造。與傳統方式稍微不同的地方是，我們採取的是<em>碼彙外建造</em>，產生的目的碼不會放進碼彙在作業區中的資料夾，對於每版本的建造我們產生一個臨時資料夾指定給環境變數<code>ENVE_OUTS</code>作為目的碼放置地點。</p>
+
+<h2 id="ABOUT-TEST-">ABOUT TEST 測試</h2>
+
+<p>準備好包含<em>建造</em>在內等測試環境所需的依賴後，<a class="man-ref" href="enve-test.1.html">enve-test<span class="s">(1)</span></a>利用測試框架來自動測試產品是否運作正確而達到可以併入主線的水準。測試分成幾個面向，越往深處測試越完整但也越複雜，有著更多的輸入與環境交叉排列組合，需要更多的時間來執行驗證。</p>
+
+<ul>
+<li>單元測試往整合測試: 更大塊的程式碼結合後一起測試，也更傾向於與系統整合起來測試。</li>
+<li>內部測試往前提測試: 測試外部函式庫是否符合預想的前提。</li>
+<li>特定測試往廣泛測試: 針對更多的平台與更多種輸入的可能性來進行測試。</li>
+</ul>
+
+
+<p>在本地，開發者將分枝嫁接到主線時，最好能夠執行更快速的測試，其他的開發者可能在幾小時內就需要新的主線。而測試通常也不會只進行一次，一旦失敗開發者必須反覆除錯與測試，如果時間拉長，那開發者會花很多時間在等待測試完成。如果部分測試可以在數十秒內完成，甚至能夠將部分測試與<span class="man-ref">enve-commit<span class="s">(1)</span></span>綁定，這樣保證分枝提交的基本品質，以減輕合併時的負擔。</p>
+
+<p>完整的測試則涵蓋更廣，更能確保程式品質。複雜而且支援非常多平台的專案，在交叉排列組合後測試案例暴增數百倍，可能單核心好幾個禮拜也跑不完一次測試。這個時候可以仰賴<a class="man-ref" href="enve-test.1.html">enve-test<span class="s">(1)</span></a>提供的測試並行化，把測試壓縮到數小時以內。當主線上的提交通過完整測試後<a class="man-ref" href="enve-test.1.html">enve-test<span class="s">(1)</span></a>會幫這些提交貼上標籤，之後自動化部署可以根據標籤選擇通過完整測試的主線提交。</p>
+
+<p><code>enve</code>提供一個鞍具<span class="man-ref">enve-rider<span class="s">(1)</span></span>來讓不同測試框架可以提供標準化的串流輸出，這讓不同測試框架之間與鞍具之間更容易分岔與合併這些串流，這讓測試更容易平行化。串流的格式由<a href="https://testanything.org/">TAP</a>與<a href="https://tools.ietf.org/html/rfc5424" title="rfc5424">Syslog Protocol</a>所組成，即使部分測試失敗，也能從串流中找出失敗的原因。</p>
+
+<h2 id="ABOUT-PACK-">ABOUT PACK 打包</h2>
+
+<p>準備好打包環境所需要的依賴後，<a class="man-ref" href="enve-pack.1.html">enve-pack<span class="s">(1)</span></a>從貼上通過標籤的主線提交中挑選出新的發行版，將這個版本建造後並且打包上傳。打包上傳分為兩階段：</p>
+
+<ol>
+<li>打包 - 將建造後的工藝品資料夾封裝成發行平台需要的格式。</li>
+<li>上傳 - 對上階段的結果簽名，之後上傳到發行台並且更改發行平台的相關公告。</li>
+</ol>
+
+
+<p>所謂的發行平台指的像是<a href="https://www.npmjs.com/">NPM</a>、<a href="https://github.com/">Github</a>與蘋果公司的AppStore。</p>
+
+<p>上傳過程會用到的資源會存放在上傳者人物的機密庫中，上傳者在<em>打包碼彙</em>中引用要打包的版本並且更改公告檔之後提交即可，而<a class="man-ref" href="enve-pack.1.html">enve-pack<span class="s">(1)</span></a>會與打包框架一起盡可能協助將這個過程自動化。</p>
+
+<h2 id="CACHE-STORE-">CACHE STORE 快取存放地</h2>
+
+<p>TODO:</p>
+
+<h2 id="SEE-ALSO-">SEE ALSO 參見</h2>
+
+<p><a class="man-ref" href="enve.1.html">enve<span class="s">(1)</span></a> <a class="man-ref" href="envetutorial.7.html">envetutorial<span class="s">(7)</span></a> <a class="man-ref" href="enveconcept.7.html">enveconcept<span class="s">(7)</span></a> <a class="man-ref" href="envepersona.7.html">envepersona<span class="s">(7)</span></a></p>
+
+
+  <ol class='man-decor man-foot man foot'>
+    <li class='tl'></li>
+    <li class='tc'>August 2020</li>
+    <li class='tr'>envecodebase(7)</li>
+  </ol>
+
+  </div>
+</body>
+</html>
