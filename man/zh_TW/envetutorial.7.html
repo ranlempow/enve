@@ -56,9 +56,9 @@
     <a href="#NAME">NAME</a>
     <a href="#SYNOPSIS">SYNOPSIS</a>
     <a href="#DESCRIPTION">DESCRIPTION</a>
+    <a href="#ABILITY-">ABILITY 功能</a>
     <a href="#FEATURE-">FEATURE 特色</a>
     <a href="#WHY-ENVE-">WHY ENVE 為何要用</a>
-    <a href="#INSTALL">INSTALL</a>
     <a href="#GETTING-STARTED">GETTING STARTED</a>
     <a href="#CONTRIBUTION-">CONTRIBUTION 貢獻方式</a>
     <a href="#LICENCE-">LICENCE 授權方式</a>
@@ -77,41 +77,70 @@
 
 <h2 id="SYNOPSIS">SYNOPSIS</h2><pre>enve *</pre><h2 id="DESCRIPTION">DESCRIPTION</h2>
 
-<p><code>enve</code>是一系列的命令工具用來協助位處於不同地點的開發者們共同維護著一致的開發環境、分享團隊中的資源與工具、管理團隊中的服務與工作</p>
+<p><code>enve</code>是一系列的命令工具用來協助開發者們共同作業，這包含維持一致的開發環境、分享團隊中的資源與工具、管理團隊中的服務與工作。</p>
 
-<p>開發環境的建置風險
-測試平台的建置風險
-套件相依性的建置風險
-部署程序的建置風險</p>
+<h2 id="ABILITY-">ABILITY 功能</h2>
+
+<ol>
+<li><a href="http://rocksaying.tw/archives/11157957.html">環境建置自動化</a></li>
+<li>原始碼協作與管理</li>
+<li>部署自動化</li>
+<li>持續整合與持續發行</li>
+<li>權限與機密控管</li>
+<li>專案團隊管理</li>
+</ol>
+
 
 <h2 id="FEATURE-">FEATURE 特色</h2>
 
-<p>簡單 - 概念好理解，不使用任何複雜演算法，即使用其他語言重新實作也非常容易
-模組化 - 在無任何前提下不用編譯即可相容任何平台，透過公開穩定的協定與其他軟體合作
-去中央 - 不須依賴中央伺服器即可安全的完成任務</p>
+<dl>
+<dt class="flush">易用</dt><dd>命令列的用法非常直觀而且一體通用，報錯訊息淺顯易懂，文件豐富概念單純。</dd>
+<dt class="flush">簡單</dt><dd>全部程式碼以古老的SHELL語法寫成，只有少數如openssl等選擇性的外部依賴，不使用任何複雜演算法，即使用其他語言重新實作也非常容易。</dd>
+<dt class="flush">模組化</dt><dd>在無任何前提下不用編譯即可相容任何POSIX系統。透過公開穩定的協定與其他軟體合作，你不一定要使用<code>enve</code>的全部部分，而且可將任何<code>enve</code>組件替換成其他的軟體，或是將<code>enve</code>結合到其他軟體。</dd>
+<dt class="flush">去中央</dt><dd>所有的操作都可以在本地完成，不須依賴中央伺服器。</dd>
+</dl>
+
 
 <h2 id="WHY-ENVE-">WHY ENVE 為何要用</h2>
 
-<p>為何要做enve
-使用enve能帶來什麼好處：易學
-預設值就是最直覺簡單的狀況，但不是最推薦的狀況</p>
+<p>無論是個人或小型團隊都能利用<code>enve</code>的基本功能來簡化軟體開發各週期中的日常事務。但<code>enve</code>不只是如此，<code>enve</code>被設計能夠整合入更大的系統中來簡化大型系統的設計。如果你扮演的是以下角色，更推薦你仔細研究<code>enve</code>能為你的組織帶來什麼助益：</p>
 
-<p>作為經營者，提供員工易上手
-作為開發者，輕鬆分享成品
-作為新語言，可採用enve作為現成的套件管理
-作為服務商，免費即可enve整合入系統</p>
+<ul>
+<li>作為團隊經理人，用<code>enve</code>提供一套團隊標準化的開發流程，以容易上手的工具來縮短對成員的培訓。</li>
+<li>作為社群開發者，用<code>enve</code>來擺脫中央集權的控制，沒有任何人能阻礙你與大家分享成果。</li>
+<li>作為語言發明家，用<code>enve</code>當現成套件管理處理繁雜事務，讓你能將語言與框架設計聚焦在特定領域。</li>
+<li>作為系統服務商，用<code>enve</code>能夠脫離專用平台與專用協定的約束，無需任何花費即可整合入自家系統。</li>
+</ul>
 
-<p>使用enve能夠脫離各種平台與協定的約束
-使用enve能夠擺脫中央集權的控制</p>
-
-<h2 id="INSTALL">INSTALL</h2>
-
-<p>enve不需要編譯，也不需要在系統中建立任何的永久檔案結構就能夠執行。這讓enve的安裝方式更彈性而且跨平台。</p>
-
-<pre><code>./bin/enve install enve
-</code></pre>
 
 <h2 id="GETTING-STARTED">GETTING STARTED</h2>
+
+<p>由於<code>enve</code>不需要編譯，也不需要在系統中建立任何的永久檔案結構就能夠執行。這讓<code>enve</code>不需要安裝即可執行。就算要安裝，安裝方式將會更彈性而且跨平台。</p>
+
+<p>如果你的系統上沒有<a href="https://git-scm.com/">Git</a>，我們提供一個簡易的腳本來讓你可以一次性使用enve。</p>
+
+<pre><code>curl http://enve.gamelab.tw/script/bootenve.sh | sh enve help
+</code></pre>
+
+<p>否則你可以從[我們的源碼庫][]用<span class="man-ref">git<span class="s">(1)</span></span>克隆<code>enve</code>的原始碼並且可直接使用</p>
+
+<pre><code>git clone https://github.com/ranlempow/enve
+./enve/bin/enve help
+</code></pre>
+
+<p>雖然不是必要的，但<code>enve</code>可以安裝自己到系統上，這樣之後可當作系統命令來執行</p>
+
+<pre><code>./enve/bin/enve install --host enve
+enve help
+</code></pre>
+
+<p>或是你可以把<code>enve</code>嵌入你正在開發的原始碼中，這樣其他人有了你的原始碼之後不需先下載也能執行<code>enve</code>。</p>
+
+<pre><code>./enve/bin/enve init --embed &lt;project_dir>
+&lt;project_dir>/.enve/bin/enve enter &lt;project_dir>
+</code></pre>
+
+<p>我們建議先參考文件中的<a class="man-ref" href="enveconcept.7.html">enveconcept<span class="s">(7)</span></a>來了解<code>enve</code>的基本概念。</p>
 
 <h2 id="CONTRIBUTION-">CONTRIBUTION 貢獻方式</h2>
 
