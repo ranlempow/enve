@@ -1,0 +1,57 @@
+#!/bin/sh
+
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# _install_config() {
+#     _path=$1
+#     template=$2
+#     if [ -e "$_path" ] ; then
+#         fast_readtext "$_path"
+#         existing_text=$text
+#         fast_readtext "$template"
+#         if [ "$text" != "$existing_text" ]; then
+#             mv "$_path" "$_path.bak.1"
+#             cp "$template" "$_path"
+#             _info "create $_path"
+#         fi
+#     else
+#         cp "$template" "$_path"
+#         _info "create $_path"
+#     fi
+# }
+
+
+install_terminal() {
+    # _install_config ~/.tmux.conf "$ZERO/../term/tmux.conf"
+    HOMEBREW_PREFIX=~/.local brew install tmux
+    if [ ! -e ~/.tmux.conf ]; then
+        echo "source-file $ZERO/../term/tmux.conf" > ~/.tmux.conf
+    fi
+    # _install_config ~/.inputrc "$ZERO/../term/inputrc"
+    # if [ -d ~/.config/kitty ] ; then
+    #     _install_config ~/.config/kitty/kitty.conf "$ZERO/../term/kitty.conf"
+    #     _install_config ~/.config/kitty/macos-launch-services-cmdline "$ZERO/../term/kitty.macos-launch-services-cmdline"
+    # fi
+}
+
+check_terminal() {
+    [ -s ~/.tmux.conf ] || {
+        _error "~/.tmux.conf not exist"
+        return 1
+    }
+    # [ -s ~/.inputrc ] || {
+    #     _error "~/.inputrc not exist"
+    #     return 1
+    # }
+}
+
+[ "${SCOPE:-}" = user ] || [ "${SCOPE:-}" = ws ] || {
+    echo "scope must be user or ws but '$SCOPE'" >&2
+    exit 1
+}
+
+${1}_terminal
+# terminal_config
+

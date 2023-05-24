@@ -1,0 +1,136 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
+
+settrace
+
+
+hook_on_history() {
+    # every project has his own history
+    # d=$(table_tail "SHELL")
+    fast_table_tail "enve\\.shell"
+    d=${TABLE_TAIL:-bash}
+    fast_basename
+    shell=$d
+
+    PRJ_NAME="$(table_tail "PRJ_NAME")"
+    hist_dir=$HOME/.config/shell-history
+    hist_file=$hist_dir/$PRJ_NAME.hist
+    if [ ! -e "$hist_dir" ]; then
+        mkdir -p "$hist_dir"
+    fi
+
+    out_code "sh" 'HISTFILE="'$hist_file'"'
+    out_code "sh" 'HISTSIZE=10000'
+    case $shell in
+        dash|ash|ksh|sh)
+            ;;
+        bash)
+                out_code "sh" 'HISTFILESIZE=20000'
+                out_code "sh" 'HISTIGNORE="&:[ ]*:exit"'
+                out_list ENVE_BASHOPTS "histappend"
+                out_list ENVE_BASHOPTS "histverify"
+            ;;
+        zsh)
+                out_code "sh" 'HISTFILESIZE=20000'
+                out_code "sh" 'HISTORY_IGNORE="(exit)"'
+                out_list ENVE_ZSHOPTS "inc_append_history"
+                out_list ENVE_ZSHOPTS "hist_ignore_dups"
+                out_list ENVE_ZSHOPTS "hist_ignore_space"
+                out_list ENVE_ZSHOPTS "hist_verify"
+                out_list ENVE_ZSHOPTS "-extended_history"
+            ;;
+    esac
+}
+
+
+resolve_tmux() {
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    tmux_mode=
+    fast_table_tail "shell\\.tmux"
+    tmux_mode=$TABLE_TAIL
+    if [ "${tmux_mode:-false}" = "false" ]; then
+        return
+    elif [ "$tmux_mode" = "true" ]; then
+        out_raw_fast "exec_method" "tmux" META
+    fi
+
+    fast_table_subset "shell\\.tmux\\..*"
+    if [ -n "$TABLE_SUBSET" ]; then
+        tmux_mode=1
+    fi
+
+
+    if [ -n "$tmux_mode" ]; then
+        out_var "cmd.tmux" "exec tmux -S \"\$TMUX_SOCKET\" \"\$@\""
+        PRJ_NAME="$(table_tail "PRJ_NAME")"
+        out_var TMUX_SOCKET "/private/tmp/tmux-501/$PRJ_NAME"
+    fi
+}
+
+resolve_terminal() {
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    hook_on_history
+
+    # detect git-prompt.sh location
+    fast_table_tail "ENV_ROOT"
+    ENV_ROOT=$TABLE_TAIL
+    fast_table_tail "HOMEBREW_PREFIX"
+    HOMEBREW_PREFIX=$TABLE_TAIL
+    # echo "!!! $ENV_ROOT" >&2
+
+    # TODO: depend on sysroots
+    GIT_PROMPT_SH=
+    if   [ -n "$ENV_ROOT" ] &&
+         [ -f "$ENV_ROOT/share/git/contrib/completion/git-prompt.sh" ]; then
+        GIT_PROMPT_SH=$ENV_ROOT/share/git/contrib/completion/git-prompt.sh
+    elif [ -n "$HOMEBREW_PREFIX" ] &&
+         [ -f "$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh" ]; then
+        GIT_PROMPT_SH=$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh
+    fi
+    if [ "$shell" != "zsh" ]; then
+        out_code sh "bind -f \"$ZERO/inputrc\""
+    fi
+    if [ "$shell" != "zsh" ] && [ -f "$GIT_PROMPT_SH" ]; then
+        # out_code sh ". \"$GIT_PROMPT_SH\""
+        # echo "$BASH_VERSION" >&2
+        # read -r x < /Users/pengweiqi/Desktop/projects/enve/test.code; printf %s\\n "$x" >&2
+        while IFS="" read -r line; do
+            # printf %s\\n "$line" >&2
+            out_code sh "$line"
+        done < "$ZERO/prompt.sh"
+    fi
+
+    # given_shell=$(table_tail "shell")
+    # if [ -n "$given_shell" ]; then
+    #     out_var SHELL "$given_shell"
+    # fi
+}
+
+main() {
+    info "IN $(basename $ZERO)/enve.module"
+    TABLE=$(cat "${configfile:--}")
+
+    # shellcheck disable=2043
+    for proc in tmux terminal; do
+        info "IN resolve_$proc"
+        if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
+            _error "error at resolve_$proc"
+            exit 1
+        fi
+        # info "OUT resolve_$proc"
+    done
+
+    info "OUT $(basename $ZERO)/enve.module"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+}
+
+# if [ "${TEST:-}" != "test" ]; then
+# fi
+

@@ -1,16 +1,17 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 # shellcheck source=libexec/enve/urlutils
 . "$ENVE_HOME/enve/urlutils"
+
 settrace
 
-. "$ZERO/gitrepourl.sh"
+# . "$ZERO/gitrepourl.sh"
 
 
 add_fpath() {
@@ -238,7 +239,8 @@ get_zsh(){
     # echo "$ZGEN_OH_MY_ZSH_REPO#$ZGEN_OH_MY_ZSH_BRANCH" >&2
     # echo xxxx
     # echo "$(gitrepourl "$ZGEN_OH_MY_ZSH_REPO#$ZGEN_OH_MY_ZSH_BRANCH")"
-    FASTRUN=true catalog=zsh fetch "$(gitrepourl "$ZGEN_OH_MY_ZSH_REPO#$ZGEN_OH_MY_ZSH_BRANCH")" %cache dir
+    FASTRUN=true catalog=zsh fetch \
+        "$(gitrepourl "$ZGEN_OH_MY_ZSH_REPO#$ZGEN_OH_MY_ZSH_BRANCH")" %cache dir
     echo "$dest"
 }
 
@@ -339,6 +341,30 @@ EOF
     out_code zsh '   compinit -C '"${ZGEN_COMPINIT_DIR_FLAG}"
     # fi
 
+    # reference: https://github.com/ThiefMaster/zsh-config/blob/master/zshrc.d/completion.zsh
+
+    # Smart matching of dashed values, e.g. f-b matching foo-bar
+    out_code zsh "zstyle ':completion:*' matcher-list 'r:|[._-]=* r:|=*'"
+
+    # Group results by category
+    out_code zsh "zstyle ':completion:*' group-name ''"
+
+    # Keep directories and files separated
+    out_code zsh "zstyle ':completion:*' list-dirs-first true"
+
+    # Pretty messages during pagination
+    out_code zsh "zstyle ':completion:*' list-prompt '%SAt %p: Hit TAB for more, or the character to insert%s'"
+    out_code zsh "zstyle ':completion:*' select-prompt '%SScrolling active: current selection at %p%s'"
+
+    # Nicer format for completion messages
+    out_code zsh "zstyle ':completion:*:messages'     format '%F{green}[%f %F{red}%U%B%d%b%u%f %F{green}]%f'"
+    out_code zsh "zstyle ':completion:*:descriptions' format '%F{green}[%f %F{010}%U%B%d%b%u%f %F{green}]%f'"
+    out_code zsh "zstyle ':completion:*:corrections'  format '%U%F{green}%d (errors: %e)%f%u'"
+    out_code zsh "zstyle ':completion:*:warnings'     format '%F{202}%BSorry, no matches for: %F{214}%d%b'"
+
+    out_code zsh "zstyle ':completion:*:default' list-colors \${(s.:.)LS_COLORS}"
+
+    out_code zsh "unsetopt LIST_BEEP"
 
     out_code zsh "# Alt+Left/Right to move by whole words."
     out_code zsh "bindkey '^[[1;3C' forward-word"
@@ -361,13 +387,16 @@ EOF
 
     out_code zsh 'fi'
 
-    out_var CONDA_DEFAULT_ENV "$(table_tail "PRJ_NAME")"
+    PRJ_NAME=$(table_tail "PRJ_NAME")
+    # 這樣才不會先顯示VIRTUAL_ENV，而是顯示CONDA_DEFAULT_ENV當作title
+    out_var CONDA_DEFAULT_ENV "$PRJ_NAME"
+    out_var VIRTUAL_ENV_DISABLE_PROMPT 1
 }
 
 main() {
     info "IN $(basename $ZERO)/enve.module"
     TABLE=$(cat)
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     gencode
     info "OUT $(basename $ZERO)/enve.module"
 }
