@@ -1,269 +1,496 @@
 #!/bin/sh
+#
+# SYNOPSIS
+# enve <command> [-DhQvV] [--debug=<debug>]
+#      [--verbose-level=<level>] [--progress=<progress>]
+#      [--color=<color>] [--logfile=<file>]
+#      [--logfile-level=<filelevel>] [args]
+#
+
 
 # shellcheck shell=sh disable=2086 disable=2031
 true
-
-
-# __NAME__=enve
-# __VERSION__=0.1.0
-# __REPO__=https://github.com/ranlempow/enve.git
-
-if [ "${PATH##*/sbin}" = "$PATH" ]; then
-    # for /sbin/md5
-    PATH=$PATH:/sbin
-fi
-
 
 if [ -z "${ENVE_HOME:-}" ]; then
     echo "fatal: ENVE_HOME not set." >&2
     exit 1
 fi
-ENVE_PROGRAM=enve/enve
+# ENVE_PROGRAM=enve/enve
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
-settrace
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
 # shellcheck source=libexec/enve/bootlib
-. "$ENVE_HOME/enve/bootlib"
-basic_require_ensure
-
-if [ -n "${ENVE_REQ_VERSION:-}" ] || [ -n "${ENVE_REQ_SHELL:-}" ]; then
-    # shellcheck source=libexec/enve/reexecutils
-    . "$ENVE_HOME/enve/reexecutils"
-    reexec_if_req_not_match "${ENVE_REQ_VERSION:-}" "${ENVE_REQ_SHELL:-}" "$@"
-fi
-
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# . "$ENVE_HOME/enve/bootlib"
+# basic_require_ensure
 
 
-
-print_help() {
-    prog="$(basename "$0")"
-    echo "Usage: $prog [COMMON_OPTIONS] <TARGET>"
-    echo "Environment encapsulation tool"
-    echo ""
-    echo "Common Options:"
-    echo "    -f, --file FILE         parse config from the file"
-    echo "    -i, --include FILE      include config from the file"
-    echo "    -c, --config KEY=VALUE  append a key-value pair to config"
-    echo "    -r, --role ROLE         add a role to the roles set"
-    #echo "    -p, --project <path>  default project is PWD, specfice another project folder instead"
-    echo
-    echo "Target:"
-    #echo "    noop                  not to promote any actions"
-    echo "    shell                   enter a interactive shell for the environment"
-    echo "    run                     run command in the environment"
-    echo "    run-terminal            open a terminal and run command"
-    echo "    terminal                open a terminal for the environment"
-    echo "    boot                    enter a default shell environment"
-}
-
-
-# ENVE_PRECONFIG=
-# ENVE_CONFIG=
-# ENVE_ROLES=
-
-ENVE_CONFIG_TEXT=${ENVE_PRECONFIG:+${ENVE_PRECONFIG%$newl}$newl}
-
-# echo "args: $@" >&2
-cmd=
-
-_main_profile=
-assign_main_profile() {
-    if [ -n "$_main_profile" ]; then
-        die "cannot assign more then one main profile"
+min_verbose() {
+    _loglevel_form_symbol "$1"
+    max_loglevel=$loglevel
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -gt "$max_loglevel" ]; then
+        loglevel=$max_loglevel
     fi
-    _main_profile=$1
-    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=${_main_profile}$newl"
-    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}${ENVE_CONFIG:+${ENVE_CONFIG%$newl}$newl}"
+    _loglevel_to_symbol
+}
+
+min_logfile_verbose() {
+    _loglevel_form_symbol "$1"
+    max_loglevel=$loglevel
+    _loglevel_form_symbol "$ENVE_FILE_VERBOSE"
+    if [ "$loglevel" -gt "$max_loglevel" ]; then
+        loglevel=$max_loglevel
+    fi
+    x=$ENVE_VERBOSE
+    _loglevel_to_symbol
+    ENVE_FILE_VERBOSE=$ENVE_VERBOSE
+    ENVE_VERBOSE=$x
 }
 
 
-while [ -n "${1:-}" ]; do
-    case $1 in
-        -f|--file)
-                case ${2:-} in -*|'')
-                    die "you must supply a file path after $1" ;; esac
-                # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$2"
-                assign_main_profile "$2"
-                shift 2
-            ;;
-        -i|--include)
-                case ${2:-} in -*|'')
-                    die "you must supply a file path after $1" ;; esac
-                # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$2"
-                ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}include=$2$newl"
-                shift 2
-            ;;
-        -c|--config)
-                case ${2:-} in
-                    -*)
-                            die "you must supply a vaild key-value pair after $1"
-                        ;;
-                    +*=*)
-                            ctype=LIST
-                        ;;
-                    ?*=*)
-                            ctype=VAR
-                        ;;
-                    *)
-                            die "you must supply a vaild key-value pair after $1"
-                        ;;
-                esac
-                # key="${2%%"="*}"
-                # value="${2#*"="}"
-                ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}$2$newl"
-                # ENVE_CONFIG="$(  printf "%s${ENVE_CONFIG:+\n}${ctype}\\t%s\\t%s" \
-                #                         "${ENVE_CONFIG:-}" "$key" "$value")"
-                shift 2
-            ;;
-        -r|--role)
-                case ${2:-} in -*|'')
-                    die "you must supply a role after $1" ;; esac
-                ENVE_ROLES="${ENVE_ROLES:+$ENVE_ROLES,}$2"
-                shift 2
-            ;;
-        -p|--procedure)
-            ;;
-        -t|--target)
-                case ${2:-} in -*|'')
-                    die "you must supply a target name after $1" ;; esac
-                cmd=$2
-                shift 2
-            ;;
-        -*)
-                die "unknown option: $1"
-            ;;
-        noop|run|launchrun|test)
-                cmd=$1
-                shift
-                break
-            ;;
-        shell|terminal|launch)
-                cmd=$1
-                shift
-                if [ -n "${1:-}" ]; then
-                    # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
-                    # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=$1$newl"
-                    assign_main_profile "$1"
-                    shift
-                fi
-                break
-            ;;
-        boot)
-                shift
-                if [ -n "${1:-}" ]; then
-                    subtype=$1
-                    shift
-                fi
+less_verbose() {
+    _loglevel_form_symbol "$1"
+    base_loglevel=$loglevel
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -lt "$((base_loglevel - 1))" ]; then
+        loglevel=$base_loglevel
+    else
+        loglevel=$((loglevel+1))
+    fi
+    _loglevel_to_symbol
+    # echo "$ENVE_VERBOSE" >&2
+}
 
-                # ENVE_PROFILE="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
-                _profile="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
-                # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=${_profile}$newl"
-                assign_main_profile "$_profile"
-                unset _profile
+more_verbose() {
+    # echo "more_verbose1: $ENVE_VERBOSE" >&2
+    _loglevel_form_symbol "$1"
+    base_loglevel=$loglevel
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -gt "$((base_loglevel + 1))" ]; then
+        loglevel=$base_loglevel
+    else
+        loglevel=$((loglevel-1))
+    fi
+    _loglevel_to_symbol
+    # echo "more_verbose2: $ENVE_VERBOSE" >&2
+}
 
-                if [ "${1:-}" = "-l" ]; then    # kitty.config.shell compatiable
-                    shift
-                fi
-                if [ "${1:-}" = "-c" ]; then    # kitty.config.shell compatiable
-                    cmd=run
-                    shift
-                else
-                    cmd=shell
-                fi
-                break
+
+_handle_debug_option() {
+    debug_option=",${ENVE_DEBUG:+$ENVE_DEBUG,}"
+    if [ -n "$1" ] && [ -n "${debug_option##*,$1,*}" ]; then
+        ENVE_DEBUG="${debug_option#,}$1"
+        _enable_debug=${_enable_debug:-DEBUG}
+        if [ "$1" = "trace-all" ]; then
+            _enable_debug=TRACE
+        elif [ "$1" = "timing" ]; then
+            ENVE_TIME_PROFILE=${ENVE_TIME_PROFILE:-1}
+        elif [ "$1" = "none" ]; then
+            _enable_debug=
+            ENVE_DEBUG=none
+        fi
+    fi
+}
+
+# pre-option-process
+
+_ENVE_VERBOSE=${ENVE_VERBOSE:-}
+_ENVE_PROGRESS=${ENVE_PROGRESS:-}
+_ENVE_DEBUG=${ENVE_DEBUG:-}
+_ENVE_NOCOLOR=${ENVE_NOCOLOR:-}
+_ENVE_LOGFILE=${ENVE_LOGFILE:-}
+_ENVE_LOGFILE_VERBOSE=${ENVE_LOGFILE_VERBOSE:-}
+
+ENVE_VERBOSE=
+ENVE_PROGRESS=
+ENVE_NOCOLOR=
+ENVE_LOGFILE=
+ENVE_LOGFILE_VERBOSE=
+ENVE_DEBUG=
+# ENVE_TIME_PROFILE=
+
+_found_command=
+_enable_debug=
+_option_start=
+_verbose_assign_type=
+for opt in "$@"; do
+    if [ -z "$_option_start" ]; then
+        set --
+        _option_start=1
+    fi
+    case $opt in
+        --debug=*)
+                opt=${opt#--debug=}
+                _handle_debug_option "$opt"
             ;;
-        auto)
-                cmd=auto
-                shift
-                # if [ -n "${1:-}" ]; then
-                #     # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
-                #     # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=$1$newl"
-                #     assign_main_profile "$1"
-                #     shift
+        -D|-DD|-DDD)
+                while [ "${opt}" != "-" ]; do
+                    if [ -z "$_verbose_assign_type" ]; then
+                        _verbose_assign_type=-D
+                        ENVE_VERBOSE=DEBUG
+                    elif [ "$_verbose_assign_type" = "-D" ]; then
+                        more_verbose DEBUG
+                    else
+                        die "cannot combine option '-D' and '$_verbose_assign_type'"
+                    fi
+                    opt=${opt%D}
+                done
                 # fi
             ;;
-        *)
-                if [ "${1##*/}" != "$1" ] || [ "${1##*.}" != "$1" ]; then
-                    cmd=auto
-                    # ENVE_PROFILE="${ENVE_PROFILE:-}${ENVE_PROFILE:+,}$1"
-                    # ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}inherit=$1$newl"
-                    assign_main_profile "$1"
-                    shift
+        --verbose-level=*)
+                opt=${opt#--verbose-level=}
+                if [ -z "$_verbose_assign_type" ]; then
+                    _verbose_assign_type=--verbose-level
+                    ENVE_VERBOSE=$opt
                 else
-                    _error "unknown command: $1"
-                    print_help >&2
-                    die
+                    die "cannot combine option '--verbose-level' and '$_verbose_assign_type'"
                 fi
             ;;
-
+        -V|-VV|-VVV|-VVVV)
+                while [ "${opt}" != "-" ]; do
+                    if [ -z "$_verbose_assign_type" ]; then
+                        _verbose_assign_type=-V
+                        ENVE_VERBOSE=NOTICE
+                    elif [ "$_verbose_assign_type" = "-V" ]; then
+                        more_verbose NOTICE
+                    else
+                        die "cannot combine option '-V' and '$_verbose_assign_type'"
+                    fi
+                    opt=${opt%V}
+                done
+            ;;
+        -Q|-QQ|-QQQ)
+                while [ "${opt}" != "-" ]; do
+                    if [ -z "$_verbose_assign_type" ]; then
+                        _verbose_assign_type=-Q
+                        ENVE_VERBOSE=WARNING
+                    elif [ "$_verbose_assign_type" = "-Q" ]; then
+                        less_verbose WARNING
+                    else
+                        die "cannot combine option '-Q' and '$_verbose_assign_type'"
+                    fi
+                    opt=${opt%Q}
+                done
+            ;;
+        --progress|--progress=*)
+                opt=${opt#--progress=}
+                case $opt in
+                    --progress|always)  ENVE_PROGRESS=1 ;;
+                    never)              ENVE_PROGRESS=0 ;;
+                    auto)               ENVE_PROGRESS=auto ;;
+                    *)                  die "unknown --progress=$opt" ;;
+                esac
+                # ENVE_PROGRESS=1
+            ;;
+        # --no-progress)
+        #         ENVE_PROGRESS=0
+        #     ;;
+        --color|--color=*)
+                opt=${opt#--color=}
+                case $opt in
+                    --color|always)     ENVE_NOCOLOR=0 ;;
+                    never)              ENVE_NOCOLOR=1 ;;
+                    auto)               ENVE_NOCOLOR=auto ;;
+                    *)                  die "unknown --color=$opt" ;;
+                esac
+            ;;
+        # --no-color)
+        #         ENVE_NOCOLOR=1
+        #     ;;
+        --logfile=*)
+                opt=${opt#--logfile=}
+                ENVE_LOGFILE=$opt
+            ;;
+        --logfile-level=*)
+                opt=${opt#--logfile-level=}
+                ENVE_LOGFILE_VERBOSE=$opt
+            ;;
+        --pause-on-error)
+                PRESS_ENTER_TO_EXIT_ERRORTRACE=1
+            ;;
+        -v|--version)
+                print_enve_version >&2
+                exit 1
+            ;;
+        -h|--help)
+                if [ -z "$_found_command" ]; then
+                    print_enve_help >&2
+                    exit 0
+                    # exit 1
+                else
+                    # print_program_help "$_found_command" >&2
+                    # exit 1
+                    set -- "$@" "$opt"
+                fi
+            ;;
+        -*)
+                if [ -z "$_found_command" ]; then
+                    error "unknown option $opt"
+                    print_enve_help >&2
+                    quiet_exit 1
+                fi
+                set -- "$@" "$opt"
+            ;;
+        *)
+                if [ -z "$_found_command" ]; then
+                    _found_command=$opt
+                fi
+                set -- "$@" "$opt"
+            ;;
     esac
 done
 
 
-ENVE_ROLES=${ENVE_ROLES:-}
+
+# if [ -z "$ENVE_PROGRESS" ]; then
+#     if [ -n "$_ENVE_PROGRESS" ]; then
+#         ENVE_PROGRESS=${_ENVE_PROGRESS}
+#     else
+#         ENVE_PROGRAM
+#     # elif [ "$_verbose_assign_type" = "-D" ] || [ "$_verbose_assign_type" = "-V" ] ||
+#     #      [ "$_verbose_assign_type" = "-Q" ] || [ -n "$_enable_debug" ]; then
+#     #     ENVE_PROGRESS=0
+#     # elif [ -t 2 ]; then
+#     #     ENVE_PROGRESS=1
+#     # else
+#     #     ENVE_PROGRESS=0
+#     # fi
+# fi
+ENVE_PROGRESS=${ENVE_PROGRESS:-${_ENVE_PROGRESS:-auto}}
+if [ "$ENVE_PROGRESS" = "auto" ]; then
+    if [ "$_verbose_assign_type" = "-D" ] || [ "$_verbose_assign_type" = "-V" ] || \
+       [ "$_verbose_assign_type" = "-Q" ] || [ -n "$_enable_debug" ] || \
+       [ ! -t 2 ]; then
+        ENVE_PROGRESS=0
+    else
+        ENVE_PROGRESS=1
+    fi
+fi
 
 
-is_from_gui() {
-    ppp_sec=
-    pp_sec=
 
-    # shellcheck disable=2034
-    while IFS=' :' read -r week month day hour min sec year; do
-        if [ -z "$ppp_sec" ]; then
-            ppp_sec=$(( ${day##0} * 10000 + ${hour##0} * 3600 + ${min##0} * 60 + ${sec##0} ))
+# if [ -z "$ENVE_NOCOLOR" ]; then
+#     if [ -n "$_ENVE_NOCOLOR" ]; then
+#         ENVE_NOCOLOR=${_ENVE_NOCOLOR}
+#     else
+#         ENVE_NOCOLOR=auto
+#     fi
+# fi
+ENVE_NOCOLOR=${ENVE_NOCOLOR:-${_ENVE_NOCOLOR:-auto}}
+if [ "$ENVE_NOCOLOR" = "auto" ]; then
+    if [ -t 2 ]; then
+        ENVE_NOCOLOR=0
+    else
+        ENVE_NOCOLOR=1
+    fi
+fi
+
+ENVE_SYSLOG=${ENVE_SYSLOG:-${_ENVE_SYSLOG:-auto}}
+if [ "$ENVE_SYSLOG" = "auto" ]; then
+    if [ -t 2 ]; then
+        ENVE_SYSLOG=0
+    else
+        ENVE_SYSLOG=1
+    fi
+fi
+
+
+if [ -n "$_enable_debug" ]; then
+    min_verbose "$_enable_debug"
+    min_logfile_verbose "$_enable_debug"
+else
+    ENVE_VERBOSE=${ENVE_VERBOSE:-${_ENVE_VERBOSE:-INFO}}
+    ENVE_LOGFILE_VERBOSE=${ENVE_LOGFILE_VERBOSE:-${_ENVE_LOGFILE_VERBOSE:-NOTICE}}
+fi
+
+ENVE_LOGFILE=${ENVE_LOGFILE:-${_ENVE_LOGFILE}}
+ENVE_DEBUG=${ENVE_DEBUG:-${_ENVE_DEBUG}}
+
+# echo "ENVE_PROGRESS $ENVE_PROGRESS"
+# echo "ENVE_VERBOSE $ENVE_VERBOSE"
+# echo "ENVE_NOCOLOR $ENVE_NOCOLOR"
+
+unset _found_command _enable_debug _option_start _verbose_assign_type
+
+
+# if [ ! -t 2 ]; then
+#     ENVE_NOCOLOR=1
+# else
+#     ENVE_NOCOLOR=
+# fi
+
+
+# TODO:
+# if [ -n "${ENVE_REQ_VERSION:-}" ] || [ -n "${ENVE_REQ_SHELL:-}" ]; then
+#     # shellcheck source=libexec/enve/reexecutils
+#     . "$ENVE_HOME/enve/reexecutils"
+#     reexec_if_req_not_match "${ENVE_REQ_VERSION:-}" "${ENVE_REQ_SHELL:-}" "$@"
+# fi
+
+
+_emit_compline() {
+    opt_help=${opt_help%%. *}
+    if [ ${#opt_help} -ge 60 ]; then
+        opt_help=${opt_help%%, *}
+    fi
+    printf "%s:%s\\n" "$opt_last" "$opt_help"
+}
+
+_parse_help_to_completions() {
+    opt_last=
+    opt_indent=
+    opt_help=
+    while IFS="$newl" read -r line; do
+        origin_line=$line
+        opt=
+        space=${line%%[![:space:]]*}
+        line=${line#"$space"}
+        indent=$space
+        # echo "${#space},${#opt_indent}"
+        if [ -n "$opt_indent" ] && [ ${#space} -ge ${#opt_indent} ]; then
+            :
         else
-            pp_sec=$(( ${day##0} * 10000 + ${hour##0} * 3600 + ${min##0} * 60 + ${sec##0} ))
+            while [ "${line#-*  }" != "$line" ]; do
+                junk=${line#-*  }
+                prefix=${line%"$junk"}
+                _opt=${prefix%  }
+                _opt=${_opt%,}
+                opt="${opt:+$opt, }$_opt"
+                line=${junk}
+                space=${line%%[![:space:]]*}
+                line=${line#"$space"}
+                indent="$indent$space"
+                while [ -n "$prefix" ]; do
+                    indent="$indent "
+                    prefix=${prefix%?}
+                done
+            done
+        fi
+
+        if [ -n "$opt" ]; then
+            if [ -n "$opt_last" ]; then
+                _emit_compline
+            fi
+            opt_indent=$indent
+            opt_help=$line
+            opt_last=$opt
+        elif [ -n "$opt_last" ] && [ "${origin_line#"$opt_indent"}" != "$origin_line" ]; then
+            opt_help="${opt_help} ${origin_line#"$opt_indent"}"
         fi
     done <<EOF
-$(LANG=C ps -p $PPID,$$ -o lstart=)
+$help
 EOF
-
-    if [ "$((pp_sec - ppp_sec))" -le 1 ] ; then
-        return 0
-    else
-        return 1
+    if [ -n "$opt_last" ]; then
+        _emit_compline
     fi
+
+}
+
+help_to_completions_zsh() {
+    :
 }
 
 
-case $cmd in
-    noop)
-        ;;
-    auto)
-        if [ $# -eq 0 ]; then
-            if is_from_gui; then
-                PRESS_ENTER_TO_EXIT_ERRORTRACE=1 \
-                enve_fire terminal
+# help=$(grep --help 2>&1)
+# _parse_help_to_completions
+# exit 1
+
+if [ -z "${1:-}" ]; then
+    print_enve_help >&2
+    quiet_exit 1
+elif [ "${1%${1#?}}" = "-" ]; then
+    die "unknown option: $1"
+else
+    ENVE_PROGRAM="$1"
+    shift 1
+
+    if [ "$ENVE_PROGRAM" = "commands" ]; then
+        # --escape --split=":"
+        list_enve_program
+        IFS="$newl"
+        for _path in $enve_programs; do
+            parse_enve_program "$_path"
+            prog=${_path##*/enve-}
+            if [ "${1:-}" = "--escape" ]; then
+                printf "'%s:%s'\\n" "$prog" "${summary:-}"
             else
-                enve_fire shell
+                printf "    %-12s-- %s\\n" "$prog" "${summary:-}"
             fi
-        else
-            enve_fire run "$@"
+        done
+        # IFS=:
+        # for prog in ${haved_programs#:}; do
+        #     echo "$prog"
+        # done
+    elif [ "$ENVE_PROGRAM" = "help" ]; then
+        if [ -n "${1:-}" ]; then
+            if print_program_help "$1" >&2; then
+                quiet_exit 1
+            else
+                echo "error: command enve-'$1' not found" >&2
+                echo >&2
+                print_enve_help >&2
+                exit 1
+            fi
         fi
-        ;;
-    run)
-            enve_fire run "$@"
-        ;;
-    shell)
-            enve_fire shell
-        ;;
-    test)
-            enve_fire test
-        ;;
-    terminal)
-            enve_fire terminal
-        ;;
-    '')
-            print_help >&2
-            die
-        ;;
-esac
-
-
+        print_enve_help >&2
+        quiet_exit 1
+    elif [ "$ENVE_PROGRAM" = "completions" ]; then
+        if [ -n "${2:-}" ]; then
+            list_enve_program
+            IFS="$newl"
+            for path in $enve_programs; do
+                prog=${path##*/enve-}
+                if [ "$prog" = "$2" ]; then
+                    parse_enve_program "$path"
+                    if [ -n "${completions:-}" ]; then
+                        printf %s\\n "$completions"
+                        exit 0
+                    elif [ -n "${help:-}" ]; then
+                        printf %s\\n "$help"
+                        exit 0
+                    elif [ -n "${usage:-}" ]; then
+                        printf %s\\n "$usage"
+                        exit 0
+                    fi
+                fi
+            done
+        fi
+        exit 1
+    # elif [ "$ENVE_PROGRAM" = "boot" ]; then
+    #     ENVE_PROGRAM=fire
+    #     ARGZERO=$(search_enve_program "enve-$ENVE_PROGRAM")
+    #     ARGZERO="" . "$ARGZERO" boot "$@"
+    elif [ "${ENVE_PROGRAM%.ini}" != "$ENVE_PROGRAM" ]; then
+        set -- "$ENVE_PROGRAM" "$@"
+        ENVE_PROGRAM=fire
+    elif ARGZERO=$(search_enve_program "enve-$ENVE_PROGRAM"); then
+        :
+    else
+        die "no such enve-* command: $ENVE_PROGRAM"
+    fi
+    _noexec=
+    cnt=0
+    while read -r line; do
+        if [ $cnt -gt 200 ]; then
+            break
+        elif [ "$line" = "# __noexec__=true" ]; then
+            _noexec=1
+            break
+        fi
+        cnt=$((cnt+1))
+    done < "$ARGZERO"
+    if [ -n "$_noexec" ]; then
+        unset line cnt _noexec
+        ARGZERO="" . "$ARGZERO" "$@"
+    else
+        unset line cnt _noexec
+        ARGZERO="" \
+        ENVE_PROGRAM=$ENVE_PROGRAM \
+        ENVE_HOME=$ENVE_HOME \
+            _exec_with_argzero "$ARGZERO" "$@"
+    fi
+fi
 
 
 

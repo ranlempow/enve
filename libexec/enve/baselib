@@ -1,0 +1,1958 @@
+#!/bin/sh
+
+if [ -n "${HAVE_ENVE_BASELIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_BASELIB=1
+
+
+# TODO: zsh compitable
+if [ -n "${ZSH_VERSION:-}" ]; then
+    set -o shwordsplit
+    setopt +o nomatch
+    setopt glob_subst
+fi
+
+if [ -n "${BASH_VERSION:-}" ]; then
+    # cant run in bash posix mode, becurse bash posix mode is not posix compatible.
+    #
+    # See https://www.gnu.org/software/bash/manual/html_node/Bash-POSIX-Mode.html
+    # 34.  Assignment statements preceding shell function calls persist in
+    #      the shell environment after the function returns, as if a POSIX
+    #      special builtin command had been executed.
+    set +o posix
+fi
+
+
+
+: '
+# extra command list
+
+/bin/sh
+ls
+find
+grep
+sed
+env
+md5|md5sum|cksum
+date
+ls
+mkfifo|sleep
+cp
+mv
+rm
+mkdir
+touch
+stat
+ln?
+cat
+
++tput
++id
++/usr/bin/sudo
++/usr/sbin/chroot
+*ps
+*uname
+*tee
+*awk
+'
+
+
+tab="$(printf '\tx')"
+tab="${tab%x}"
+feed="$(printf '\fx')"
+feed="${feed%x}"
+newl="$(printf '\nx')"
+newl="${newl%x}"
+vtab="$(printf '\vx')"
+vtab="${vtab%x}"
+cr="$(printf '\rx')"
+cr="${cr%x}"
+
+hascmd() {
+    eval "hascmd_skip=\${ENVE_SKIPCMD_${1}:-}"
+    if [ -n "$hascmd_skip" ]; then
+        unset hascmd_skip
+        return 1
+    else
+        unset hascmd_skip
+        command -v "$1" >/dev/null
+    fi
+}
+
+
+if hascmd md5sum; then
+    :
+elif hascmd md5; then
+    # BSD
+    md5sum() {
+        # if [ $# -eq 0 ] || [ "${1:-}" = "-" ]; then
+        #     printf "%s -\\n" "$(md5 -r)"
+        # else
+        #     md5 -r "$@"
+        # fi
+        md5 -r "$@" | while read -r _hash _path; do
+            printf "%s  %s\\n" "$_hash" "${_path:--}"
+        done
+    }
+elif hascmd cksum; then
+    # fallback to cksum
+    md5sum() {
+        cksum "$@" | while read -r _hash _size _path; do
+            printf "%x  %s\\n" "$_hash" "${_path:--}"
+        done
+    }
+else
+    echo "error: not any checksum method availiable on system" >&2
+    exit 1
+fi
+
+
+# refer to: https://gist.github.com/markusfisch/2648733
+# _od() {
+#     local C O=0 W=16
+#     while IFS= read -r -d '' -n 1 C
+#     do
+#         (( O%W )) || printf '%07o' $O
+#         printf ' %02x' "'$C"
+#         (( ++O%W )) || echo
+#     done
+#     echo
+# }
+# if ! hascmd od; then
+#     od() { _od "$@"; }
+# fi
+
+
+_reverse_text() {
+    while [ -n "$tac_text" ]; do
+        line=${tac_text%$newl}
+        if [ ${#line} -eq "${#tac_text}" ]; then
+            line=${tac_text##*$newl}
+            tac_text=${tac_text%"$line"}
+        else
+            line="${line##*$newl}$newl"
+            tac_text=${tac_text%"$line"}
+        fi
+        printf %s "$line"
+    done
+    unset line tac_text text
+}
+
+_tac() {
+    tac_text=
+    if [ $# -eq 0 ]; then
+        fast_readtext
+        tac_text="$text"
+        _reverse_text
+    else
+        for _file in "$@"; do
+            fast_readtext "$_file"
+            tac_text="$text"
+            _reverse_text
+        done
+    fi
+
+}
+if ! hascmd tac; then
+    # BSD
+    # tac() {
+    #     tail -r
+    # }
+    tac() { _tac "$@"; }
+fi
+_tee() {
+    fast_readtext -
+    if [ "$1" = "-a" ]; then
+        shift
+        printf %s "$text" >> "$1"
+    else
+        printf %s "$text" > "$1"
+    fi
+    printf %s "$text"
+    unset text
+}
+if ! hascmd tee; then
+    tee() { _tee "$@"; }
+fi
+
+# TODO: cat太重要了, 尤其是對fifo的nonblock模式
+#       因此不能被隨便取代
+# _cat() {
+#     for _file in "$@"; do
+#         # printf "$_file\\n" >&2
+#         fast_readtext "$_file"
+#         printf %s "$text"
+#     done
+#     unset _file text
+# }
+# if ! hascmd cat; then
+#     cat() { _cat "$@"; }
+# fi
+
+
+
+# in_busybox_shell() {
+#     [ "$SHELL" = "/bin/ash" ] && [ "$(ps -o pid,comm | awk '$1=='"$$"'{ print $2 }' | tail -n 1)" = "busybox" ]
+# }
+
+# if in_busybox_shell; then
+#     # busybox shell
+#     :
+# fi
+
+_os_by_ostype() {
+    case $OSTYPE in
+        linux*)     ENVE_CACHED_OS=Linux;;
+        solaris*)   ENVE_CACHED_OS=Solaris;;
+        darwin9*)   ENVE_CACHED_OS=iOS;;
+        darwin*)    ENVE_CACHED_OS=Darwin;;
+        cygwin*)    ENVE_CACHED_OS=CYGWIN;;
+        msys)
+                case ${MINGW_PACKAGE_PREFIX:-} in
+                    mingw-w64-x86_64) ENVE_CACHED_OS=MINGW64;;
+                    mingw-w64-i686)   ENVE_CACHED_OS=MINGW32;;
+                    *)                ENVE_CACHED_OS=MSYS;;
+                esac
+            ;;
+        FreeBSD*)   ENVE_CACHED_OS=FreeBSD;;
+        openbsd*)   ENVE_CACHED_OS=OpenBSD;;
+        netbsd)     ENVE_CACHED_OS=NetBSD;;
+        *)          ENVE_CACHED_OS=Unknown;;
+    esac
+}
+
+fast_get_system() {
+    if [ -z "${ENVE_CACHED_OS:-}" ]; then
+        if [ -n "${OSTYPE:-}" ]; then
+            # reference: https://github.com/dylanaraps/neofetch/issues/433
+            _os_by_ostype
+        elif hascmd bash && OSTYPE=$(bash -c "set -eu; echo \$OSTYPE"); then
+            _os_by_ostype
+        elif hascmd zsh && OSTYPE=$(zsh -c "set -eu; echo \$OSTYPE"); then
+            _os_by_ostype
+        elif [ -f /proc/version ]; _version=$(cat /proc/version); then
+            case ${_version} in
+                [Ll]inux)   ENVE_CACHED_OS=Linux;;
+                *)          ENVE_CACHED_OS=Unknown;;
+            esac
+        elif hascmd uname; then
+            case $(command uname -s) in
+                Linux*)     ENVE_CACHED_OS=Linux;;
+                FreeBSD*)   ENVE_CACHED_OS=FreeBSD;;
+                OpenBSD*)   ENVE_CACHED_OS=OpenBSD;;
+                Darwin*)    ENVE_CACHED_OS=Darwin;;
+                CYGWIN*)    ENVE_CACHED_OS=CYGWIN;;
+                MSYS*)      ENVE_CACHED_OS=MSYS;;
+                MINGW32*)   ENVE_CACHED_OS=MINGW32;;
+                MINGW64*)   ENVE_CACHED_OS=MINGW64;;
+                *)          ENVE_CACHED_OS=Unknown;;
+            esac
+        else
+            ENVE_CACHED_OS=Unknown
+        fi
+        export ENVE_CACHED_OS
+    fi
+}
+
+# _uname() {
+#     fast_get_system
+#     echo "$ENVE_CACHED_OS"
+# }
+
+# if ! hascmd uname; then
+
+# fi
+
+replace() {
+    if [ -z "$1" ]; then
+        return 0
+    fi
+
+    count=${3:-}
+    i=0
+    v=
+    while [ "$s" != "${s%%"$1"*}" ]; do
+        v="$v${s%%"$1"*}$2"
+        s="${s#*"$1"}"
+        i=$((i+1))
+        if [ -n "$count" ] && [ "$count" -eq "$i" ]; then
+            break
+        fi
+    done
+    s="$v$s"
+    unset count i v
+}
+
+
+hashstr() {
+    # data="$(cat)"
+    # echo "$data" | md5sum "$@" | while read -r sha __file; do
+    # shellcheck disable=2034
+    # md5sum "$@" | while read -r hashvalue __file; do
+    # echo "$PATH" >&2
+    # which md5sum >&2
+    result=$(md5sum "$@")
+    hashvalue=
+
+    # shellcheck disable=2034
+    while read -r _hashvalue __file; do
+        hashvalue=${_hashvalue}
+        echo "$hashvalue"
+        unset _hashvalue __file
+    done <<EOF
+$result
+EOF
+
+}
+
+
+# _verify_ssh_live() {
+#     IFS=':' read -r method hash keyexp path sshtype pub < $mainkey_live_path
+#     if [ ! -e "$path" ]; then
+#         _need_ssh_add=1
+#         return
+#     fi
+#     IFS=' ' read -r curr_sshtype curr_pub curr_comment < "$path"
+#     if [ "$curr_sshtype" != "$sshtype" ] ||
+#        [ "$curr_pub" != "$pub" ]; then
+#         _need_ssh_add=1
+#         return
+#     fi
+#     fast_timestamp_ms
+#     if [ "$ts" -gt "$keyexp" ]; then
+#         _need_ssh_add=1
+#         return
+#     fi
+#     _need_ssh_add=
+# }
+
+
+# ensure_main_sshkey() {
+#     timeout=$((60*60*6))
+#     _need_ssh_add=
+#     # if [ -z "${ENVE_MAIN_KEY:-}" ] || [ ! -e "$ENVE_MAIN_KEY" ]; then
+#     #     _need_ssh_add=1
+#     # else
+#     #     IFS=':' read -r method hash keyexp < $ENVE_MAIN_KEY
+#     #     fast_timestamp_ms
+#     #     if [ "$ts" -gt "$keyexp" ]; then
+#     #         _need_ssh_add=1
+#     #     fi
+#     # fi
+#     if [ ! -e "/tmp/key_live" ]; then
+#         mkdir -p /tmp/key_live
+#     fi
+#     mainkey_live_path="/tmp/key_live/$USER"
+#     if [ ! -e "$mainkey_live_path" ]; then
+#         _need_ssh_add=1
+#     else
+#         _verify_ssh_live
+#     fi
+
+#     if [ -n "$_need_ssh_add" ]; then
+#         if [ -e "${ENVE_USERHOME}/.ssh/id_ed25519" ]; then
+#             ssh-add "${ENVE_USERHOME}/.ssh/id_ed25519" -t "$timeout"
+#         elif [ -e "${ENVE_USERHOME}/.ssh/id_rsa" ]; then
+#             ssh-add "${ENVE_USERHOME}/.ssh/id_rsa" -t "$timeout"
+#         else
+#             _error "there is no key in '${ENVE_USERHOME}/.ssh'"
+#             return 1
+#         fi
+#         while read -r bit sig path keytype; do
+#             if [ "$path" = ${ENVE_USERHOME}/.ssh/id_ed25519 ] ||
+#                [ "$path" = ${ENVE_USERHOME}/.ssh/id_rsa ]; then
+
+#                 IFS=':' read method hash <<EOF
+# $sig
+# EOF
+#                 IFS=' ' read -r sshtype pub comment < "$path"
+#                 fast_timestamp_ms
+#                 echo "$sig:$((tm + timeout)):$path:$sshtype:$pub" > $mainkey_live_path
+#                 break
+#             fi
+#         done <<EOF
+# $(ssh-add -l)
+# EOF
+#     fi
+#     unset timeout _need_ssh_add mainkey_live_path tm s method hash keyexp bit sig path keytype
+# }
+
+
+epoch_days_from_civil() {
+    if [ $m -gt 2 ]; then
+        yy=$y
+    else
+        yy=$((y-1))
+    fi
+    if [ $y -gt 0 ]; then
+        era=$((yy / 400))
+    else
+        era=$(((yy-399) / 400))
+    fi
+    # [0, 399]
+    yoe=$((yy - era * 400))
+    # [0, 365]
+    if [ $m -gt 2 ]; then
+        doy=$(( ( 153*(m-3)+2 )/5 + d - 1 ))
+    else
+        doy=$(( ( 153*(m+9)+2 )/5 + d - 1 ))
+    fi
+    # [0, 146096]
+    doe=$(( yoe*365 + yoe/4 - yoe/100 + doy ))
+    epoch_days=$(( era * 146097 + doe - 719468 ))
+    unset yy era yoe doy doe
+}
+
+epoch_seconds_form_datetime() {
+    epoch_days_from_civil
+    epoch_seconds=$((epoch_days*86400 + hh*3600 + mm*60 + ss))
+    unset epoch_days
+}
+
+
+timestamp_ms() {
+    # tm=$(date +%s%3N)
+    # if [ "${tm#"${tm%??}"}" == "3N" ]; then
+    #     tm=$(( ${tm%??} * 1000))
+    # fi
+    fast_timestamp_ms
+}
+
+fast_timestamp_ms() {
+    if [ -n "${BASH_VERSION:-}" ] && [ "${BASH_VERSION%%.*}" = 4 ]; then
+        printf -v tm '%(%s%3N)T' -1
+    else
+        tm=$(date +%s%3N)
+    fi
+    if [ "${tm#"${tm%??}"}" = "3N" ]; then
+        tm=$(( ${tm%??} * 1000))
+    fi
+}
+
+fast_timestamp() {
+    if [ -n "${BASH_VERSION:-}" ] && [ "${BASH_VERSION%%.*}" = 4 ]; then
+        printf -v tm '%(%Y %m %d %H %M %S)T' -1
+    else
+        tm=$(date +"%Y %m %d %H %M %S")
+    fi
+    read -r y m d HH MM SS <<EOF
+$tm
+EOF
+    epoch_seconds_form_datetime
+    tm=$epoch_seconds
+    unset y m d HH MM SS
+}
+
+
+iso8061() {
+    if [ -n "${BASH_VERSION:-}" ] && [ "${BASH_VERSION%%.*}" = 4 ]; then
+        printf -v tm '%(%Y-%m-%dT%H:%M:%S.%3N)T' -1
+    else
+        tm="$(date +%Y-%m-%dT%H:%M:%S.%3N)"
+    fi
+    tm=${tm%".3N"}
+    if [ -z "${ZZ:-}" ]; then
+        # NOTE: not posix compatible
+        ZZ=$(date +%z)
+    fi
+    tm="$tm$ZZ"
+}
+
+_fast_sleep() {
+    # ref: https://unix.stackexchange.com/questions/421189/sometimes-its-convenient-to-use-read-t-3-instead-of-sleep-3-how-do-i/421201#421201
+    # read -t 3 (a ksh93 extension now also supported by zsh, bash and mksh)
+    if [ -n "${BASH_VERSION:-}${ZSH_VERSION:-}${KSH_VERSION:-}" ]; then
+        # pipepath=/tmp/sleep.pipe
+        # if [ ! -e "$pipepath" ]; then
+        #     mkfifo -m 600 "$pipepath" || true
+        # fi
+        # read -r -t "$1" <> "$pipepath" || true
+        read -t "$1" -N 0 </dev/zero || true
+    else
+        sleep "$1"
+    fi
+}
+
+# if hascmd mkfifo; then
+if [ -e /dev/zero ]; then
+    fast_sleep() { _fast_sleep "$@"; }
+else
+    fast_sleep() { sleep "$@"; }
+fi
+
+
+write_file_only_nonexist() {
+    filename=$1
+    text=${2:-}
+    mask=${3:-0022}
+    _need_noclobber=
+    # _old_mask=$(umask)
+    umask $mask
+    if [ "${-#*C}" = "$-" ]; then
+        # need set `noclobber`
+        _need_noclobber=1
+    fi
+    if [ -n "$_need_noclobber" ]; then set -o noclobber; fi
+    # if { echo "$text" > $filename; } 2>/dev/null; then
+    if { printf %s "$text" > $filename; } 2>/dev/null; then
+        set -- 0
+    else
+        set -- 1
+    fi
+    if [ -n "$_need_noclobber" ]; then set +o noclobber; fi
+    # umask ${_old_mask}
+    umask 0022
+    unset _need_noclobber filename text mask
+    return $1
+}
+
+
+fast_append_argument_quote() {
+    s=$1
+    replace "'" "'\\''"
+    if [ -n "${BASH_VERSION:-}${ZSH_VERSION:-}" ]; then
+        printf -v deftext "%s'%s'" "$deftext${deftext:+ }" "$s"
+    else
+        deftext="$deftext${deftext:+ }'$s'"
+    fi
+    unset s
+}
+
+# usage:
+#
+#   ARGSTR=
+#   for a in "$@"; do
+#       fast_append_argument_quote2 "$a"
+#   done
+#   eval set -- "normal_args \"\$variable_args\" $ARGSTR"
+#
+#   sh -c "$ARGSTR"
+#
+fast_append_argument_quote2() {
+    s=$1
+    replace "'" "'\\''"
+    ARGSTR="${ARGSTR:-}${ARGSTR:+ }'$s'"
+    unset s
+}
+
+
+fast_append_variable_quote() {
+    var=$1
+    if [ -n "$var" ] && [ "${var#*'$'}" = "${var}" ]; then
+        eval "s=\"\${$var-var_is_unset}\""
+        if [ "$s" != var_is_unset ]; then
+            replace "'" "'\\''"
+            if [ -n "${BASH_VERSION:-}${ZSH_VERSION:-}" ]; then
+                printf -v deftext "%s%s='%s'" "$deftext${deftext:+ }" "$var" "$s"
+            else
+                deftext="$deftext${deftext:+ }$var='$s'"
+            fi
+        fi
+    fi
+    unset var s
+}
+
+
+parse_command_to_argstr() {
+    cmd="$1 "
+    set --
+    state=space
+    while [ "${#cmd}" -gt 0 ]; do
+        rest=${cmd#?}
+        c=${cmd%"$rest"}
+        cmd=$rest
+        case $state:$c in
+            \':\') state=open ;;
+            \":\") state=open ;;
+            \":\\) state=\"-escape ;;
+            space:\'|open:\') state=\' ;;
+            space:\"|open:\") state=\" ;;
+            space:\\|open:\\) state=open-escape ;;
+            open:[[:space:]]) state=space; set -- "$@" "${arg:-}"; unset arg ;;
+            space:[[:space:]]) ;;
+            space:*) state=open; arg=$arg$c ;;
+            *-escape:*) state=${state%-escape}; arg=${arg:-}$c ;;
+            *) arg=${arg:-}$c ;;
+        esac
+
+    done
+    if [ -n "${arg+x}" ]; then
+        # there is a remaining unparsed argument
+        return 1
+    fi
+    ARGSTR=
+    for c in "$@"; do
+        fast_append_argument_quote2 "$c"
+    done
+    unset cmd state c rest arg
+}
+
+
+fast_readtext() {
+    text=
+    # while IFS='' read -r line; do
+    #     text="${text:+$text$newl}$line"
+    # done < "$1"
+    if [ -z "${1:-}" ] || [ "$1" = "-" ]; then
+        while IFS= read -r line; do
+            text="$text$line$newl"
+        done
+    else
+        while IFS= read -r line; do
+            text="$text$line$newl"
+        done < "$1" || return 1
+    fi
+    text="$text$line"
+    unset line
+}
+
+fast_dirname() {
+    d=${d%%/}
+    if [ -z "$d" ]; then
+        d=\.
+    elif [ -z "${d%/*}" ]; then
+        d=/
+    elif [ "$d" = "${d%/*}" ]; then
+        d=\.
+    else
+        d=${d%/*}
+    fi
+}
+
+fast_basename() {
+    if [ -n "$d" ]; then
+        d=${d%%/}
+        if [ -n "$d" ]; then
+            d=${d##*/}
+        else
+            d=/
+        fi
+    fi
+}
+
+
+# combine_umask() {
+#     mask=
+#     eval "mask=$((0$(umask) & 0$1))"
+#     printf %o\\n "$mask"
+# }
+
+create_file_mutex() {
+    write_file_only_nonexist "$1" "" "${2-077}"
+    # (
+    #     umask "$(combine_umask "${2:-7077}")"
+    #     set -o noclobber
+    #     { true > "$1" ; } >/dev/null 2>&1
+    # )
+}
+
+create_dir_mutex() {
+    filename=$1
+    mask=${2:-077}
+    umask $mask
+    # _old_mask=$(umask)
+    if { mkdir "$filename" ; } 2>/dev/null; then
+        set -- 0
+    else
+        set -- 1
+    fi
+    umask 0022
+    # umask ${_old_mask}
+    unset _old_mask filename
+    return $1
+    # (
+    #     umask "$(combine_umask "${2:-7077}")"
+    #     mkdir "$1" >/dev/null 2>&1
+    # )
+}
+
+
+# a) r="${r}a";; b) r="${r}b";; c) r="${r}c";;
+# d) r="${r}d";; e) r="${r}e";; f) r="${r}f";;
+# g) r="${r}g";; h) r="${r}h";; i) r="${r}i";;
+# j) r="${r}j";; k) r="${r}k";; l) r="${r}l";;
+# m) r="${r}m";; n) r="${r}n";; o) r="${r}o";;
+# p) r="${r}p";; q) r="${r}q";; r) r="${r}r";;
+# s) r="${r}s";; t) r="${r}t";; u) r="${r}u";;
+# v) r="${r}v";; w) r="${r}w";; x) r="${r}x";;
+# y) r="${r}y";; z) r="${r}z";;
+
+# A) r="${r}a";; B) r="${r}b";; C) r="${r}c";;
+# D) r="${r}d";; E) r="${r}e";; F) r="${r}f";;
+# G) r="${r}g";; H) r="${r}h";; I) r="${r}i";;
+# J) r="${r}j";; K) r="${r}k";; L) r="${r}l";;
+# M) r="${r}m";; N) r="${r}n";; O) r="${r}o";;
+# P) r="${r}p";; Q) r="${r}q";; R) r="${r}r";;
+# S) r="${r}s";; T) r="${r}t";; U) r="${r}u";;
+# V) r="${r}v";; W) r="${r}w";; X) r="${r}x";;
+# Y) r="${r}y";; Z) r="${r}z";;
+
+
+# RFC 4648
+_from_base64() {
+    ss=$s
+    s=
+
+    r=0; n=0; pad=0
+    while IFS= read -r rr; do
+        while [ -n "$rr" ]; do
+            c=
+            case $rr in
+                A*) c=0 ;; B*) c=1 ;; C*) c=2 ;;
+                D*) c=3 ;; E*) c=4 ;; F*) c=5;;
+                G*) c=6 ;; H*) c=7 ;; I*) c=8 ;;
+                J*) c=9 ;; K*) c=10;; L*) c=11;;
+                M*) c=12;; N*) c=13;; O*) c=14;;
+                P*) c=15;; Q*) c=16;; R*) c=17;;
+                S*) c=18;; T*) c=19;; U*) c=20;;
+                V*) c=21;; W*) c=22;; X*) c=23;;
+                Y*) c=24;; Z*) c=25;;
+
+                a*) c=26;; b*) c=27;; c*) c=28;;
+                d*) c=29;; e*) c=30;; f*) c=31;;
+                g*) c=32;; h*) c=33;; i*) c=34;;
+                j*) c=35;; k*) c=36;; l*) c=37;;
+                m*) c=38;; n*) c=39;; o*) c=40;;
+                p*) c=41;; q*) c=42;; r*) c=43;;
+                s*) c=44;; t*) c=45;; u*) c=46;;
+                v*) c=47;; w*) c=48;; x*) c=49;;
+                y*) c=50;; z*) c=51;;
+
+                0*) c=52;; 1*) c=53;; 2*) c=54;;
+                3*) c=55;; 4*) c=56;; 5*) c=57;;
+                6*) c=58;; 7*) c=59;; 8*) c=60;;
+                9*) c=61;; +*) c=62;; /*) c=63;;
+
+                =)      c=0; pad=$((pad + 1));;
+                # $newl)  c=;;
+            esac
+            if  [ -n "$c" ]; then
+                r=$((r*64+c))
+                n=$((n+1))
+                case $pad$n in
+                    04)
+                            printf -v r '\\%o\\%o\\%o' \
+                                $(((r / 65536) % 256)) $(((r / 256) % 256)) $((r % 256))
+                            printf -v s "%s$r" "$s"
+                            r=0; n=0; pad=0
+                        ;;
+                    14)
+                            printf -v r '\\%o\\%o' \
+                                $(((r / 256) % 256)) $((r % 256))
+                            printf -v s "%s$r" "$s"
+                            r=0; n=0; pad=0
+                        ;;
+                    24)
+                            printf -v r '\\%o' \
+                                $((r % 256))
+                            printf -v s "%s$r" "$s"
+                            r=0; n=0; pad=0
+                        ;;
+                esac
+            fi
+        done
+    done
+}
+
+_to_hex16_from_decimal() {
+    printf -v s "%x" "$s"
+}
+
+
+
+_rand_n() {
+    r=
+    while IFS= read -r rr; do
+        # rr=${rr#"${rr%????????????????????????????????????????????????}"}
+        while [ -n "$rr" ]; do
+            case $rr in
+                a*) r="${r}a";; b*) r="${r}b";; c*) r="${r}c";;
+                d*) r="${r}d";; e*) r="${r}e";; f*) r="${r}f";;
+                g*) r="${r}g";; h*) r="${r}h";; i*) r="${r}i";;
+                j*) r="${r}j";; k*) r="${r}k";; l*) r="${r}l";;
+                m*) r="${r}m";; n*) r="${r}n";; o*) r="${r}o";;
+                p*) r="${r}p";; q*) r="${r}q";; r*) r="${r}r";;
+                s*) r="${r}s";; t*) r="${r}t";; u*) r="${r}u";;
+                v*) r="${r}v";; w*) r="${r}w";; x*) r="${r}x";;
+                y*) r="${r}y";; z*) r="${r}z";;
+
+                A*) r="${r}a";; B*) r="${r}b";; C*) r="${r}c";;
+                D*) r="${r}d";; E*) r="${r}e";; F*) r="${r}f";;
+                G*) r="${r}g";; H*) r="${r}h";; I*) r="${r}i";;
+                J*) r="${r}j";; K*) r="${r}k";; L*) r="${r}l";;
+                M*) r="${r}m";; N*) r="${r}n";; O*) r="${r}o";;
+                P*) r="${r}p";; Q*) r="${r}q";; R*) r="${r}r";;
+                S*) r="${r}s";; T*) r="${r}t";; U*) r="${r}u";;
+                V*) r="${r}v";; W*) r="${r}w";; X*) r="${r}x";;
+                Y*) r="${r}y";; Z*) r="${r}z";;
+
+            esac
+            if [ "${#r}" -ge "$1" ] ; then
+                _rand=$r
+                unset rr r
+                return
+            fi
+            rr=${rr#?}
+        done
+    done <"$ENVE_DEV_RANDOM"
+}
+
+_randb64_n() {
+    r=
+    while IFS= read -r rr; do
+        while [ "${#rr}" -gt 0 ]; do
+            case $rr in
+                [a-zA-Z0-9+/]*) r="$r${rr%%"${rr#?}"}";;
+            esac
+            if [ "${#r}" -ge "$1" ] ; then
+                _rand=$r
+                unset rr r
+                return
+            fi
+            rr=${rr#?}
+        done
+    done <"$ENVE_DEV_RANDOM"
+}
+
+
+
+if [ -e /dev/urandom ]; then
+    ENVE_DEV_RANDOM=/dev/urandom
+elif [ -e /dev/random ]; then
+    ENVE_DEV_RANDOM=/dev/random
+elif [ -n "${RANDOM:-}" ]; then
+    _rand_n() {
+        _rnd_pid=$(sh -c "echo \$\$") || return 1
+        RANDOM="$((RANDOM * 7 + _rnd_pid))"
+        r=
+        while [ "${#r}" -lt "$1" ]; do
+            printf -v rr '\\%o' $((RANDOM % 26 + 97))
+            printf -v rr "$rr"
+            r="$r$rr"
+        done
+        _rand=$r
+        unset r _rnd_pid
+    }
+elif hascmd awk; then
+    # ENVE_DEV_RANDOM=awk
+    _rand_n() {
+        _rnd_pid=$(sh -c "echo \$\$")
+        _rand="$(
+          awk 'BEGIN {  srand(srand() + '"$_rnd_pid"'); for (i = 1; i <= '"$1"'; i++)
+                            printf("%c" , rand() * 26 + 97) }')"
+        unset _rnd_pid
+    }
+else
+    printf %s\\n "error have not any random method found" >&2
+    exit 1
+fi
+
+
+sixrand3() {
+    # if [ "$ENVE_DEV_RANDOM" = "awk" ]; then
+    #     rands="$(
+    #       awk 'BEGIN {  srand(); for (i = 1; i <= 3; i++)
+    #                         printf("%c%c%c%c%c%c\n" , rand() * 26 + 97, rand() * 26 + 97 \
+    #                                                 , rand() * 26 + 97, rand() * 26 + 97 \
+    #                                                 , rand() * 26 + 97, rand() * 26 + 97) }')$newl"
+    # else
+    _rand_n 18
+    _rand2=${_rand%??????}
+    rands="${_rand%????????????}${newl}${_rand2#??????}${newl}${_rand#????????????}${newl}"
+    unset _rand _rand2
+    # fi
+}
+
+twentyrand1() {
+    # if [ -e /dev/urandom ]; then
+    _rand_n 20
+    rands=$_rand
+    unset _rand
+    # else
+    #     rands=$(
+    #         awk 'BEGIN {  srand(); for (i = 1; i <= 20; i++) {
+    #                             r = rand() * 64;
+    #                             if (r < 26) c = r + 97; else if (r < 52) c = r - 26 + 65; else if (r < 62) c = r - 52 + 48; else if (r < 63) c = 46; else c = 45;
+    #                             printf("%c", c);
+    #                       }
+    #                       printf("\n"); }')
+    # fi
+}
+
+
+# _rand=$(sixrand50)
+sixrand3
+ENVE_SESSION_ID=${rands%%"$newl"*}
+
+
+_mkstemp() {
+    mutex_function=$1
+    shift
+
+    # rands="$(sixrand50)"
+    sixrand3
+    x_prefix="${1%XXXXXX}"
+    if [ "$x_prefix" = "$1" ]; then
+        return 1
+    fi
+    shift
+    for x_rand in $rands; do
+        if $mutex_function "$x_prefix${x_rand}" "$@"; then
+            echo "$x_prefix${x_rand}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+mkstemp() {
+    _mkstemp create_file_mutex "$@"
+}
+mkdtemp() {
+    _mkstemp create_dir_mutex "$@"
+}
+
+
+
+# enve is a stateless program, that is unnecessary to use '/var'
+
+check_variable() {
+    case "$1" in
+        *" "*) error "'$1' is not a variable";;
+        *\$*) error "'$1' is not a variable";;
+        *\]*) error "'$1' is not a variable";;
+        *\)*) error "'$1' is not a variable";;
+    esac
+    if eval [ ! -n \"\${$1:+x}\" ]; then
+        error "'$1' not defined"
+    fi
+}
+
+fast_get_cachedir() {
+    if [ -n "${ENVE_CACHE_DIR:-}" ]; then
+        d="$ENVE_CACHE_DIR"
+        return 0
+    else
+        d=$(get_cachedir)
+    fi
+}
+
+get_cachedir() {
+    if [ -n "${ENVE_CACHE_DIR:-}" ]; then
+        echo "$ENVE_CACHE_DIR"
+        return 0
+    fi
+    # kernal_name="$(uname -s)"
+    # case "$kernal_name" in
+    fast_get_system
+    case "$ENVE_CACHED_OS" in
+        Linux|FreeBSD|Darwin)
+                # macos $HOME do not have issus as in windows
+                # $HOME always contain only alphanum without space and all lowercase.
+
+                # echo ~/Library/Caches/enve
+
+                # shellcheck disable=2034
+                read -r fileperm x2 fileuser x4 x5 x6 x7 x8 path <<EOF
+$(ls -ld /var/cache/enve 2>/dev/null)
+EOF
+                if [ "$fileperm" = "drwxrwxrwt" ] && [ "$fileuser" = "root" ]; then
+                    echo /var/cache/enve
+                else
+                    echo ~/.cache/enve
+                fi
+
+            ;;
+        # Linux|FreeBSD)
+        #         if [ "$(id -u)" -eq 0 ]; then
+        #             echo /var/cache/enve
+        #         else
+        #             echo ~/.cache/enve
+        #         fi
+        #     ;;
+        MINGW*|MSYS*|CYGWIN*)
+                # $LOCALAPPDATA is the temporary files of Applications.
+                # but $HOME may contain non-acsii character or space.
+                # so, we use $ProgramData
+                # The file system directory that contains application data for all users.
+
+                # shellcheck disable=2154
+                cygpath -u "$ProgramData/enve/cache"
+            ;;
+        *)
+                echo /var/cache/enve
+            ;;
+    esac
+}
+
+fast_get_homedir() {
+    d=
+    case ${1:-} in
+        ''|--common)
+                if [ -n "${HOME:-}" ]; then
+                    d="${HOME%%/}"
+                elif [ -n "${USERPROFILE:-}" ]; then
+                    d="${USERPROFILE%%/}"
+                elif [ -n "${HOMEDRIVE:-}" ] && [ -n "${HOMEPATH:-}" ]; then
+                    d="$HOMEDRIVE${HOMEPATH%%/}"
+                else
+                    fast_get_tempdir "$@"
+                fi
+            ;;
+        --windows)
+                if [ -n "${USERPROFILE:-}" ]; then
+                    d="${USERPROFILE%%/}"
+                    d=$(cygpath -u "$d")
+                elif [ -n "${HOMEDRIVE:-}" ] && [ -n "${HOMEPATH:-}" ]; then
+                    d="$HOMEDRIVE${HOMEPATH%%/}"
+                    d=$(cygpath -u "$d")
+                else
+                    fast_get_tempdir "$@"
+                fi
+            ;;
+        --posix)
+                if [ -n "${HOME:-}" ]; then
+                    d="${HOME%%/}"
+                else
+                    fast_get_tempdir "$@"
+                fi
+            ;;
+    esac
+    # home=$d
+    # unset d
+}
+
+
+fast_get_tempdir() {
+    d=
+    case ${1:-} in
+        ''|--common)
+                if [ -n "${TMPDIR:-}" ]; then
+                    d="${TMPDIR%%/}"
+                elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+                    d="${XDG_RUNTIME_DIR%%/}"
+                elif [ -n "${TEMPDIR:-}" ]; then
+                    d="${TEMPDIR%%/}"
+                elif [ -n "${TMP:-}" ]; then
+                    d="${TMP%%/}"
+                elif [ -n "${TEMP:-}" ]; then
+                    d="${TEMP%%/}"
+                elif [ -d "/tmp" ]; then
+                    d="/tmp"
+                else
+                    d='/'
+                fi
+            ;;
+        --windows)
+                if [ -n "${TMP:-}" ]; then
+                    d="${TMP%%/}"
+                elif [ -n "${TEMP:-}" ]; then
+                    d="${TEMP%%/}"
+                elif [ -d "/tmp" ]; then
+                    d="/tmp"
+                else
+                    d='/'
+                fi
+                d=$(cygpath -u "$d")
+            ;;
+        --posix)
+                if [ -n "${TMPDIR:-}" ]; then
+                    d="${TMPDIR%%/}"
+                elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+                    d="${XDG_RUNTIME_DIR%%/}"
+                elif [ -d "/tmp" ]; then
+                    d="/tmp"
+                else
+                    d='/'
+                fi
+            ;;
+    esac
+    # tmp=$d
+    # unset d
+    # if [ -n "${TMP:-}" ]; then
+    #     d="${TMP%%/}"
+    # elif [ -n "${TMPDIR:-}" ]; then
+    #     d="${TMPDIR%%/}"
+    # elif [ -n "${TEMP:-}" ]; then
+    #     d="${TEMP%%/}"
+    # elif [ -n "${TEMPDIR:-}" ]; then
+    #     d="${TEMPDIR%%/}"
+    # else
+    #     d="/tmp"
+    # fi
+}
+
+get_tempdir() {
+    fast_get_tempdir
+    echo "$d"
+    unset d
+    # if [ -n "${TMP:-}" ]; then
+    #     echo "${TMP%%/}"
+    # elif [ -n "${TMPDIR:-}" ]; then
+    #     echo "${TMPDIR%%/}"
+    # elif [ -n "${TEMP:-}" ]; then
+    #     echo "${TEMP%%/}"
+    # elif [ -n "${TEMPDIR:-}" ]; then
+    #     echo "${TEMPDIR%%/}"
+    # else
+    #     echo "/tmp"
+    # fi
+}
+
+
+
+_get_user_home() {
+    /bin/sh -c "echo \$HOME"
+}
+
+_get_user_home() {
+    case $ENVE_CACHED_OS in
+        CYGWIN|MSYS|MINGW32|MINGW64|Linux|FreeBSD)
+                if hascmd getent; then
+                    while IFS=: read -r u g x x x _HOME _SHELL; do
+                        if [ -n "$u" ]; then
+                            eval ${2:-}HOME=\${_HOME}
+                            eval ${2:-}SHELL=\${_SHELL}
+                        fi
+                    done <<EOF
+$(getent passwd $1)
+EOF
+                else
+                    eval ${2:-}HOME=\${HOME:-/home/$1}
+                    eval ${2:-}SHELL=\${SHELL:-/bin/sh}
+                fi
+            ;;
+        Darwin)
+                if hascmd dscl; then
+                    while read -r key val other; do
+                        case $key in
+                            NFSHomeDirectory:)  eval ${2:-}HOME=\$val;;
+                            UserShell:)         eval ${2:-}SHELL=\$val;;
+                        esac
+                    done <<EOF
+$(dscl . -read /Users/$1 NFSHomeDirectory UserShell)
+EOF
+                else
+                    eval ${2:-}HOME=\${HOME:-/Users/$1}
+                    eval ${2:-}SHELL=\${SHELL:-/bin/sh}
+                fi
+            ;;
+    esac
+}
+
+_get_group_effective() {
+    _admin=
+    _root=
+    _user=
+    case $ENVE_CACHED_OS in
+        CYGWIN|MSYS|MINGW32|MINGW64)
+                ;;
+        Darwin)
+                [ -z "${ENVE_GIDS#* 80 *}" ] && _admin=1        # 80(admin)
+                [ -z "${ENVE_GIDS#* 0 *}" ] && _root=1          # 0(wheel)
+                [ -z "${ENVE_GIDS#* 20 *}" ] && _user=1         # 20(staff)
+            ;;
+        Linux|FreeBSD)
+            ;;
+    esac
+    [ "$ENVE_UID" = "0" ] && _root=1
+
+}
+
+# user exchange situation
+# 1. enve run from root shell (maybe su?)
+# 2. enve run with sudo from normal user shell
+# 3. enve run with sudo from root shell
+# 4. enve run with normal user with sudo-like availiable
+# 5. enve run with normal user without sudo-like availiable
+
+
+probe_situation() {
+    fast_get_system
+    _admin=
+    _root=
+    _user=
+    if [ -n "${ENVE_UID:-}" ] && [ -n "${ENVE_GIDS:-}" ]; then
+        _get_group_effective
+    elif ret=$(id -u; printf "&"; id -G; printf " "); then
+        if [ -z "$USER" ]; then
+            USER=$(id -un)
+            export USER
+        fi
+        ENVE_UID=${ret%&*}
+        ENVE_GIDS=" ${ret#*&}"
+        export ENVE_UID ENVE_GIDS
+        _get_group_effective
+    elif [ -n "${USER}" ]; then
+        _warning "'id' command not found, fallback to detect '\${USER}'"
+        case $USER in
+            root) _root=1;;
+            *)    _user=1;;
+        esac
+    else
+        _warning "'id' command not found and no '\${USER}', assume user is root"
+        USER=root
+        _root=1
+    fi
+
+    if [ -z "${HOME:-}" ] || [ -z "${SHELL:-}" ]; then
+        _get_user_home "$USER"
+    fi
+
+    if [ -n "${SUDO_USER:-}${SUDO_UID:-}" ]; then
+        if [ -n "$_root" ]; then
+            ENVE_OUT_USER=$SUDO_USER
+            _get_user_home "$ENVE_OUT_USER" ENVE_OUT_
+        else
+            :
+        fi
+    else
+        :
+        # OUT_USER=$USER
+        # OUT_HOME=$HOME
+        # OUT_SHELL=$SHELL
+        # if [ -n "$_root" ]; then
+        #     :
+        # else
+        #     :
+        # fi
+    fi
+
+    if [ -n "${PWD:-}" ]; then
+        :
+    fi
+
+    if [ -n "${WORKSPACE:-}" ]; then
+        :
+    fi
+
+    if [ -n "${PRJROOT:-}" ]; then
+        :
+    fi
+
+    if [ -n "${ENVE_SESSION_ID:-}" ]; then
+        :
+    fi
+}
+
+
+
+# quote () { printf %s\\n "$1" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/'/" ; }
+# save () {
+#     for i do quote "$i"; done
+#     echo " "
+# }
+
+
+any_key_continue() {
+    if [ -n "${PS1:-}" ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
+        printf %s\\n "${1:-Press enter to continue}" >&2
+        # shellcheck disable=2034
+        read -r X
+        unset X
+    fi
+}
+
+comfire_yes_or_no() {
+    if [ -n "${PS1:-}" ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
+        while true; do
+            printf %s\\n "${1:-continue?} (yes/no)" >&2
+            read -r X
+            if [ "${X#[Yy]}" != "$X" ]; then
+                break
+            elif [ "${X#[Nn]}" != "$X" ]; then
+                unset X
+                return 1
+            fi
+        done
+    fi
+    unset X
+    return 0
+}
+
+
+obtain_filelock() {
+    # filename=$1
+    # timeout=$2
+    # if [ -n "${2:-}" ]; then
+    #     fast_timestamp_ms
+    #     ln="$$ $((tm + $2))"
+    # else
+    #     ln="$$"
+    # fi
+
+    fast_timestamp_ms
+    retrycnt=0
+    while ! write_file_only_nonexist "$1" "$$${2:+ $((tm + $2))}" 077; do
+        pid=
+        read -r pid to <"$1" 2>/dev/null || true
+        fast_timestamp_ms
+        if [ -n "${pid:-}" ] && [ "$pid" != "$$" ] && \
+           [ "$tm" -le "${to:-999999999999999}" ] && kill -0 "$pid" 2>/dev/null; then
+            unset tm to
+            return 1                    # process exist
+        else
+            rm -f "$1" || return 2      # lockfile cannot remove
+        fi
+        retrycnt=$((retrycnt + 1))
+        if [ "$retrycnt" -gt 10 ]; then
+            return 3                    # retry excess limit
+        fi
+    done
+    unset tm pid to
+}
+
+release_filelock() {
+    # filename=$1
+    { read -r pid to < "$1"; } 2>/dev/null || true
+    # if { read -r pid to < "$1"; } 2>/dev/null; then
+        if [ -n "$pid" ]; then
+            if [ "$pid" = "$$" ]; then
+                rm -f "$1"
+                unset pid to
+                return 0
+            elif ! kill -0 "$pid"; then
+                rm -f "$1"
+            fi
+        fi
+    # fi
+    unset pid to
+    # file is removed or obtained by other process
+    return 1
+}
+
+
+
+
+# syslog: emerg, alert, crit, err, warning, notice, info, debug
+# python: CRITICAL ERROR WARNING INFO DEBUG
+
+
+_loglevel_form_symbol() {
+    # case ${ENVE_VERBOSE:-NOTICE} in
+    case ${1:-NOTICE} in
+        CRIT|CRITICAL)  loglevel=6 ;;
+        ERROR)          loglevel=5 ;;
+        WARN|WARNING)   loglevel=4 ;;
+        NOTICE)         loglevel=3 ;;
+        INFO)           loglevel=2 ;;
+        DEBUG)          loglevel=1 ;;
+        TRACE)          loglevel=0 ;;
+
+        *)              loglevel=3 ;;
+    esac
+    # if [ "${1:-nonfast}" = "nonfast" ]; then
+    #     echo "$loglevel"
+    # fi
+}
+
+_loglevel_to_symbol() {
+    if [ "${loglevel:-3}" -gt 6 ]; then
+        ENVE_VERBOSE=CRITICAL
+    else
+        case ${loglevel:-3} in
+            6)  ENVE_VERBOSE=CRITICAL ;;
+            5)  ENVE_VERBOSE=ERROR ;;
+            4)  ENVE_VERBOSE=WARNING ;;
+            3)  ENVE_VERBOSE=NOTICE ;;
+            2)  ENVE_VERBOSE=INFO ;;
+            1)  ENVE_VERBOSE=DEBUG ;;
+            *)  ENVE_VERBOSE=TRACE ;;
+        esac
+    fi
+}
+
+
+_format_head() {
+    fmts=
+    ptime=
+
+    if [ "${ENVE_TIME_PROFILE:-}" = "1" ]; then
+        case ${ENVE_VERBOSE:-TRACE} in
+            DEBUG)  ptime=$(date -u +"%D %T");;
+            TRACE)
+                    timestamp_ms
+                    ptime=$tm
+                    unset tm
+                ;;
+        esac
+    fi
+
+    if [ "${ENVE_SYSLOG:-}" = 1 ]; then
+        iso8061
+        fmts="$tm %s $$${ENVE_FIRE_DEPTH:+"-$ENVE_FIRE_DEPTH"} %s"
+    elif [ "${ENVE_NOCOLOR:-}" != 1 ]; then
+        C0='\033[0m'
+        C1='\033[36m'
+        C2='\033[35m'
+        Cr='\033[31m'
+        case $1 in
+            critical|error) C2="$Cr" ;;
+        esac
+
+        case ${ENVE_VERBOSE:-TRACE} in
+            CRIT|CRITICAL)  fmts="$C1%4s$C0 $C2%8s$C0 " ;;
+            ERROR)          fmts="$C1%4s$C0 $C2%8s$C0 " ;;
+            WARN|WARNING)   fmts="$C1%4s$C0 $C2%8s$C0 " ;;
+            NOTICE)         fmts="$C1%4s$C0 $C2%8s$C0 " ;;
+            INFO)           fmts="$C1%4s$C0 $C2%8s$C0 " ;;
+            DEBUG)          fmts="${ptime:+"[$ptime]" }$C1%4s$C0 $C2%8s$C0 " ;;
+            TRACE)          fmts="${ptime:+"[$ptime]" }$C1%4s$C0 $C2%8s$C0 " ;;
+        esac
+    else
+        case ${ENVE_VERBOSE:-NOTICE} in
+            CRIT|CRITICAL)  fmts="%4s %8s:" ;;
+            ERROR)          fmts="%4s %8s:" ;;
+            WARN|WARNING)   fmts="%4s %8s:" ;;
+            NOTICE)         fmts="%4s %8s:" ;;
+            INFO)           fmts="%4s %8s:" ;;
+            DEBUG)          fmts="${ptime:+"[$ptime]" }%4s %8s:" ;;
+            TRACE)          fmts="${ptime:+"[$ptime]" }%4s %8s:" ;;
+        esac
+    fi
+}
+
+
+_calc_columns() {
+    # if [ -z "$_COLS" ]; then
+    #     _COLS=$(tput cols)
+    # fi
+    if [ -z "${COLUMNS:-}" ]; then
+        # if hascmd stty; then
+        #     COLUMNS=$(stty size)
+        #     COLUMNS=${COLUMNS##*" "}
+        if hascmd tput; then
+            COLUMNS=$(tput cols)
+        else
+            COLUMNS=80
+        fi
+    fi
+}
+
+_truncat_by_column() {
+    # str="$2"
+    len=${1:-$COLUMNS}
+    if [ ${#str} -gt $len ]; then
+        mask=
+        masklen=$((len - 3))
+        while [ $masklen -gt 0 ]; do
+            if [ $masklen -ge 10 ]; then
+                mask="${mask}??????????"
+                masklen=$((masklen - 10))
+            elif [ $masklen -ge 1 ]; then
+                mask="${mask}?"
+                masklen=$((masklen - 1))
+            fi
+        done
+        junk=${str#$mask}
+        str="${str%"$junk"}..."
+    else
+        space=
+        spacelen=$((len - ${#str}))
+        while [ $spacelen -gt 0 ]; do
+            if [ $spacelen -ge 10 ]; then
+                space="${space}          "
+                spacelen=$((spacelen - 10))
+            elif [ $spacelen -ge 1 ]; then
+                space="${space} "
+                spacelen=$((spacelen - 1))
+            fi
+        done
+        str="${str}${space}"
+    fi
+    unset len mask masklen space spacelen junk
+}
+
+
+# _COLS=
+_format_tail() {
+    _logging_title=$1
+    shift
+    str="$*"
+    # if [ "${print_fire_depth:-}" = "true" ] && [ -n "${ENVE_FIRE_DEPTH:-}" ]; then
+    if [ -n "${ENVE_FIRE_DEPTH:-}" ]; then
+        i=0
+        prefix=
+        while [ $i -lt "$ENVE_FIRE_DEPTH" ]; do
+            # prefix="${prefix:+..}${prefix:-> }"
+            if [ "${ENVE_SYSLOG:-}" = 1 ]; then
+                :
+            elif [ "${ENVE_NOCOLOR:-}" = 1 ]; then
+                prefix="${prefix:-$ENVE_FIRE_DEPTH }${prefix:+  }"
+            else
+                prefix="${prefix:-\\033[90m$ENVE_FIRE_DEPTH\\033[0m }${prefix:+  }"
+            fi
+            i=$((i+1))
+        done
+    fi
+    fmts="$fmts ${prefix:-}%s"
+    if [ "${ENVE_PROGRESS:-}" = "1" ] && [ "$loglevel" -le 3 ]; then
+        _calc_columns
+        _truncat_by_column $((COLUMNS - 15 - ${ENVE_FIRE_DEPTH:-0} * 2))
+        fmts="\\r$fmts"
+    else
+        fmts="$fmts\\n"
+    fi
+    # shellcheck disable=2059
+    # printf "$fmts" "$str"
+    # printf " ${prefix:-}$fmts" "$str"
+    printf "$fmts" "${ENVE_PROGRAM:-"${0##*/}"}" "$_logging_title" "$str"
+}
+
+critical() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 6 ]; then
+        _format_head "${LOGTYPE:-critical}" >&2
+        _format_tail "${LOGTYPE:-critical}" "$@" >&2
+        # echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-critical}) $*" >&2
+    fi
+}
+error() {
+    _ERROR_MSG=${1:-}
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 5 ]; then
+        _format_head "${LOGTYPE:-error}" >&2
+        _format_tail "${LOGTYPE:-error}" "$@" >&2
+        # echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-error}) $*" >&2
+    fi
+}
+
+warning() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 4 ]; then
+        _format_head "${LOGTYPE:-warning}" >&2
+        _format_tail "${LOGTYPE:-warning}" "$@" >&2
+        # echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-warning}) $*" >&2
+    fi
+}
+
+notice() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 3 ]; then
+        _format_head "${LOGTYPE:-notice}" >&2
+        _format_tail "${LOGTYPE:-notice}" "$@" >&2
+        # echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-notice}) $*" >&2
+    fi
+}
+
+info() {
+
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 2 ]; then
+        _format_head "${LOGTYPE:-info}" >&2
+        _format_tail "${LOGTYPE:-info}" "$@" >&2
+        # echo " $*" >&2
+        # echo "$(_format_head ${LOGTYPE:-info}) $*" >&2
+    fi
+}
+
+_check_debug_group() {
+    if [ -n "${LOGGROUPS:-}" ]; then
+        for g in trace-all all ${LOGGROUPS}; do
+            debug_option=",${ENVE_DEBUG:+$ENVE_DEBUG,}"
+            if [ -z "${debug_option##*,$g,*}" ]; then
+                return 0
+            fi
+        done
+        return 1
+    else
+        return 0
+    fi
+}
+
+debug() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 1 ]; then
+        if _check_debug_group; then
+            _format_head "${LOGTYPE:-debug}" >&2
+            _format_tail "${LOGTYPE:-debug}" "$@" >&2
+            # echo " $*" >&2
+            # echo "$(_format_head ${LOGTYPE:-debug}) $*" >&2
+        fi
+    fi
+}
+
+trace() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 0 ]; then
+        if _check_debug_group; then
+            _format_head "${LOGTYPE:-trace}" >&2
+            _format_tail "${LOGTYPE:-trace}" "$@" >&2
+            # echo " $*" >&2
+            # echo "$(_format_head ${LOGTYPE:-trace}) $*" >&2
+        fi
+    fi
+}
+
+log() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    require_loglevel=$loglevel
+    # ENVE_VERBOSE=${LOGLEVEL:-NOTICE} _loglevel_form_symbol "$ENVE_VERBOSE"
+    _loglevel_form_symbol "${LOGLEVEL:-NOTICE}"
+    # echo "$ENVE_VERBOSE $require_loglevel >= $loglevel" >&2
+    if [ "$require_loglevel" -le "$loglevel" ]; then
+        echo "$*" >&2
+    fi
+}
+
+logtable() {
+    # TODO: move this function to 'tablelib'
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    require_loglevel=$loglevel
+    # ENVE_VERBOSE=${LOGLEVEL:-NOTICE} _loglevel_form_symbol "$ENVE_VERBOSE"
+    _loglevel_form_symbol "${LOGLEVEL:-NOTICE}"
+    if [ "$require_loglevel" -le "$loglevel" ]; then
+        while IFS="$tab" read -r vtype key value; do
+            printf '%5s %15s %s\n' "$vtype" "$key" "$value" >&2
+        done <<EOF
+$1
+EOF
+    fi
+}
+
+fatal() { critical "$@"; }
+_fatal() { critical "$@"; }
+_critical() { critical "$@"; }
+_error() { error "$@"; }
+_warning() { warning "$@"; }
+_notice() { notice "$@"; }
+_info() { info "$@"; }
+_debug() { debug "$@"; }
+_trace() { trace "$@"; }
+
+die() {
+    trap - EXIT
+    if [ -n "${1:-}" ]; then
+        _error "$1"
+    fi
+    exit "${2:-1}"
+}
+
+print_tb() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+
+    traceback_record=${traceback_record:-}
+    if [ -n "$traceback_record" ]; then
+        if [ "$loglevel" -le 2 ]; then
+            # _format_head "${LOGTYPE:-error}" >&2
+            echo "" >&2
+            echo "Traceback:" >&2
+            while IFS='*' read -r src func; do
+                d=$src; fast_basename; src_base=$d;
+                echo "  File $src_base, in $func" >&2
+            done <<EOF
+$traceback_record
+EOF
+        else
+            e_src=
+            e_func=
+            while IFS='*' read -r src func; do
+                e_src=$src
+                e_func=$func
+            done <<EOF
+$traceback_record
+EOF
+            _format_head "${LOGTYPE:-error}" >&2
+            d=$e_src; fast_basename; e_src_base=$d;
+            echo " From file $e_src_base, in $e_func" >&2
+        fi
+    fi
+}
+
+quiet_exit() {
+    ENVE_QUITE_EXIT=1
+    exit $1
+}
+
+settrace() {
+    # trap '[ $? -eq 0 ] || echo err in $FUNCNAME in $BASH_SOURCE >&2' EXIT
+
+    trap '
+    retcode=$?
+    if [ "$retcode" -ne 0 ] && [ -z "${ENVE_QUITE_EXIT:-}" ]; then
+        if [ ! -f "/tmp/enve-error-$ENVE_SESSION_ID" ]; then
+            traceback_record=
+            if [ -n "${FUNCNAME:-}" ]; then
+                i=0
+                while [ -n "${FUNCNAME[$i]:-}" ]; do
+                    traceback_record="${BASH_SOURCE[$i]}*${FUNCNAME[$i]}${traceback_record:+$newl}$traceback_record"
+                    i=$(( i + 1 ))
+                done
+            fi
+            print_tb
+            if [ "${_ERROR_MSG:-}" ]; then
+                _error "${_ERROR_MSG:-}"
+            else
+                _error "Unexpected exit code $retcode"
+            fi
+            touch /tmp/enve-error-$ENVE_SESSION_ID
+            if [ -n "${PRESS_ENTER_TO_EXIT_ERRORTRACE:-}" ]; then
+                read -p "Press enter to continue"
+            fi
+        fi
+    fi
+    '"$(eval echo \$\*)" EXIT
+
+    retcode=
+    set -eu
+
+    # if hascmd shopt; then
+    #     # for posix-sh compative in bash, need bash>=4.4
+    #     # shellcheck disable=2039
+    #     shopt -s inherit_errexit >/dev/null 2>&1 || true
+    # fi
+}
+
+
+
+
+_extend_path() {
+    oIFS=${IFS+_${IFS}} && IFS=:
+    set -- $PATH ${ENVE_WIDGETS:-} \
+           "$ENVE_HOME/enve" \
+           "$ENVE_HOME/enve/core/"* \
+           "$ENVE_HOME/enve/contrib/"*
+    ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_} && unset oIFS
+
+    reteval=
+    while [ $# -gt 0 ]; do
+        if [ -n ${1:-} ] && [ -n "${1#*\'*}" ] && \
+           [ "${1%\*}" = "$1" ] && [ "${1##*/}" != 'sbin' ]; then
+            reteval="${reteval:+$reteval }'$1'"
+        fi
+        shift
+    done
+}
+
+
+# shellcheck disable=2120
+list_enve_program() {
+    _extend_path
+    eval set -- $reteval
+    unset reteval
+    find_programs=$(find -L "$@" -type f -perm -a=x -depth 1 -name "enve-*")
+    enve_programs=
+    haved_programs=:
+    while read -r _path; do
+        if [ -n "$_path" ]; then
+            prog=${_path##*/enve-}
+            if [ "${haved_programs%%:$prog:*}" = "$haved_programs" ]; then
+                haved_programs="${haved_programs}$prog:"
+                enve_programs="${enve_programs:+$enve_programs$newl}$_path"
+            fi
+        fi
+    done <<EOF
+$find_programs
+EOF
+    unset _path prog find_programs
+}
+
+
+search_enve_program() {
+    # extend_path=$PATH
+    # for p in "$ENVE_HOME/enve" "$ENVE_HOME/enve/core/"* "$ENVE_HOME/enve/contrib/"*; do
+    #     extend_path="$extend_path:$p"
+    # done
+    prog=$1
+    _extend_path
+    eval set -- $reteval
+    unset reteval
+    oIFS=${IFS+_${IFS}} && IFS=:
+    _PATH="$*"
+    ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_} && unset oIFS
+    PATH=$_PATH command -v "$prog"
+    set -- "$?"
+    unset prog _PATH
+    return "$1"
+}
+
+parse_enve_program() {
+    cnt=0
+    state=
+    prog=${1##*/enve-}
+    while read -r line; do
+        if [ $cnt -gt 500 ]; then
+            break
+        elif [ "${line%"${line#?}"}" != "#" ]; then
+            break
+        elif [ "${line#\# __*__=*}" != "$line" ]; then
+            :
+        elif [ -z "$state" ]; then
+            if [ "${line#\# Usage: }" != "${line}" ]; then
+                usage=${line#\# Usage: }
+                if [ "${usage#enve-}" != "$usage" ]; then
+                    usage="enve ${usage#enve-}"
+                fi
+                state=summary_or_usage
+            fi
+        elif [ "$state" = "summary_or_usage" ]; then
+            if [ "${line#\#        }" != "${line}" ]; then
+                usage="$usage$newl${line#\#       }"
+                if [ "${usage#enve-}" != "$usage" ]; then
+                    usage="enve ${usage#enve-}"
+                fi
+            else
+                summary=${line#\# }
+                state=help
+            fi
+        elif [ "$state" = "help" ]; then
+            if [ "${line#\# _enve_$prog\(\)}" != "$line" ]; then
+                state=completions
+                completions=${line#\#}
+            elif [ "${line%"${line#??}"}" = "# " ]; then
+                help="${help:+$help$newl}${line#\# }"
+            else
+                help="${help:+$help$newl}${line#\#}"
+            fi
+        elif [ "$state" = "completions" ]; then
+            completions="${completions:+$completions$newl}${line#\#}"
+        fi
+        cnt=$((cnt+1))
+    done < "$1"
+    unset cnt line state prog
+}
+
+print_enve_help() {
+    d=$0
+    fast_basename
+    echo "Usage: $d [COMMON_OPTIONS] <COMMAND> [OPTIONS]"
+    echo "Environment encapsulation tool"
+    # echo ""
+    # echo "Common Options:"
+    # echo "    -f, --file FILE         parse config from the file"
+    # echo "    -i, --include FILE      include config from the file"
+    # echo "    -c, --config KEY=VALUE  append a key-value pair to config"
+    # echo "    -r, --role ROLE         add a role to the roles set"
+    # echo ""
+    echo "Commands:"
+    list_enve_program
+    unset haved_programs
+
+    # oIFS=${IFS+_${IFS}} && IFS=$newl
+    # for _path in $enve_programs; do
+    #     ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_} && unset oIFS
+    while IFS= read -r _path; do
+        if [ -n "$_path" ]; then
+            parse_enve_program "$_path"
+            prog=${_path##*/enve-}
+            printf "    %-12s-- %s\\n" "$prog" "${summary:-}"
+            unset prog usage summary help completions
+        fi
+    done <<EOF
+$enve_programs
+EOF
+    # [ ${_path-\;} = \; ] && ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_} && unset oIFS
+    unset _path enve_programs
+    echo ""
+}
+
+
+print_program_help() {
+    list_enve_program
+    unset haved_programs
+    # oIFS=${IFS+_${IFS}} && IFS=$newl
+    # for _path in $enve_programs; do
+    #     unset enve_programs
+    #     ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_} && unset oIFS
+    while IFS= read -r _path; do
+        if [ -n "$_path" ]; then
+            if [ "${_path##*/enve-}" = "$1" ]; then
+                parse_enve_program "$_path"
+                if [ -n "${usage:-}" ]; then
+                    s=$usage
+                    replace "${newl}" "%%%%"
+                    replace "%%%%" "${newl}        "
+                    printf %s\\n "Usage: $s"
+                fi
+                if [ -n "${summary:-}" ]; then
+                    printf %s\\n\\n "$summary"
+                fi
+                if [ -n "${help:-}" ]; then
+                    printf %s\\n "$help"
+                fi
+                set --
+                unset usage summary help completions
+                break
+            fi
+        fi
+    done <<EOF
+$enve_programs
+EOF
+    # [ ${_path-\;} = \; ] && ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_} && unset oIFS
+    unset _path enve_programs
+    [ $# -gt 0 ] && return 1 || return 0
+}
+
+
+parse_argument() {
+    # ini-path = path | *.ini
+    # repo-url = path | git+* | *.git | path#
+    # repo-path = repo-url[#[branch][#git-ref]]
+    # workspace = ws:remote | :path | [user@]host:[path]
+
+    unset ARG_RESULT ARG_REMOTE ARG_WS_PATH
+    _arg=${1%%@*}
+    case $_arg in
+        *.ini)              ARG_RESULT=ini; return ;;
+        git+*|*.git|*#*)    ARG_RESULT=repo; return ;;
+        :*|localhost:*)
+                ARG_RESULT=ws
+                ARG_WS_PATH=${_arg#*:}
+                return
+            ;;
+        *:|*:*)
+                ARG_RESULT=ws
+                ARG_REMOTE=${_arg%%:*}
+                ARG_WS_PATH=${_arg#*:}
+                return
+            ;;
+        *ssh://*)
+                ARG_RESULT=ws
+                ARG_WS_PATH=${_arg#*ssh://}
+                if [ "${ARG_WS_PATH#*/}" != ${ARG_WS_PATH} ]; then
+                    ARG_WS_PATH=${_arg#*/}
+                else
+                    ARG_WS_PATH=
+                fi
+                ARG_REMOTE=${_arg%"$ARG_WS_PATH"}
+                return
+            ;;
+    esac
+
+    if [ -f "$_arg/enve.ini" ]; then
+        ARG_RESULT=ini
+    elif [ -d "$_arg/.git" ]; then
+        ARG_RESULT=repo
+    elif [ -f "$_arg/.config/ws/ws-id" ]; then
+        ARG_RESULT=ws
+    else
+        ARG_RESULT=null
+    fi
+    unset _arg
+}
+
+run_enve() {
+    # TODO: WS_TABLE
+
+    set -- \
+        "ENVE_VERBOSE=$ENVE_VERBOSE" \
+        "ENVE_PROGRESS=$ENVE_PROGRESS" \
+        "ENVE_DEBUG=$ENVE_DEBUG" \
+        "ENVE_NOCOLOR=$ENVE_NOCOLOR" \
+        "ENVE_LOGFILE=$ENVE_LOGFILE" \
+        "ENVE_LOGFILE_VERBOSE=$ENVE_LOGFILE_VERBOSE" \
+        "$@"
+
+    if [ -n "${EXEC_SSH_REMOTE:-}" ]; then
+        ssh -o 'ConnectTimeout 3' \
+            -o 'SendEnv ENVE_VERBOSE ENVE_PROGRESS ENVE_DEBUG ENVE_NOCOLOR ENVE_LOGFILE ENVE_LOGFILE_VERBOSE' \
+            "$@"
+    else
+        "$@"
+    fi
+}

@@ -1,0 +1,985 @@
+#!/bin/sh
+
+# shellcheck disable=2016
+true
+
+if [ -n "${HAVE_ENVE_TABLELIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_TABLELIB=1
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+
+tab="$(printf '\tx')"
+tab="${tab%x}"
+feed="$(printf '\fx')"
+feed="${feed%x}"
+vtab="$(printf '\vx')"
+vtab="${vtab%x}"
+newl="$(printf '\nx')"
+newl="${newl%x}"
+cr="$(printf '\rx')"
+cr="${cr%x}"
+
+
+
+# All function in this definition are design to compatible with posix shell.
+# External Dependencies are awk(1), tr(1), pwd(1), ls(1), basename(1), dirname(1).
+#
+# The newline character in VALUE will be replaced to '\f' before store in table.
+# Therefore VALUE can store any ascii character except '\f'
+#
+# table syntax:
+#   TABLE   = (ENTRY '\n')*
+#   ENTRY   = VTYPE '\t' KEY '\t' VALUE
+#   KEY     = KEYCOMP ('.' KEYCOMP)*
+#   VTYPE   = 'VAR' | 'RVAR' | 'FUNC' | 'ALIAS' | 'LIST' | 'JOIN' | 'SRC'
+#   KEYCOMP = [^\n.]+
+#   VALUE   = [^\n]*
+
+
+
+
+
+_fast_table_match() {
+    _key_cond=$1
+    _inverse=${inverse:-}
+
+    _sh_regex=
+    _grep_regex=
+
+    s=${_key_cond}
+    replace '\.' "z"
+    _search_regex_symbol=$s
+    _search_regex_symbol=${_search_regex_symbol%".*"}
+    if [ -z "${usegrep:-}" ] && \
+       [ "${_search_regex_symbol#*[\*\.\+\?\[\]\(\)\{\}\^\$\|]}" = "${_search_regex_symbol}" ]; then
+        s=${_key_cond}
+        replace '.*' '*'
+        replace '\.' '.'
+        _sh_regex=${s}
+    else
+        _grep_regex=${_key_cond}
+    fi
+    # echo "_sh_regex: '${_sh_regex}'" >&2
+    matchlines=
+    if [ -n "${_sh_regex}" ]; then
+        # fast prefix match
+        while IFS="" read -r line; do
+            if [ -z "$line" ]; then continue; fi
+            mline=${line%${tab}*}
+            if [ -z "${mline%"$vtype$tab"${_sh_regex}}" ]; then
+                match=1
+            else
+                match=
+            fi
+            # echo "${_inverse} + ${match}: $_sh_regex : $mline : ${mline#$vtype$tab${_sh_regex}}" >&2
+            if      { [ -n "${_inverse}" ] && [ -z "${match}" ]; } || \
+                    { [ -z "${_inverse}" ] && [ -n "${match}" ]; }; then
+                matchlines="${matchlines}$line$newl"
+            fi
+        done <<EOF
+$TABLE
+EOF
+    else
+        # regex match
+        matchlines=$(printf %s\\n "$TABLE" | grep -E ${_inverse:+-v} \
+                     "^${vtype}${tab}${_grep_regex}${tab}" || true)
+    fi
+    unset _key_cond _sh_regex _grep_regex _inverse _search_regex_symbol s line mline
+}
+
+
+fast_table_tail() {
+    vtype="${2:-VAR}"
+    _fast_table_match "$1"
+
+    v=${matchlines%%$newl}
+    v=${v##*$newl}
+    v=${v#$vtype$tab*$tab}
+    # if [ -z "$v" ]; then
+    #     v=${TABLE_DEFAULT:-}
+    # fi
+    TABLE_TAIL=${v:-"${TABLE_DEFAULT:-}"}
+    unset matchlines v
+}
+
+
+fast_table_subset() {
+    vtype="${2:-VAR}"
+    _fast_table_match "$1"
+    kv=
+    while read -r line; do
+        if [ -n "$line" ]; then
+            kv="${kv}${line#$vtype$tab}$newl"
+        fi
+    done <<EOF
+$matchlines
+EOF
+    # TABLE_SUBSET=${kv%%$newl}
+    TABLE_SUBSET=$kv
+    unset matchlines line
+}
+
+fast_table_exclude() {
+    vtype="${2:-VAR}"
+    inverse=1 _fast_table_match "$1"
+    kv=
+    while read -r line; do
+        if [ -n "$line" ]; then
+            kv="${kv}${line#$vtype$tab}$newl"
+        fi
+    done <<EOF
+$matchlines
+EOF
+    # TABLE_SUBSET=${kv%%$newl}
+    TABLE_SUBSET=$kv
+    unset matchlines line
+}
+
+fast_table_prefix() {
+    kv=
+    while IFS=$tab read -r vt k v; do
+        if [ -z "$vt" ]; then continue; fi
+        kv="$kv$vt$tab$1$k$tab$v$newl"
+    done <<EOF
+$TABLE
+EOF
+    TABLE_SUBSET=$kv
+    unset kv vt k v
+}
+
+
+_fast_table_raw_subset() {
+    vtype="${2:-VAR}"
+    _fast_table_match "$1"
+    TABLE_SUBSET=$matchlines
+    unset matchlines
+}
+
+
+_fast_table_raw_exclude() {
+    vtype="${2:-VAR}"
+    inverse=1 _fast_table_match "$1"
+    TABLE_SUBSET=$matchlines
+    unset matchlines
+}
+
+
+table_tail() {
+    vtype="${2:-VAR}"
+    fast_table_tail "$@"
+    printf %s\\n "$TABLE_TAIL"
+    unset vtype
+}
+
+table_subset() {
+    vtype="${2:-VAR}"
+    fast_table_subset "$@"
+    printf %s "$TABLE_SUBSET"
+    unset vtype
+}
+
+table_exclude() {
+    vtype="${2:-VAR}"
+    fast_table_exclude "$@"
+    printf %s "$TABLE_SUBSET"
+    unset vtype
+}
+
+
+
+
+
+fast_as_postfix() {
+    _postfix=$1
+    TABLE_AS=
+    while IFS="${tab}" read -r name value; do
+        if [ -n "$name" ]; then
+            TABLE_AS="${TABLE_AS}${name#"${_postfix}"}${tab}${value}$newl"
+        fi
+    done <<EOF
+$TABLE_SUBSET
+EOF
+    unset _postfix name value
+}
+
+fast_as_rootkey() {
+    TABLE_AS=
+    while IFS="${tab}" read -r name value; do
+        if [ -n "$name" ]; then
+            TABLE_AS="${TABLE_AS}${name%.*}${tab}${value}$newl"
+        fi
+    done <<EOF
+$TABLE_SUBSET
+EOF
+    unset _postfix name value
+}
+
+fast_as_value() {
+    TABLE_AS=
+    while IFS="${tab}" read -r name value; do
+        if [ -n "$name" ]; then
+            if [ -n "$value" ]; then
+                TABLE_AS="${TABLE_AS}$value$newl"
+            else
+                TABLE_AS=
+            fi
+        fi
+    done <<EOF
+$TABLE_SUBSET
+EOF
+    unset name value
+}
+
+
+fast_as_tail() {
+    fast_as_value
+    TABLE_AS=${TABLE_AS%%$newl*}
+    if [ -z "$TABLE_AS" ]; then
+        TABLE_AS=${TABLE_DEFAULT:-}
+    fi
+}
+
+fast_as_uniquekey() {
+    TABLE_AS="$newl"
+    while IFS="${tab}" read -r name value; do
+        if [ -n "$name" ] && [ "${TABLE_AS%$newl$name$newl*}" = "${TABLE_AS}" ]; then
+            TABLE_AS="${TABLE_AS}${name}${newl}"
+        fi
+    done <<EOF
+$TABLE_SUBSET
+EOF
+    TABLE_AS="${TABLE_AS#$newl}"
+    # TABLE_AS="${TABLE_AS%$newl}"
+    unset name value
+}
+
+fast_as_concat() {
+    concat_by="${1:-}"
+    fast_as_value
+    if [ "$concat_by" != "$newl" ]; then
+        s=$TABLE_AS
+        replace "$newl" "$concat_by"
+        TABLE_AS=$s
+    fi
+    TABLE_AS=${TABLE_AS%$concat_by}
+    unset concat_by s
+}
+
+as_postfix() {
+    TABLE_SUBSET=$(cat -) fast_as_postfix "$1"
+    printf %s "$TABLE_AS"
+}
+as_rootkey() {
+    TABLE_SUBSET=$(cat -) fast_as_rootkey
+    printf %s "$TABLE_AS"
+}
+as_value() {
+    TABLE_SUBSET=$(cat -) fast_as_value
+    printf %s "$TABLE_AS"
+}
+as_uniquekey() {
+    TABLE_SUBSET=$(cat -) fast_as_uniquekey
+    printf %s "$TABLE_AS"
+}
+as_concat() {
+    TABLE_SUBSET=$(cat -) fast_as_concat "$1"
+    printf %s "$TABLE_AS"
+}
+
+
+
+# TODO: remove this
+fast_resolve_path() {
+    if [ -z "$d" ]; then
+        :
+    elif [ "${d%"${d#?}"}" = '/' ]; then
+        :
+    elif [ -n "$PRJROOT" ]; then
+        d="${PRJROOT%/}/$d"
+    else
+        fast_table_tail "layout\\.root"
+        PRJROOT=${TABLE_TAIL:-$PWD}
+        PRJROOT=${PRJROOT%/}
+        d="${PRJROOT}/$d"
+    fi
+}
+
+
+# TODO: remove this
+out_var() {
+    # echo "VAR${tab}$1${tab}$(printf "%s" "$2" | tr '\n' '\f')"
+    # printf %s\\n "VAR${tab}$1${tab}$(s=$2; replace "$newl" "$feed"; printf "%s" "$s")"
+    out_escape_fast "$1" "$2"
+}
+# TODO: remove this
+out_var_fast() {
+    printf %s\\n "VAR${tab}$1${tab}$2"
+}
+
+
+# TODO: rename out_just
+out_var_just() {
+    TABLE="${TABLE%%$newl}${TABLE:+$newl}${3:-VAR}${tab}$1${tab}$2"
+}
+out_just() {
+    out_var_just "$@"
+}
+
+# TODO: rename out_fast
+out_raw_fast() {
+    printf %s\\n "${3:-VAR}${tab}$1${tab}$2"
+}
+out_fast() {
+    out_raw_fast "$@"
+}
+
+out_escape_just() {
+    s=$2
+    replace "$newl" "$feed"
+    TABLE="${TABLE%%$newl}${TABLE:+$newl}${3:-VAR}${tab}$1${tab}$s"
+    unset s
+}
+
+out_escape_fast() {
+    s=$2
+    replace "$newl" "$feed"
+    printf %s\\n "${3:-VAR}${tab}$1${tab}$s"
+    unset s
+}
+
+
+out_alias() { out_escape_fast "$1" "$2" ALIAS; }
+out_list() { out_escape_fast "$1" "$2" LIST; }
+out_join() { out_fast "$1" "$2" JOIN; }
+out_source() { out_fast "$1" "$2" SRC; }
+out_code() { out_escape_fast "$1" "$2" CODE; }
+
+
+
+
+# shellcheck disable=2120,2031
+value_substi() {
+    # paramaters
+    #   _get_var
+    #   _value
+    # output
+    #   _subsited_value
+
+
+    _cur="${_value}"
+
+    _PASSVARS="$newl${PASSVARS:-}$newl"
+    _newvalue=
+    while [ "${_cur%\$\{*\}*}" != "${_cur}" ]; do
+
+        # in case of '123${variable}456'
+        #   _left   = '123'
+        #   _center = 'variable'
+        #   _right  = '456'
+        _left=${_cur%%\$\{*\}*}
+        _right=${_cur#*\$\{*\}}
+        _center=${_cur%\}"${_right}"}
+        _center=${_center#"$_left"\$\{}
+        # echo "${_left}--${_center}--${_right}" >&2
+        if [ "${_left#${_left%?}}" = "\\" ]; then
+            _newvalue="${_newvalue}${_left%?}\${${_center}}"
+            _cur=${_right}
+            continue
+        fi
+        if [ "${_center%${_center#?}}" = "_" ]; then
+            _newvalue="${_newvalue}${_left}\${${_center}}"
+            _cur=${_right}
+            continue
+        fi
+        if [ "${_center#*:[-+=]}" != "${_center}" ]; then
+            _namepart=${_center%%:[-+=]*}
+            _recpart=${_center#*:[-+=]}
+        elif [ "${_center#*[-+=]}" != "${_center}" ]; then
+            _namepart=${_center%%[-+=]*}
+            _recpart=${_center#*[-+=]}
+        else
+            _namepart=${_center}
+            _recpart=
+        fi
+
+        # echo "R-${_cur}:${_recpart:-}" >&2
+        # echo "N-${_cur}:${_namepart}" >&2
+        # echo "C-${_cur}:${_center}" >&2
+        _stay=
+        _undefined=
+        if [ -n "$_PASSVARS" ] &&
+                [ "${_PASSVARS#*$newl$_namepart$newl}" != "${_PASSVARS}" ]; then
+            _stay=1
+        elif [ -n "${_namepart}" ] && [ "${_namepart#*\$}" = "${_namepart}" ] && \
+                                    [ "${_recpart#*\$\(}" = "${_recpart}" ]; then
+            if type -t _get_var >/dev/null; then
+                _var=${_center} _refs=$_refs _stay="" _undefined="" \
+                _cur="" _left="" _center="" _right="" _newvalue="" _get_var
+                case $? in
+                    0) ;;
+                    1)
+                            _undefined=1
+                        ;;
+                    3)
+                            error "circular reference at '${_center}'"
+                            return 3
+                        ;;
+                    *)
+                            return $?
+                        ;;
+                esac
+                _center=${_val}
+            else
+                if eval [ \"\${$_center+775689}\" != 775689 ]; then
+                    _undefined=1
+                else
+                    eval _center=\"\${$_center}\"
+                fi
+            fi
+        else
+            error "unsafe variable subsitution at '${_center}'"
+            return 2
+        fi
+
+        if [ -n "$_undefined" ] && [ -z "${STAY_UNDEFINED:-}" ]; then
+            error "undefined variable '${_center}'"
+            return 1
+        elif [ -n "$_undefined" ] || [ -n "$_stay" ]; then
+            # output the "'" escape form
+            # _center="'\"\${${_center}}\"'"
+            _center="\${$_center}"
+        fi
+
+        _newvalue="${_newvalue}${_left}${_center}"
+        _cur=${_right}
+    done
+    _newvalue="${_newvalue}${_cur}"
+    _subsited_value=${_newvalue}
+
+    echo "_subsited_value: (${_refs:-}) $_value=$_subsited_value" >&2
+
+}
+
+
+
+# table_substi() {
+#     # table values substitution
+#     (
+#         _table=$1
+#         vtypes=",${2:-VAR,LIST},"
+#         # use "$1" as variable table to make context
+#         while IFS="${tab}" read -r _vt _vk _value; do
+#             if [ "${_vt}" = "VAR" ] && [ "${_vk%\.*}" = "${_vk}" ]; then
+#                 value_substi
+#                 eval "${_vk}=\"\${_subsited_value}\""
+#             fi
+#         done <<EOF
+# $_table
+# EOF
+
+#         while IFS="${tab}" read -r _vt _vk _value; do
+#             if [ "${vtypes%,${_vt},*}" != "${vtypes}" ]; then
+#                 value_substi
+#                 _value=${_subsited_value}
+#             fi
+#             printf %s\\n "${_vt}${tab}${_vk}${tab}${_value}"
+#         done <<EOF
+# $TABLE
+# EOF
+#     )
+# }
+
+table_substi() {
+    # table values substitution
+    (
+        _table=$1
+        vtypes=",${2:-VAR,LIST},"
+        # use "$1" as variable table to make context
+        while IFS="${tab}" read -r _vt _vk _value; do
+            # dont substi non-alphabeta char
+            case $_vk in
+                *[\-\.\@\\\/]*) continue;;
+            esac
+            eval "__${_vk}=\"\${_value}\""
+        done <<EOF
+$_table
+EOF
+        _get_var() {
+            if [ -z "${_refs#*\]"$_var"\]*}" ]; then
+                return 3
+            fi
+            eval "_val=\"\${_cached__$_var:-}\""
+            if [ -z "$_val" ]; then
+                if eval "[ -z \"\${__$_var+x}\" ]"; then
+                    return 1
+                else
+                    eval "_value=\"\${__$_var}\""
+                    _cur="" _refs="${_refs}${_var}]" value_substi || return $?
+                    eval "_cached__$_var=\"\${_subsited_value}\""
+                    _val=${_subsited_value}
+                fi
+            fi
+        }
+        while IFS="${tab}" read -r _vt _vk _value; do
+            if [ "${vtypes%,${_vt},*}" != "${vtypes}" ]; then
+                case $_value in
+                    *\$*)
+                        _origin_value="$_value"
+                        _value=$_value _origin_value="" _refs=']' value_substi || return $?
+                        _value=${_subsited_value}
+                        echo "SUB $_vk=$_origin_value -> $_vk=$_value" >&2
+                    ;;
+                esac
+            fi
+            printf %s\\n "${_vt}${tab}${_vk}${tab}${_value}"
+        done <<EOF
+$TABLE
+EOF
+    )
+}
+
+
+
+
+
+
+
+
+
+
+
+
+json_emit_debug() {
+    echo "["$3"] ${1}=$2"
+}
+
+json_emit_table() {
+    printf VAR\\t%s\\t%s\\n "$1" "$2"
+}
+
+json_emit_table_var() {
+    TABLE="${TABLE}VAR$tab$1$tab$2$newl"
+}
+
+
+parse_json() {
+    stat=.V
+    stack=""
+    t="$1"
+    k="_r"
+    while [ -n "$t" ]; do
+        junk=${t%%[![:space:]]*}
+        t=${t#"$junk"}
+        v=
+        e=
+        case ${stat##*.}$t in
+            O\}*)
+                    k=${stack##*.}
+                    stack=${stack%.*}
+                    t=${t#\}}
+                    stat=${stat%.V.O}
+                ;;
+            O,*)
+                    t=${t#","}
+                ;;
+            O\"*)
+                    k=${t#\"}
+                    k=${k%%\"*}
+                    t=${t#\""$k"\"*:}
+                    stat="${stat}.V"
+                ;;
+            A\]*)
+                    k=${stack##*.}
+                    stack=${stack%.*}
+                    t=${t#\]}
+                    stat=${stat%.V.A}
+                ;;
+            A,*)
+                    k=$((k+1))
+                    t=${t#","}
+                    stat="${stat}.V"
+                ;;
+            V\[*)
+                    stack="${stack}.${k}"
+                    k=0
+                    t=${t#"["}
+                    stat="${stat}.A.V"
+                ;;
+            V\{*)
+                    stack="${stack}.${k}"
+                    k=
+                    t=${t#"{"}
+                    stat="${stat}.O"
+                ;;
+            V\]*|V\})
+                    stat=${stat%.V}
+                ;;
+            V\"*)
+                    v=${t#\"}
+                    v=${v%%\"*}
+                    t=${t#\""$v"\"}
+                    e=string
+                ;;
+            V[0-9\.]*)
+                    v=${t%%[[:space:],\}\]]*}
+                    t=${t#"$v"}
+                    e=number
+                ;;
+            Vtrue*)
+                    v=true
+                    t=${t#"$v"}
+                    e=bool
+                ;;
+            Vfalse*)
+                    v=false
+                    t=${t#"$v"}
+                    e=bool
+                ;;
+            Vnull*)
+                    v=null
+                    t=${t#"$v"}
+                    e=null
+                ;;
+            *)
+                    lastchars=$t
+                    laststat=$stat
+                    unset junk stat stack t k v e
+                    return 1
+                ;;
+        esac
+        if [ -n "$e" ]; then
+            stat=${stat%.V}
+            _s="${stack:+$stack.$k}"
+            $emit "${_s#._r.}" "$v" "$e"
+            unset _s
+        fi
+        # echo "$stat/$stack: $t"
+        if [ "$stat" = "" ] && [ "$stack" = "" ]; then
+            lastchars=
+            unset junk stat stack t k v e
+            return 0
+        fi
+    done
+}
+
+table_parse_json() {
+    TABLE=
+    if ! emit=json_emit_table_var parse_json "$1"; then
+        _error "json parser, last state: $laststat"
+        echo "$lastchars" >&2
+        return 1
+    fi
+}
+
+# emit=emit parse_json '
+# {"a": "xxx", "b": { "c":   90 }, "c": [ true,3.2, "4"] }
+# '
+
+# emit=emit parse_json '
+# [ "xx" ]
+# '
+
+# emit=json_emit_table_var parse_json '[[[2]],[[[5,2]]]]'
+# echo "$TABLE"
+
+
+
+make_json_object() {
+    JSON_OBJECT=
+    key=${JSON_UPPER_KEY:-}
+    while [ $# -gt 0 ]; do
+        k="$1"
+        v="$2"
+        shift 2
+        if [ "${k%=}" != "$k" ]; then
+            k=${k%=}
+            JSON_OBJECT="${JSON_OBJECT:+$JSON_OBJECT,}\"$k\":$v"
+        else
+            JSON_OBJECT="${JSON_OBJECT:+$JSON_OBJECT,}\"$k\":\"$v\""
+        fi
+        if [ "${JSON_UPPER_ATTR:-}" = "$k" ]; then
+            key="$v"
+        fi
+    done
+
+    JSON_OBJECT="{$JSON_OBJECT}"
+    if [ -n "$key" ]; then
+        JSON_UPPER_OBJECT="${JSON_UPPER_ARRAY:-$JSON_UPPER_ARRAY,}\"$key\":${JSON_OBJECT}"
+    elif [ "${JSON_ARRAY:-}" = "[" ]; then
+        JSON_ARRAY="${JSON_ARRAY}${JSON_OBJECT}"
+    elif [ -n "${JSON_ARRAY:-}" ]; then
+        JSON_ARRAY="${JSON_ARRAY},${JSON_OBJECT}"
+    fi
+    unset k v key
+}
+
+
+
+
+
+
+
+
+
+
+
+_parse_keyvalue() {
+    # params
+    #   $1 - line
+    # output
+    #   key
+    #   value
+
+    line="$1"
+
+    if [ -z "${line#\\\[*}" ]; then
+        # line escape starting '\[' to '['
+        line=${line#\\}
+    fi
+
+    key=
+    if [ "${line##*"\\="}" != "${line}" ]; then
+        # value escape '\=' to '='
+        s=$value
+        replace "\\=" "="
+        value=$s
+        unset s
+    elif [ -z "${line##*"="*}" ]; then
+        key="${line%%"="*}"
+        value="${line#*"="}"
+    else
+        value=$line
+    fi
+
+    # save preformance
+    # if [ -n "$key" ]; then
+    #     junk=${key%%[![:space:]]*}
+    #     key=${key#"$junk"}
+    #     junk=${key##*[![:space:]]}
+    #     key=${key%"$junk"}
+    # fi
+    unset line
+}
+
+
+filter_roles() {
+    # input
+    #   roles
+    # inout
+    #   key
+
+    s="$key${newl}"
+    replace "," "@"
+    # _roles=,$roles
+    OLDIFS=$IFS; IFS=","
+    for role in ${roles}; do
+        replace "@$role@" "@"
+        replace "@$role." "."
+        replace "@$role$newl" "$newl"
+    done
+    IFS=$OLDIFS
+    key=$s
+    key="${key%$newl}"
+    key="${key%\.}"
+    unset OLDIFS role s
+}
+
+emit2() {
+    # input
+    #   roles
+    #   key
+    #   value
+
+    key="$1"
+    value="$2"
+
+    while true; do
+        case $key in
+            *\\[@,]*)
+                    # escape @ and ,
+                    s=$key
+                    replace '\@' "$tab"
+                    replace '\,' "$vtab"
+                    key=$s
+                    escape=1
+                ;;
+            *[@,]*)
+                    [ -n "${filtered:-}" ] && break;
+                    filter_roles
+                    filtered=1
+                ;;
+            include|inherit)
+                    s=$value
+                    replace "@" ","
+                    if [ "$s" != "${s#*,}" ]; then
+                        value_path=${s%%,*}
+                        value_roles=${s#*,}
+                    else
+                        value_path=$s
+                        value_roles=
+                    fi
+                    pass_roles=",${roles:+$roles,}"
+                    OLDIFS=$IFS; IFS=","
+                    for r in ${value_roles}; do
+                        if [ -n "$r" ] && [ "${pass_roles%,$r,*}" = "${pass_roles}" ]; then
+                            pass_roles="$pass_roles$r,"
+                        fi
+                    done
+                    IFS=$OLDIFS
+                    pass_roles=${pass_roles%,}
+                    pass_roles=${pass_roles#,}
+                    printf VAR\\t%s\\t%s\\n "__$key" "$value_path${pass_roles:+,$pass_roles}"
+                    # echo "$value_path${pass_roles:+,$pass_roles}" >&2
+                    # echo ""
+                    # OUT_TABLE="${OUT_TABLE}VAR${tab}__$key${tab}$value_path${pass_roles:+,$pass_roles}${newl}"
+                    unset OLDIFS s r value_path value_roles pass_roles
+                    break
+                ;;
+            ?*)
+                    if [ -n "${escape:-}" ]; then
+                        s=$key
+                        replace "$tab" "@"
+                        replace "$vtab" ","
+                        key=$s
+                    fi
+                    printf  VAR\\t%s\\t%s\\n "$key" "$value"
+                    # OUT_TABLE="${OUT_TABLE}VAR${tab}$key${tab}$value${newl}"
+                    break
+                ;;
+            '')     break;;
+        esac
+    done
+    unset filtered escape key value
+}
+
+# emit_area() {
+#     ar=$1
+#     ky=$2
+#     vl=$3
+#     ar=${ar%%\|}
+#     ar=${ar##\|}
+#     ar="${ar}|"
+#     ky=${ky%%\.}
+#     ky=${ky##\.}
+#     ky="${ky}|"
+
+#     emit_area_OLDIFS=$IFS
+#     IFS='|'
+#     for a in $ar; do
+#         for k in $ky; do
+#             a=${a%%\.}
+#             a=${a##\.}
+#             k=${k%%\.}
+#             k=${k##\.}
+#             if [ -z "$a$k" ]; then
+#                 _error "value with no key $ln: '$origin_line'"
+#                 return 1
+#             fi
+#             k="${a:+$a${k:+.}}${k}"
+#             emit2 "$k" "$vl"
+#         done
+#     done
+#     IFS="$emit_area_OLDIFS"
+#     unset ar ky vl k a emit_area_OLDIFS
+# }
+
+emit_area() {
+    a=$1
+    k=$2
+    vl=$3
+    a=${a%%\.}
+    a=${a##\.}
+    k=${k%%\.}
+    k=${k##\.}
+    if [ -z "$a$k" ]; then
+        _error "value with no key $ln: '$origin_line'"
+        return 1
+    fi
+    k="${a:+$a${k:+.}}${k}"
+    emit2 "$k" "$vl"
+    unset a k vl
+}
+
+
+parse_config_non_recursive_text() {
+    # input
+    #   roles
+    #   $1 - config_text
+    # inout
+    #   OUT_TABLE
+
+    ln=1
+    area=.
+    while read -r line; do
+        origin_line=$line
+
+        junk=${line%%[![:space:]]*}
+        line=${line#"$junk"}
+        junk=${line##*[![:space:]]}
+        line=${line%"$junk"}
+
+        if [ -z "${stabarea:-}" ]; then
+            case ${area:-}\|$line in
+                +*)
+                        emit_area "${area#\+}" "" "$origin_line"
+                    ;;
+                +*\|\[-${area#\+}\])    area=. ;;
+                comment\|*) ;;
+                *\|[!\[\#\;]*\\\\)
+                        _parse_keyvalue "$line"
+                        emit_area "$area" "$key" "${value%?}"
+                    ;;
+                *\|[!\[\#\;]*\\)
+                        _parse_keyvalue "$line"
+                        stabarea=$area
+                        stabkey=$key
+                        stab="${stab:-}${value%?}"
+                    ;;
+                *\|[!\[\#\;]*)
+                        _parse_keyvalue "$line"
+                        emit_area "$area" "$key" "$value"
+                    ;;
+                *\|\[[!\[\#\;\-]*\])
+                        area="${line#\[}"
+                        area="${area%\]}"
+
+                        # Note: original key should not contain character '@' or ',',
+                        #       otherwise role test failed
+                        junk=${area%%[![:space:]]*}
+                        area=${area#"$junk"}
+                        junk=${area##*[![:space:]]}
+                        area=${area%"$junk"}
+                        if [ -z "$area" ]; then
+                            _error "area cannot empty '[ ]' $ln: '$origin_line'"
+                            return 1
+                        fi
+                    ;;
+                *\|''|*\|[\#\;]*) ;;
+                *)
+                        _error "config parse error at line $ln: '$origin_line'"
+                        return 1
+                    ;;
+            esac
+        else
+            case $line in
+                \#*|\;*)    ;;
+                *\\\\|*[!\\])
+                        stab="${stab}${line%\\}"
+                        emit_area "$stabarea" "$stabkey" "$stab"
+                        unset stabarea stabkey stab
+                    ;;
+                *\\)    stab="${stab}${line%?}" ;;
+            esac
+        fi
+        ln=$((ln+1))
+    done
+    unset junk line origin_line area stab stabkey key value
+}
+
+
+
+
