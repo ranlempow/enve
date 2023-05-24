@@ -83,4 +83,4 @@ resolve_symlinks ()
 ENVE_HOME=$(resolve_symlinks "$0")
 ENVE_HOME="${ENVE_HOME%/bin/enve}/libexec"
 export ENVE_HOME
-exec "$SHELL" "$ENVE_HOME/enve/enve" "$@"
+exec "/bin/sh" "$ENVE_HOME/enve/enve" "$@"
