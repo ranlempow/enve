@@ -1,0 +1,136 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+settrace
+
+basetool_install_command() {
+    fast_get_system
+    case "$ENVE_CACHED_OS" in
+        Darwin)
+                if hascmd brew; then
+                    install_cmd="${HOMEBREW_PREFIX:+$HOMEBREW_PREFIX/bin/}"'brew install'
+                    check_cmd="${HOMEBREW_PREFIX:+$HOMEBREW_PREFIX/bin/}"'brew list'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        Linux)
+                if hascmd apt-get; then
+                    install_cmd='sudo apt install'
+                    check_cmd='sudo apt list --installed'
+                elif hascmd yum; then
+                    install_cmd='sudo yum install'
+                    check_cmd='sudo yum list --installe'
+                elif hascmd pacman; then
+                    install_cmd='sudo pacman -S'
+                    check_cmd='sudo pacman -Q'
+                elif hascmd apk; then
+                    # alpine
+                    install_cmd='sudo apk add'
+                    check_cmd='sudo apk info'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        FreeBSD)
+                if hascmd pkg; then
+                    install_cmd='sudo pkg install'
+                    check_cmd='sudo pkg info'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        MINGW*|MSYS*)
+                # TODO: mingw has no pacman
+                if hascmd pacman; then
+                    install_cmd='pacman -S'
+                    check_cmd='pacman -Q'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        CYGWIN*)
+                if [ -f "/setup-x86_64.exe" ]; then
+                    install_cmd='/setup-x86_64.exe -q --no-verify -R "$(cygpath /)" -l "xxx" -P'
+                elif [ -f "/setup-x86.exe" ]; then
+                    install_cmd='/setup-x86_64.exe -q --no-verify -R "$(cygpath /)" -l "xxx" -P'
+                else
+                    error "unknown package manager at $kernal_name"
+                    return 1
+                fi
+            ;;
+        *)
+                error "unsuported operating system $kernal_name"
+                return 1
+            ;;
+    esac
+    # echo "$cmd"
+}
+
+install_hostpkgs() {
+    basetool_install_command
+    HOMEBREW_PREFIX=$HOMEBREW_PREFIX $install_cmd $PKG
+}
+
+check_hostpkgs() {
+    basetool_install_command
+    HOMEBREW_PREFIX=$HOMEBREW_PREFIX $check_cmd $PKG 2>/dev/null
+}
+
+
+if [ "${SCOPE:-}" = host ]; then
+    HOMEBREW_PREFIX=/usr/local
+elif [ "${SCOPE:-}" = user ]; then
+    HOMEBREW_PREFIX=~/.local
+elif [ -n "${SCOPE:-}" ]; then
+    echo "scope '$SCOPE' not defined" >&2
+    exit 1
+else
+    HOMEBREW_PREFIX=${2:-$HOMEBREW_PREFIX}
+    HOMEBREW_PREFIX=${HOMEBREW_PREFIX:-~/.local}
+fi
+
+case $1 in
+    install) install_hostpkgs;;
+    uninstall) ;;
+    check) check_hostpkgs || quiet_exit 1;;
+esac
+
+
+
+
+# basic_require_ensure() {
+#     deps="curl git openssh"
+#     fast_get_system
+#     case "$ENVE_CACHED_OS" in
+#         # procps-ng for 'top'
+#         MINGW*|MSYS*|CYGWIN*) deps="$deps cygrunsrv" ;;
+#     esac
+
+#     needed=
+#     for dep in $deps; do
+#         if ! eval hascmd \$PROG_$dep; then
+#             needed="$needed${needed:+ }$dep"
+#         fi
+#     done
+#     if [ -n "$needed" ]; then
+#         # thoroughly boot
+#         if [ -n "${ENVE_BOOT_THOROUGH:-}" ]; then
+#             if ! eval "$(basetool_install_command) $needed"; then
+#                 error "basic required program install failed"
+#                 return 1
+#             fi
+#         else
+#             error "you need install basic required program manually by: "
+#             error "  '$(basetool_install_command) $needed'"
+#             error "or run again with --thorough option."
+#             return 1
+#         fi
+#     fi
+# }

@@ -1,26 +1,41 @@
 #!/bin/sh
+#
+#
+# codebase.base(layout.root)
+# codebase.out
+# TODO: codebase.tmp
+# TODO: codebase.cache
+# TODO: codebase.data
+# TODO: codebase.extra
+# variable.*
+#
+# -> CB_NAME(PRJ_NAME)
+# -> CB_BASE(PRJROOT)
+# -> CB_OUT(PRJ_OUT)
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 settrace
 
 resolve_first() {
-    [ -n "$TABLE" ] && echo "$TABLE"
-    out_join BYPASS ':'
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+    out_join BYPASS ' '
     # out_list BYPASS "HOME"
     # out_list BYPASS "USER"
     out_var HOME "$HOME"
     out_var USER "$USER"
-    out_var TMPDIR "${TMPDIR:-/tmp}"
+    fast_get_tempdir --posix
+    out_var TMPDIR "$d"
 }
 
 
 resolve_basic_early() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     # PRJROOT="$(resolve_path "$(table_tail "layout\\.root")")"
     fast_table_tail "layout\\.root"
     if [ -n "$TABLE_TAIL" ]; then
@@ -30,7 +45,12 @@ resolve_basic_early() {
         PRJROOT=
     fi
 
-    { table_subset "variable\\..*" || true; } | as_postfix "variable\\." | \
+    if [ -d "$PRJROOT/.git" ]; then
+        PRJ_VERSION=$(cd $PRJROOT; git rev-parse --short HEAD)
+        out_var "PRJ_VERSION" "$PRJ_VERSION"
+    fi
+
+    { table_subset "variable\\..*" || true; } | as_postfix "variable." | \
     while read -r name value; do
         out_var "$name" "$value"
     done
@@ -50,12 +70,27 @@ resolve_basic_early() {
     out_var "PRJ_NAME" "$PRJ_NAME"
     out_escape_fast "PRJ_NAME" "$PRJ_NAME" META
 
+    fast_table_tail "enve\\.roles"
+    s=$TABLE_TAIL
+    replace '@' ','
+    s=",$s,"
+    if [ -z "${s%*,build,*}" ] || [ -z "${s%*,deploy,*}" ]; then
+        fast_table_tail "layout\\.out"
+        out=$TABLE_TAIL
+        if [ -z "$out" ]; then
+            fast_get_tempdir
+            # out=$(mkdtemp ${PRJ_NAME}-out)
+            out="$d/${PRJ_NAME}-out"
+        fi
+        mkdir -p "$out"
+        out_var "PRJ_OUT" "$out"
+    fi
 }
 
 
 
 resolve_ssh() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     out_list BYPASS "SSH_CONNECTION"
     out_list BYPASS "SSH_TTY"
     out_list BYPASS "SSH_CLIENT"
@@ -64,9 +99,10 @@ resolve_ssh() {
 }
 
 resolve_shell() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     target="$(table_tail "core\\.target")"
     if  [ "$target" = "shell" ]; then
+        # TODO: 應該移到base-late
         out_join ENVE_BASHOPTS ':'
         out_join ENVE_SHELLOPTS ':'
         out_join ENVE_ZSHOPTS ':'
@@ -100,6 +136,26 @@ resolve_shell() {
         out_code sh '  unset _pid'
         out_code sh 'fi'
         out_code sh 'unset ENVE_RCRESOLVE_PIDFILE'
+
+# 內建清空原本的環境變數，但保留BYPASS的部分，因此不用在呼叫env -i
+# envlist=
+# while read -r y z; do
+#     eval tmp_$z
+#     z=${z%%=*}
+#     unset y $z
+#     envlist="${envlist} $z"
+# done <<EOF
+# $(export -p)
+# EOF
+
+# for z in $envlist; do
+#     if [ -n "${BYPASS:-}"] && [ -z "${BYPASS%%*" "$z" "*}" ]; then
+#         eval export $z=\"\$tmp_$z\"
+#     fi
+#     unset tmp_$z
+# done
+# unset envlist z
+
         # out_list "ENVE_SHELLOPTS" "-posix"
     fi
 
@@ -134,5 +190,5 @@ main() {
     # done
 
     info "OUT $ZERO/base-early.module"
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 }

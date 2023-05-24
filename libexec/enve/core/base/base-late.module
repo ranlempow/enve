@@ -1,23 +1,60 @@
 #!/bin/sh
+#
+# path
+# passvar
+# dotfiles
+# shell.alias.*(alias.*)
+# shell.cmd.*(cmd.*)
+# exec.cwd
+# exec.cmd (when core.target == 'run')
+# exec.interactive      set true if require interactive shell
+# TODO: build.exec
+# TODO: test.exec
+# TODO: pack.exec
+# TODO: deploy.exec
+# TODO: codebase.maintrunk  default to 'master'
+#
+# git.config
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# install.files.*.path
+# install.files.*.source
+# install.files.*.mode
+# install.files.*.type
+# install.files.*.content
+# (when core.target == 'shell')
+#
+# enve.sysroots
+# enve.shell
+# enve.bound
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# -> ENVE_CACHED_OS
+# -> LESSOPEN
+# -> LESSKEY
+# -> LESS
 
-# shellcheck source=libexec/enve/findutils
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
+
+# shellcheck source=libexec/enve/findutils2
 . "$ENVE_HOME/enve/findutils"
 
+# shellcheck source=libexec/enve/urlutils
+. "$ENVE_HOME/enve/urlutils"
 
 settrace
 
 
 resolve_basic_late() {
-    # [ -n "$TABLE" ] && echo "$TABLE"
+    # [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     if [ -n "$TABLE" ]; then
         _fast_table_raw_exclude "path"
-        echo "$TABLE_SUBSET"
+        printf %s "${TABLE_SUBSET}"
+        # if [ -n "$TABLE_SUBSET" ]; then
+        #     printf %s "${TABLE_SUBSET}"
+        # fi
     fi
 
     # fast_table_tail "layout\\.root"
@@ -44,7 +81,6 @@ resolve_basic_late() {
 
     fast_get_system
     out_var "ENVE_CACHED_OS" "$ENVE_CACHED_OS"
-
     out_list BYPASS "TERM"
     out_list BYPASS "TMUX"
     # out_list BYPASS "SHELL"
@@ -55,14 +91,20 @@ resolve_basic_late() {
         out_source "dot${cnt}" "$(resolve_path "$value")"
     done
 
-    { table_subset "alias\\..*" || true; } | as_postfix "alias\\." | \
+    { table_subset "alias\\..*" || true; } | as_postfix "alias." | \
     while read -r name value; do
-        eval out_alias "$name" "$value"
+        out_alias "$name" "$value"
+        # eval out_alias "$name" "$value"
     done
 
     # this is for unicode character in console
-    out_var "LC_ALL" "en_US.UTF-8"
-    out_var "LANG" "en_US.UTF-8"
+    fast_table_tail "LC_ALL"
+    [ -n "$TABLE_TAIL" ] || out_var "LC_ALL" "en_US.UTF-8"
+    fast_table_tail "LANG"
+    [ -n "$TABLE_TAIL" ] || out_var "LANG" "en_US.UTF-8"
+
+    # out_var "LC_ALL" "en_US.UTF-8"
+    # out_var "LANG" "en_US.UTF-8"
 
     fast_table_tail "layout\\.root"
     PRJROOT=$TABLE_TAIL
@@ -76,27 +118,122 @@ resolve_basic_late() {
     else
         out_code sh 'cd "'"$cwd"'"'
     fi
+
+    fast_table_tail "core\\.target"
+    target=$TABLE_TAIL
+    if [ "$target" = "run" ]; then
+        fast_table_tail "enve\\.roles"
+        s=$TABLE_TAIL
+        replace '@' ','
+        _roles=",$s,"
+
+        fast_table_tail "exec\\.cmd"
+        if [ -n "$TABLE_TAIL" ]; then
+            # out_raw_fast "exec.cmd" "$TABLE_TAIL" META
+            out_raw_fast "exec.cmd" "$TABLE_TAIL" EXEC
+        elif [ -z "${_roles%*,build,*}" ]; then
+            for file in "$PRJROOT"/build.*; do
+                if [ "${file%\*}" = "$file" ] && [ -x "$file" ]; then
+                    out_raw_fast "exec.cmd" "$file" EXEC
+                    break
+                fi
+            done
+        elif [ -z "${_roles%*,deploy,*}" ]; then
+            for file in "$PRJROOT"/deploy.*; do
+                if [ "${file%\*}" = "$file" ] && [ -x "$file" ]; then
+                    out_raw_fast "exec.cmd" "$file" EXEC
+                    break
+                fi
+            done
+        fi
+    fi
 }
 
+
 resolve_command() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    TDIR="$(mktemp -d)"
+    out_var "layout.tmpbin" "$TDIR/cmd"
 
     if [ -n "$(table_subset "cmd\\..*" | as_concat ' ' || true)" ]; then
-        TDIR="$(mktemp -d)"
         mkdir "$TDIR/cmd"
-        { table_subset "cmd\\..*" || true; } | as_postfix "cmd\\." | \
+        { table_subset "cmd\\..*" || true; } | as_postfix "cmd." | \
         while read -r name value; do
             # out_var "$name" "$value"
             echo "$value" > "$TDIR/cmd/$name"
             chmod 555 "$TDIR/cmd/$name"
         done
+        out_var "enve.hascmd" "true"
         out_list PATH "$TDIR/cmd"
     fi
 }
 
 
+resolve_install_files() {
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    usecmd=
+
+    # fast_table_subset "install\\.files\\..*"
+    _fast_table_raw_subset "install\\.files\\..*"
+    FILE_TABLE=$TABLE_SUBSET
+
+    TABLE=$FILE_TABLE fast_as_postfix "install.files."
+    TABLE_SUBSET=$TABLE_AS
+    fast_as_rootkey
+    TABLE_SUBSET=$TABLE_AS
+    fast_as_uniquekey
+    keys=$TABLE_AS
+
+    for file in keys; do
+
+        TABLE=$FILE_TABLE fast_table_tail "install\\.files\\.${file}\\.path"
+        target=$TABLE_TAIL
+        TABLE=$FILE_TABLE fast_table_tail "install\\.files\\.${file}\\.source"
+        source=$TABLE_TAIL
+        TABLE=$FILE_TABLE fast_table_tail "install\\.files\\.${file}\\.mode"
+        mode=$TABLE_TAIL
+        TABLE=$FILE_TABLE fast_table_tail "install\\.files\\.${file}\\.type"
+        type=$TABLE_TAIL
+        TABLE=$FILE_TABLE fast_table_subset "install\\.files\\.${file}\\.content"
+        fast_as_concat "$newl"
+        content=$TABLE_AS
+
+        if [ "${target#%bin/}" != "$target" ]; then
+            fast_table_tail "layout.tmpbin"
+            if [ -n "$TABLE_TAIL" ]; then
+                mkdir -p "$TABLE_TAIL"
+                target="$TABLE_TAIL/${target#%bin/}"
+                usecmd=1
+            else
+                continue
+            fi
+        fi
+        debug "install $file ($source $target $mode $type)"
+
+        if [ -n "$target" ] && [ -n "$source" ]; then
+            fetch "$source" "$target" "${type:-file}"
+            if [ -n "$mode" ]; then
+                chmod $mode $target
+            fi
+        elif [ -n "$target" ] && [ -n "$content" ]; then
+            printf %s\\n "$context" > "$target"
+            if [ -n "$mode" ]; then
+                chmod $mode $target
+            fi
+        fi
+    done
+    fast_table_tail "enve\\.hascmd"
+    if [ -n "$usecmd" ] && [ "$TABLE_TAIL" != "true" ]; then
+        out_var "enve.hascmd" "true"
+        fast_table_tail "layout\\.tmpbin"
+        out_list PATH "$TABLE_TAIL"
+    fi
+}
+
 # resolve_terminal() {
-#     [ -n "$TABLE" ] && echo "$TABLE"
+#     [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 #     if [ "$(table_tail "core\\.target")" = "shell" ]; then
 #         size=$(table_tail "terminal.size")
 #         if [ -n "$size" ]; then
@@ -112,23 +249,105 @@ resolve_command() {
 
 
 resolve_prompt() {
-    [ -n "$TABLE" ] && echo "$TABLE"
-
+    fast_table_subset "PATH" LIST
+    fast_as_concat ":"
+    _PATH=$TABLE_AS
     target="$(table_tail "core\\.target")"
-    if  [ "$target" = "shell" ]; then
-        if  [ "$(table_tail "shell")" = "bash" ]; then
 
-            ENV_ROOT="$(table_tail ENV_ROOT)"
-            for script in "$ENV_ROOT"/etc/bash_completion.d/*; do
-                if [ "${script#"${script%?}"}" != '*' ]; then
-                    out_source "$(basename "${script%.*}")" "$script"
+    if  [ "$target" = "shell" ]; then
+        if dircolors=$(PATH=$_PATH command -v dircolors) && _LS_COLORS=$("$dircolors"); then
+            _LS_COLORS=${_LS_COLORS#LS_COLORS=\'}
+            _LS_COLORS=${_LS_COLORS%\';${newl}export LS_COLORS}
+            out_var LS_COLORS "${_LS_COLORS}"
+        fi
+    fi
+
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+
+    if  [ "$target" = "shell" ]; then
+        if lesspipe=$(PATH=$_PATH command -v lesspipe.sh); then
+            dest=$(mkdtemp /tmp/lesspipe-bin.XXXXXX)
+            cat "$lesspipe" | sed \
+                -e 's/mime="\$(file -ib "\$1")"/mime=""/' \
+                -e 's/\(elif \[\[ "\$1" = \*executable\* ]]\)/\1 \&\& \[\[ "\$1" != \*text\\ executable\* ]]/' \
+                > "$dest/lesspipe.sh"
+            chmod 755 "$dest/lesspipe.sh"
+            out_var LESSOPEN "|$dest/lesspipe.sh %s"
+            lessbin=$(PATH=$TABLE_AS command -v less)
+            "${lessbin%/*}/lesskey" -o "$dest/lesskey" "$ENVE_HOME/enve/core/base/lesskey"
+            out_var LESSKEY "$dest/lesskey"
+            # please keep in mind that --quit-if-one-screen also relies on --no-init option to work properly.
+            if LESS="" $lessbin --help | grep "\-\-mouse" >/dev/null; then
+                out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines --mouse"
+            else
+                out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines"
+            fi
+            out_alias man "man -P less"
+            unset dest
+        fi
+
+        out_alias diff "diff --color=auto"
+        out_alias ls "ls --color=auto"
+        out_alias grep "grep --color=auto"
+
+        fast_table_subset "enve\\.sysroots"
+        fast_as_concat "$newl"
+        roots=$TABLE_AS
+
+        fast_table_tail "enve\\.shell"
+        d=${TABLE_TAIL:-bash}
+        fast_basename
+        enveshell=$d
+
+        # if  [ "$(table_tail "shell")" = "bash" ]; then
+        if [ "${enveshell:-bash}" = "bash" ]; then
+            # ENV_ROOT="$(table_tail ENV_ROOT)"
+            # for script in "$ENV_ROOT"/etc/bash_completion.d/*; do
+            #     if [ "${script#"${script%?}"}" != '*' ]; then
+            #         out_source "$(basename "${script%.*}")" "$script"
+            #     fi
+            # done
+            # if [ -f "$ENV_ROOT/share/bash-completion/bash_completion" ]; then
+            #     out_source bash_completion "$ENV_ROOT/share/bash-completion/bash_completion"
+            # fi
+            out_code sh "BASH_COMPLETION_COMPAT_DIR=@@__NOT_USED@@"
+            out_code sh "BASH_COMPLETION_USER_FILE=@@__NOT_USED@@"
+            # fast_table_subset "enve\\.sysroots"
+            # fast_as_concat "$newl"
+            # roots=$TABLE_AS
+
+            bash_completion_sourced=
+            for rt in $roots; do
+                if [ -z "$bash_completion_sourced" ] && \
+                        [ -f "$rt/share/bash-completion/bash_completion" ]; then
+                    bash_completion_sourced=1
+                    out_source bash_completion "$rt/share/bash-completion/bash_completion"
+                fi
+                for script in "$rt"/etc/bash_completion.d/*; do
+                    # _backup_glob='@(#*#|*@(~|.@(bak|orig|rej|swp|dpkg*|rpm@(orig|new|save))))'
+                    # $_backup_glob|Makefile*|$_blacklist_glob
+                    # _blacklist_glob='@(acroread.sh)'
+                    if [ "${script#"${script%?}"}" != '*' ] && [ -f "$script" ] && [ -r "$script" ] ; then
+                        out_source "$(basename "${script%.*}")" "$script"
+                    fi
+                done
+            done
+            if [ -f "$HOME/.bash_completion" ] && [ -r "$HOME/.bash_completion" ]; then
+                out_source user_bash_completion "$HOME/.bash_completion"
+            fi
+
+            out_list ENVE_BASHOPTS checkwinsize
+        elif [ "$enveshell" = "zsh" ]; then
+
+            for rt in $roots; do
+                if [ -d "$rt/share/zsh/site-functions" ]; then
+                    out_code zsh "__t='$rt/share/zsh/site-functions'"
+                    out_code zsh 'eval "fpath+=\$__t"'
+                    out_code zsh 'unset __t'
+                    # out_list FPATH "$rt/share/zsh/site-functions"
                 fi
             done
-            if [ -f "$ENV_ROOT/share/bash-completion/bash_completion" ]; then
-                out_source bash_completion "$ENV_ROOT/share/bash-completion/bash_completion"
-            fi
-            out_alias ls 'ls --color'
-            out_list ENVE_BASHOPTS checkwinsize
         fi
     fi
 }
@@ -141,8 +360,8 @@ resolve_secret() {
     #   secret.variable
     #
 
-    [ -n "$TABLE" ] && echo "$TABLE"
-    { table_subset "secret\\.variable\\..*" || true; } | as_postfix "secret\\.variable\\." | \
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+    { table_subset "secret\\.variable\\..*" || true; } | as_postfix "secret.variable." | \
     while read -r name value; do
         out_secret "$name" "$value"
     done
@@ -172,12 +391,14 @@ resolve_boundfiles() {
         bounds=
         # PRJROOT must be abspath
         PRJROOT=${PRJROOT%/}
-        # _clock 'bound1'
-        fast_table_tail "enve\\.nobound"
-        if [ "$TABLE_TAIL" != "true" ]; then
-            # bounds=$(useprint=1 fileonly=1 recursive=1 listdir "$PRJROOT")
-            bounds=$(find "$PRJROOT" ! -type d)
-        fi
+
+        # TODO: default nobound
+        # fast_table_tail "enve\\.nobound"
+        # if [ "$TABLE_TAIL" != "true" ]; then
+        #     # bounds=$(useprint=1 fileonly=1 recursive=1 listdir "$PRJROOT")
+        #     bounds=$(find "$PRJROOT" ! -type d)
+        # fi
+
 
         # _clock 'bound2'
         # if table_subset "enve\\.bound"; then
@@ -189,11 +410,12 @@ resolve_boundfiles() {
             # fast_as_concat "$newl"
             # _clock 'bound2.2'
             _bounds=
-            while read -r path; do
-                case $path in
-                    ./*)    _bounds="${_bounds}$PRJROOT/${path#??}$newl";;
-                    /*)     _bounds="${_bounds}$path$newl";;
-                    ?*)     _bounds="${_bounds}$PRJROOT/$path$newl";;
+            while read -r _path; do
+                case $_path in
+                    '')     ;;
+                    ./*)    _bounds="${_bounds}$PRJROOT/${_path#??}$newl";;
+                    /*)     _bounds="${_bounds}$_path$newl";;
+                    ?*)     _bounds="${_bounds}$PRJROOT/$_path$newl";;
                 esac
             done<<EOF
 $TABLE_AS
@@ -209,7 +431,9 @@ EOF
         #  3. plus "enve\\.bound\\.ignore" in a oneshot
 
         if [ -f "$PRJROOT/.gitignore" ]; then
-            bounds="$(echo "$bounds" | gitignore_filter "$(cat "$PRJROOT/.gitignore")" )"
+            # bounds="$(echo "$bounds" | gitignore_filter "$(cat "$PRJROOT/.gitignore")" )"
+            # bounds="$(echo "$bounds" | gitignore_exclude "$(cat "$PRJROOT/.gitignore")" -)" || return 1
+            bound=$(gitignore_include "$(cat "$PRJROOT/.gitignore")" "$bounds") || return 1
         fi
 
         # _clock 'bound4'
@@ -217,7 +441,9 @@ EOF
         if [ -n "$TABLE_SUBSET" ]; then
             fast_as_value
             # fast_as_concat "$newl"
-            bounds="$(echo "$bounds" | gitignore_filter "$TABLE_AS")"
+            # bounds="$(echo "$bounds" | gitignore_filter "$TABLE_AS")"
+            # bounds="$(echo "$bounds" | gitignore_exclude "$TABLE_AS" -)" || return 1
+            bound=$(gitignore_include "$TABLE_AS" "$bounds") || return 1
         fi
         # bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\\.bound\\.ignore" | as_concat "$newl" || true)" )"
         # echo "== BOUND:" >&2
@@ -237,14 +463,14 @@ EOF
         # _clock 'bound6'
     fi
 
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 }
 
 
 resolve_bypass() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     fast_table_subset "BYPASS" "LIST"
-    fast_as_concat ":"
+    fast_as_concat " "
     out_raw_fast "BYPASS" "$TABLE_AS" META
 
     fast_table_tail "core\\.target"
@@ -254,15 +480,44 @@ resolve_bypass() {
     # TODO: suitable place?
     fast_table_tail "exec\\.method"
     if [ -n "$TABLE_TAIL" ]; then
-        out_raw_fast "execmethod" "$TABLE_TAIL" META
+        out_raw_fast "exec_method" "$TABLE_TAIL" META
     fi
 
 }
 
+resolve_gitconfig() {
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    _fast_table_raw_subset "git\\.config\\..*"
+    CONFIG_TABLE=$TABLE_SUBSET
+
+    TABLE=$CONFIG_TABLE fast_as_postfix "git.config."
+    TABLE_SUBSET=$TABLE_AS
+    fast_as_rootkey
+    TABLE_SUBSET=$TABLE_AS
+    fast_as_uniquekey
+    keys=$TABLE_AS
+
+    cnt=0
+    for key in $keys; do
+        TABLE=$CONFIG_TABLE fast_table_tail "git\\.config\\.${key}"
+        value=$TABLE_TAIL
+        out_var "GIT_CONFIG_KEY_$cnt" "$key"
+        out_var "GIT_CONFIG_VALUE_$cnt" "$value"
+        cnt=$((cnt+1))
+    done
+    if [ $cnt -gt 0 ]; then
+        out_var GIT_CONFIG_COUNT "$cnt"
+    fi
+}
+
+
+
 main() {
     info "IN $ZERO/base-late.module"
     TABLE=$(cat "${configfile:--}")
-    for proc in basic_late command prompt secret boundfiles bypass; do
+    for proc in basic_late command install_files prompt secret boundfiles \
+                bypass gitconfig; do
         info "IN resolve_$proc"
         if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
             _error "error at resolve_$proc"
@@ -271,5 +526,6 @@ main() {
         # info "OUT resolve_$proc"
     done
     info "OUT $ZERO/base-late.module"
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && { printf %s\\n "$TABLE"; }
+
 }

@@ -1,5 +1,9 @@
 #!/bin/sh
-#!/usr/bin/env bash
+#
+# module
+# enve.no_nix
+#
+
 
 # set -euo pipefail
 
@@ -7,11 +11,11 @@
 # ENVE_HOME="$(dirname $0)/.."
 # ENVE_HOME="${0%/*}/.."
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 # shellcheck source=libexec/enve/pathutils
 . "$ENVE_HOME/enve/pathutils"
@@ -33,7 +37,7 @@ builtin_loader() {
     fast_table_tail "core\\.target"
     target=$TABLE_TAIL
     case "$target" in
-        shell)      normalize "$ENVE_HOME/enve/core/term" ;;
+        shell)      normalize "$ENVE_HOME/enve/core/terminal" ;;
     esac
 
     fast_table_tail "enve\\.no_nix"
@@ -92,15 +96,16 @@ builtin_loader() {
     if [ -n "$TABLE_SUBSET" ]; then
         echo "$ENVE_HOME/enve/core/oh-my-zsh"
     fi
-    # echo "$TABLE" >&2
+    # printf %s\\n "$TABLE" >&2
     # echo "$(table_subset "module" )" >&2
     # echo "$(table_subset "module" | as_value)" >&2
-    fast_table_subset "module"
-    fast_as_value
 
     fast_table_tail "layout\\.root"
     root=${TABLE_TAIL:-$PWD}
     root=${root%/}
+
+    fast_table_subset "module"
+    fast_as_value
 
     # { table_subset "module" | as_value || true; } | \
     while read -r value; do
@@ -154,3 +159,8 @@ main() {
     # path_loader
     info "OUT $(basename $ZERO)/enve.loader"
 }
+
+# if [ -n "${_SOURCE_FILE:-}" ]; then
+#     main
+# fi
+

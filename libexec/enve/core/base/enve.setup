@@ -1,0 +1,127 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# shellcheck source=libexec/enve/wslib
+. "$ENVE_HOME/enve/wslib"
+
+settrace
+
+
+# recommend PREFIX:
+#   /usr/local      -> /var/lib/enve
+#   /opt/enve       -> /var/opt/enve
+#   /usr            -> /var/lib/enve
+
+
+LIBEXEC_DIR=libexec
+
+
+
+_install_file() {
+    destdir=$1
+    shift
+    while [ $# -gt 0 ]; do
+        rm -rf "$1"
+        cp -R -p "$1" "$destdir"
+        shift
+    done
+}
+
+_prefix_enve() {
+    if [ "$SCOPE" = host ]; then
+        if [ -d /usr/local ]; then
+            PREFIX=/usr/local
+        elif [ -d /usr ]; then
+            PREFIX=/usr
+        else
+            PREFIX=/
+        fi
+    elif [ "$SCOPE" = user ]; then
+        PREFIX="$ENVE_SYSROOT"
+    elif [ "$SCOPE" = ws ]; then
+        PREFIX="$ENVE_SYSROOT"
+    else
+        return 1
+    fi
+}
+
+_prefix_enve_git() {
+    if [ "$SCOPE" = host ]; then
+        PREFIX=/opt/enve
+    elif [ "$SCOPE" = user ]; then
+        PREFIX="$ENVE_SYSROOT/enve"
+    elif [ "$SCOPE" = ws ]; then
+        PREFIX="$ENVE_SYSROOT/enve"
+    else
+        return 1
+    fi
+}
+
+
+install_enve() {
+    _prefix_enve
+    ENVE_ROOT="$(dirname "$ENVE_HOME")"
+    # install -d -m 755 "$PREFIX"/{bin,"$LIBEXEC_DIR"/enve,share/man/man{1,3,5}}
+    # install -m 755 "$ENVE_ROOT"/bin/* "$PREFIX"/bin
+    # cp -R "$ENVE_ROOT"/libexec/enve "$PREFIX/$LIBEXEC_DIR"/enve
+    # install -m 644 "$ENVE_ROOT"/share/man/* "$PREFIX"/share/man
+    # # install -m 644 "$ENVE_ROOT"/man/*.7 "$PREFIX"/share/man/man7
+    # # install -d -m 644 "$ENVE_ROOT"/LICENSE" "$PREFIX"/share/licenses/enve/LICENSE"
+
+    mkdir -d "$PREFIX"/bin
+    mkdir -d "$PREFIX"/"$LIBEXEC_DIR"/enve
+    mkdir -d "$PREFIX"/share/man/man1
+    mkdir -d "$PREFIX"/share/man/man3
+    mkdir -d "$PREFIX"/share/man/man5
+    _install_file "$PREFIX"/bin "$ENVE_ROOT"/bin/*
+    _install_file "$PREFIX/$LIBEXEC_DIR"/enve "$ENVE_ROOT"/libexec/enve/*
+    _install_file "$PREFIX"/share/man "$ENVE_ROOT"/share/man/*
+
+    _info "Installed Enve to $PREFIX/bin/enve"
+}
+
+uninstall_enve() {
+    _prefix_enve
+    rm -rf "$PREFIX"/bin/enve
+    rm -rf "$PREFIX"/"$LIBEXEC_DIR"/enve
+
+    # TODO: man
+    # rm -rf
+}
+
+check_enve() {
+    _prefix_enve
+    [ -e "$PREFIX/bin/enve" ]
+}
+
+
+install_enve_git() {
+    _prefix_enve_git
+    enve_git_clone https://github.com/ranlempow/enve.git "$PREFIX"
+}
+
+uninstall_enve_git() {
+    _prefix_enve_git
+    rm -rf "$PREFIX"
+}
+
+check_enve_git() {
+    _prefix_enve_git
+    [ -e "$PREFIX/bin/enve" ] && [ -d "$PREFIX/.git" ]
+}
+
+
+case $PKG in
+        enve)       pkg=enve;;
+        enve-git)   pkg=enve_git;;
+esac
+
+case $1 in
+    install) install_$pkg;;
+    uninstall) uninstall_$pkg;;
+    check) check_$pkg || quiet_exit 1;;
+esac
+
+

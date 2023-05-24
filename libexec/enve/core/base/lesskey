@@ -1,0 +1,3 @@
+#command
+\e[4~ goto-end
+\e[1~ goto-line

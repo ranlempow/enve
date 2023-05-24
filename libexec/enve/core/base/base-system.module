@@ -1,15 +1,15 @@
 #!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 settrace
 
 
 
 main() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 }
