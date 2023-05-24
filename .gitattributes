@@ -4,3 +4,4 @@ test/* eol=lf
 *.sh eol=lf
 *.cmd eol=crlf
 *.bat eol=crlf
+CHANGELOG.md merge=union
