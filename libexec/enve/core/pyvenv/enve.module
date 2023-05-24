@@ -1,12 +1,12 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
-# shellcheck source=libexec/enve/base
+# shellcheck source=libexec/enve/baselib
 . "$ENVE_HOME/enve/cachelib"
 
 settrace
@@ -97,7 +97,7 @@ settrace
 
 #     pipc_ver="$(table_tail "python\.stage2\.pip-tools" || true )"
 #     venv_ver="$(table_tail "python\.stage2\.virtualenv" || true )"
-#     # echo "$TABLE" >&2
+#     # printf %s\\n "$TABLE" >&2
 #     # echo "pipc_ver: $pipc_ver" >&2
 
 #     if [ -n "$pipc_ver" ] || [ -n "$venv_ver" ]; then
@@ -117,7 +117,7 @@ settrace
 #     out_join PATH ":"
 #     out_var VIRTUAL_ENV "$PYVENV_TMP/venvs/$reqhash"
 #     out_list PATH "$PYVENV_TMP/venvs/$reqhash/bin"
-#     # echo "$TABLE"
+#     # printf %s\\n "$TABLE"
 #     echo "END resolve_python" >&2
 # }
 
@@ -146,14 +146,15 @@ create_env_two() {
         command -v python
         # command -v python >&2
     }
-    p_vaild() {
+    p_valid() {
         if [ ! -e "$CACHED/req.txt" ]; then
             return 0
         fi
         # TODO: non-posix
         current=$(date +%s)
         last_modified=$(date -r "$CACHED/req.txt" +%s)
-        if [ $((current - last_modified)) -gt 1800 ]; then
+        # 100 hours
+        if [ $((current - last_modified)) -gt 360000 ]; then
             return 0
         fi
         echo 1
@@ -162,7 +163,7 @@ create_env_two() {
         echo "$requires" > "$CACHED/req.in"
         "$pipc_exec" --rebuild --verbose "$CACHED/req.in" >&2
     }
-    catalog="pyvenv-req" cache_path "req.txt" p_text p_make p_vaild
+    catalog="pyvenv-req" cache_path "req.txt" p_text p_make p_valid
     REQTXT=$cached_path
     cached_path=
     # unset cached_path
@@ -173,14 +174,14 @@ create_env_two() {
     p_text() {
         cat "$REQTXT"
     }
-    p_vaild() {
+    p_valid() {
         echo 1
     }
     p_make() {
         "$venv_exec" "$CACHED" >&2
         "$CACHED/bin/python" -m pip install -r "$REQTXT" >&2
     }
-    catalog=pyvenv cache_path "." p_text p_make p_vaild "non-mv-lock"
+    catalog=pyvenv cache_path "." p_text p_make p_valid "non-mv-lock"
     echo "$cached_path"
 }
 
@@ -206,7 +207,7 @@ resolve_python_two() {
     # out_var "nix.packages" "${python_exec}Packages.pip"
     # out_var "nix.packages" "${python_exec}Packages.virtualenv"
 
-    # echo "$TABLE" >&2
+    # printf %s\\n "$TABLE" >&2
     # echo "pipc_ver: $pipc_ver" >&2
 
     # if [ -n "$pipc_ver" ] || [ -n "$venv_ver" ]; then
@@ -237,10 +238,11 @@ resolve_python_two() {
     out_join PATH ":"
     out_var VIRTUAL_ENV "$pyvenv1"
     out_list PATH "$pyvenv1/bin"
-    # echo "$TABLE"
-    echo "END resolve_python" >&2
+    # printf %s\\n "$TABLE"
+    # echo "END resolve_python" >&2
 }
 
+# TODO: assign python version
 
 # pip-compile version: pip-compile, version 3.6.0
 # pip version: pip 18.1 from /nix/store/5886g4s98amn9knjg93vn6ywxx6h3b7m-python3.7-pip-18.1/lib/python3.7/site-packages/pip (python 3.7)
@@ -249,7 +251,7 @@ resolve_python_two() {
 main() {
     info "IN $(basename $ZERO)/enve.module"
     TABLE=$(cat)
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     resolve_python_two
     info "OUT $(basename $ZERO)/enve.module"
 }
