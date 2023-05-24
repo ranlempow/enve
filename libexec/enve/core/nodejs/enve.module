@@ -1,10 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
+
+# shellcheck source=libexec/enve/cachelib
+. "$ENVE_HOME/enve/cachelib"
 
 settrace
 
@@ -62,9 +65,17 @@ settrace
 
 _load_basic_variable() {
     node_version="$(table_tail "nodejs\\.version")"
-    node_version="${node_version:-8}"
+    node_version="${node_version:-10}"
     node_version="${node_version%%.*}"
-    if [ "$node_version" -gt 11 ]; then
+    if [ "$node_version" -gt 19 ]; then
+        node2nix_node_version=20
+    elif [ "$node_version" -gt 17 ]; then
+        node2nix_node_version=18
+    elif [ "$node_version" -gt 15 ]; then
+        node2nix_node_version=16
+    elif [ "$node_version" -gt 13 ]; then
+        node2nix_node_version=14
+    elif [ "$node_version" -gt 11 ]; then
         node2nix_node_version=12
     elif [ "$node_version" -gt 9 ]; then
         node2nix_node_version=10
@@ -83,7 +94,7 @@ _load_basic_variable() {
 
     packages="
 $({ table_subset "nodejs\\.require\\.packages" || true; } | as_value)
-$({ table_subset "nodejs\\.require\\.packages\\..*" | as_postfix "nodejs\\.require\\.packages\\." || true; })
+$({ table_subset "nodejs\\.require\\.packages\\..*" | as_postfix "nodejs.require.packages." || true; })
 "
 
     # package_json="$(resolve_path "package.json")"
@@ -136,20 +147,21 @@ resolve_nodejs_npmdirect() {
     _load_basic_variable
 
     p_text() {
-        echo 3
+        echo 4
         command -v node
         echo "$packages"
         echo "$(table_tail "nix\\.channel\\.version")"
         echo "PACKAGE.JSON: $package_json"
     }
-    p_vaild() {
+    p_valid() {
         if [ ! -d "$CACHED/node_modules" ]; then
             return 0
         fi
         # TODO: non-posix
         current=$(date +%s)
         last_modified=$(date -r "$CACHED/node_modules" +%s)
-        if [ $((current - last_modified)) -gt 360000 ]; then
+        # 1000 hours
+        if [ $((current - last_modified)) -gt 3600000 ]; then
             return 0
         fi
         echo 1
@@ -164,7 +176,7 @@ resolve_nodejs_npmdirect() {
         cd "$CACHED"
         npm install "$d"
     }
-    catalog=package_json_simple cache_path "node_modules" p_text p_make p_vaild
+    catalog=package_json_simple cache_path "node_modules" p_text p_make p_valid
     node_modules_path=$cached_path
     cached_path=
 
@@ -185,6 +197,7 @@ resolve_nodejs_nix() {
     _load_basic_variable
 
     p_text() {
+        echo 1
         command -v node
         echo "$packages"
         echo "$(table_tail "nix\\.channel\\.version")"
@@ -193,14 +206,15 @@ resolve_nodejs_nix() {
         echo "package_lock: $package_lock"
 
     }
-    p_vaild() {
+    p_valid() {
         if [ ! -e "$CACHED/default.nix" ]; then
             return 0
         fi
         # TODO: non-posix
         current=$(date +%s)
         last_modified=$(date -r "$CACHED/default.nix" +%s)
-        if [ $((current - last_modified)) -gt 1800 ]; then
+        # 100 hours
+        if [ $((current - last_modified)) -gt 360000 ]; then
             return 0
         fi
         echo 1
@@ -247,6 +261,8 @@ resolve_nodejs_nix() {
         #         --composition "$CACHED/default.nix" \
         #         --node-env "$CACHED/node-env.nix" >&2
         #         # --bypass-cache
+        node2nix --help >&2
+        node2nix -v >&2
 
         node2nix --nodejs-$node2nix_node_version \
                 ${node_dev:+ --development} \
@@ -257,14 +273,23 @@ resolve_nodejs_nix() {
                 --node-env "$CACHED/node-env.nix"
                 # --bypass-cache
     }
-    catalog=package_json cache_path "." p_text p_make p_vaild
+    catalog=package_json cache_path "." p_text p_make p_valid
     node2nix_dir=$cached_path
     cached_path=
 
 
     # patch to resolve collision between $out/bin
     # ln -s $out/lib/node_modules/.bin $out/bin
-    sed -i '/ln -s \$out\/lib\/node_modules\/.bin/d' "$node2nix_dir/node-env.nix"
+    # sed -i '' '/ln -s \$out\/lib\/node_modules\/.bin/d' "$node2nix_dir/node-env.nix"
+    sed -e '/ln -s \$out\/lib\/node_modules\/.bin/d' "$node2nix_dir/node-env.nix" \
+        > "${TMPDIR}/node-env.nix_"
+    mv "${TMPDIR}/node-env.nix_" "$node2nix_dir/node-env.nix"
+
+    # TODO: skip list
+    # cannot build 'fsevents', skipped
+    sed -e '/sources."fsevents-1./d' "$node2nix_dir/node-packages.nix" \
+        > "${TMPDIR}/node-packages.nix_"
+    mv "${TMPDIR}/node-packages.nix_" "$node2nix_dir/node-packages.nix"
 
     out_var "nix.packages" "nodejs-${node_version}_x"
     out_var "nix.packages" "(import $node2nix_dir/default.nix {pkgs=pkgs;}).shell.nodeDependencies"
@@ -278,7 +303,7 @@ resolve_nodejs_nix() {
 main() {
     info "IN $(basename $ZERO)/enve.module"
     TABLE=$(cat)
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     if [ "$(table_tail "nodejs.npmdirect")" == "1" ]; then
         resolve_nodejs_npmdirect
     else
