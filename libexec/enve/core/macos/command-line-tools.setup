@@ -1,0 +1,41 @@
+#!/bin/sh
+
+install_command_line_tools() {
+    # if _should_install_command_line_tools && [ -t 0 ]; then
+    echo "Installing the Command Line Tools (expect a GUI popup):" >&2
+    sudo "/usr/bin/xcode-select" --install
+    any_key_continue "Press any key when the installation has completed."
+    sudo "/usr/bin/xcode-select" --switch "/Library/Developer/CommandLineTools"
+    # fi
+}
+
+check_command_line_tools() {
+    macos_version=$(sw_vers -productVersion)
+    IFS='.' read -r macos_major macos_minor macos_patch <<EOF
+$macos_version
+EOF
+    if [ "$macos_major" -gt 10 ] || { [ "$macos_major" -eq 10 ] && [ "$macos_minor" -gt 13 ]; }; then
+        [ -e "/Library/Developer/CommandLineTools/usr/bin/git" ]
+    else
+        [ -e "/Library/Developer/CommandLineTools/usr/bin/git" ] || \
+        [ -e "/usr/include/iconv.h" ]
+    fi
+}
+
+remove_command_line_tools() {
+    sudo rm -rf /Library/Developer/CommandLineTools
+}
+
+
+[ -t 0 ] || {
+    echo "must run in interactive shell" >&2
+    exit 1
+}
+
+[ "${SCOPE:-}" = host ] || {
+    echo "scope must be host but '$SCOPE'" >&2
+    exit 1
+}
+
+${1}_command_line_tools
+

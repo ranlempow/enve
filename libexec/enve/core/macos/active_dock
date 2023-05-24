@@ -47,12 +47,12 @@ replace() {
 gencode() {
     gen_skhdrc="# -- below is automatic render by numdock (do not edit)$newl"
     cnt=1
-    for path in "$@"; do
-        s=${path#file://}
+    for _path in "$@"; do
+        s=${_path#file://}
         s=${s%/}
         replace "%20" " "
-        path=$s
-        gen_skhdrc="${gen_skhdrc}cmd - $cnt : open -a \"$path\"$newl"
+        _path=$s
+        gen_skhdrc="${gen_skhdrc}cmd - $cnt : open -a \"$_path\"$newl"
         cnt=$((cnt + 1))
     done
     gen_skhdrc="${gen_skhdrc}# --"

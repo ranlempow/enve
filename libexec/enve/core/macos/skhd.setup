@@ -1,28 +1,57 @@
 #!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
 settrace
 
-brew tap koekeishiya/formulae
-brew install skhd
+install_skhd() {
+    HOMEBREW_PREFIX=~/.local brew tap koekeishiya/formulae
+    HOMEBREW_PREFIX=~/.local brew install skhd
 
-if [ ! -e ~/.skhdrc ]; then
-    while read -r line; do
-        if [ "${line#"#"}" != "${line}" ]; then
-            echo "$line"
-        else
+    if [ ! -e ~/.skhdrc ]; then
+        while read -r line; do
+            if [ "${line#"#"}" != "${line}" ]; then
+                echo "$line"
+            else
+                echo ""
+                break
+            fi
+        done < "$(brew --prefix)/opt/skhd/share/skhd/examples/skhdrc" > ~/.skhdrc
+        $ENVE_HOME/enve/core/macos/active_dock
+        cat >&2 <<EOF
+setup hotkey "cmd+e" to open finder
+setup hotkey "cmd+1 to cmd+9" to open docker items from left to right
+
+when you want bind docker keys again, run "$ENVE_HOME/enve/core/macos/active_dock"
+EOF
+        {
             echo ""
-            break
-        fi
-    done < "$(brew --prefix)/opt/skhd/share/skhd/examples/skhdrc" > ~/.skhdrc
-    $ENVE_HOME/enve/core/macos/active_dock
-    {
-        echo ""
-        echo "cmd - e : open -a /System/Library/CoreServices/Finder.app"
-        echo ""
-    } >> ~/.skhdrc
-fi
+            echo "cmd - e : open -a /System/Library/CoreServices/Finder.app"
+            echo ""
+        } >> ~/.skhdrc
+    fi
 
-brew services start koekeishiya/formulae/skhd
+    HOMEBREW_PREFIX=~/.local brew services start koekeishiya/formulae/skhd
+}
+
+check_skhd() {
+    if txt=$(HOMEBREW_PREFIX=~/.local brew list --versions skhd); then
+        if [ -z "${txt##skhd *}" ]; then
+            if [ ! -f ~/.skhdrc ]; then
+                _error "~/.skhdrc not found"
+            fi
+            if ! HOMEBREW_PREFIX=~/.local brew services list | grep 'skhd\s\+started' >/dev/null; then
+                 _error "skhd service not started"
+            fi
+            echo "version=${txt#skhd }"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+[ "${SCOPE:-}" = user ] || return 1
+$1_skhd
+
+

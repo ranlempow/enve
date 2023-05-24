@@ -1,16 +1,16 @@
 #!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 settrace
 
 resolve_macos() {
     out_join PATH ':'
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     # (
     #     # shellcheck disable=2123
     #     PATH=
@@ -100,8 +100,23 @@ resolve_macos() {
     # esac
 }
 
+resolve_homebrew() {
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    fast_table_tail HOMEBREW_PREFIX
+    HOMEBREW_PREFIX=$TABLE_TAIL
+    if [ -z "${HOMEBREW_PREFIX}" ]; then
+        # use user default
+        out_list PATH "$HOME/.local/bin"
+        out_var "enve.sysroots" "$HOME/.local"
+    else
+        out_list PATH "$HOMEBREW_PREFIX/bin"
+        out_var "enve.sysroots" "$HOMEBREW_PREFIX"
+    fi
+}
+
 resolve_sublime() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 
     out_var GIT_EDITOR "$ENVE_HOME/enve/contrib/subliem/stopen -w"
 }
@@ -112,7 +127,7 @@ main() {
     TABLE=$(cat "${configfile:--}")
     # for proc in first basic command nix terminal prompt macos ssh \
     #             shell secret boundfiles; do
-    for proc in macos sublime; do
+    for proc in macos homebrew sublime; do
         info "IN resolve_$proc"
         if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
             _error "error at resolve_$proc"
@@ -122,7 +137,7 @@ main() {
     done
 
     info "OUT $ZERO/enve.module"
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 }
 
 # if [ "${TEST:-}" != "test" ]; then
