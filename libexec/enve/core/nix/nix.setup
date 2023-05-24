@@ -1,0 +1,293 @@
+#!/bin/sh
+
+
+create_directories() {
+    _sudo "to make the basic directory structure of Nix (part 1)" \
+        mkdir -p -m 0755 \
+            /nix /nix/var /nix/var/log /nix/var/log/nix /nix/var/log/nix/drvs \
+            /nix/var/nix/db \
+            /nix/var/nix/gcroots \
+            /nix/var/nix/profiles \
+            /nix/var/nix/temproots \
+            /nix/var/nix/userpool
+
+    # _sudo "to make the basic directory structure of Nix (part 2)" \
+    #     mkdir -pv -m 1777 \
+    #         /nix/var/nix/gcroots/per-user \
+    #         /nix/var/nix/profiles/per-user
+
+    _sudo "to make the basic directory structure of Nix (part 3)" \
+        mkdir -p -m 1775 /nix/store
+
+    _sudo "to make the basic directory structure of Nix (part 4)" \
+        chgrp ${NIX_BUILD_GROUP_ID:-30000} /nix/store
+
+    # _sudo "to set up the root user's profile (part 1)" \
+    #       mkdir -pv -m 0755 /nix/var/nix/profiles/per-user/root
+
+    # _sudo "to set up the root user's profile (part 2)" \
+    #       mkdir -pv -m 0700 "$ROOT_HOME/.nix-defexpr"
+
+    if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
+        _sudo "to place the default nix daemon configuration (part 1)" \
+                mkdir -p -m 0555 /etc/nix
+    fi
+}
+
+
+# poly_configure_nix_daemon_service() {
+#     _sudo "to set up the nix-daemon as a LaunchDaemon" \
+#           ln -sfn "/nix/var/nix/profiles/default$PLIST_DEST" "$PLIST_DEST"
+#     _sudo "to unload the LaunchDaemon plist for nix-daemon" \
+#           launchctl unload /Library/LaunchDaemons/org.nixos.nix-daemon.plist
+#     _sudo "to load the LaunchDaemon plist for nix-daemon" \
+#           launchctl load /Library/LaunchDaemons/org.nixos.nix-daemon.plist
+#     _sudo "to start the nix-daemon" \
+#           launchctl start org.nixos.nix-daemon
+# }
+
+
+
+setup_default_profile() {
+    new_profile=$(
+        export NIX_PATH=nixpkgs=https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz
+        NIX_SSL_CERT_FILE=$NIX_INSTALLED_CACERT/etc/ssl/certs/ca-bundle.crt \
+        sudo -E $NIX_INSTALLED_NIX/bin/nix-build --no-out-link - <<EOF
+    with import <nixpkgs> { };
+    buildEnv {
+      name = "user-environment";
+      paths = [
+        $NIX_INSTALLED_NIX $NIX_INSTALLED_CACERT
+      ];
+    }
+EOF
+)
+
+    _sudo "remove tarballs cache create by root" \
+        rm -rf ~/.cache/nix/tarballs
+
+    if sudo ln -sf "$new_profile" /nix/var/nix/profiles/default; then
+        echo "link $new_profile to default profile"
+    else
+        failure "fail to link $new_profile to default profile"
+    fi
+}
+
+
+main() {
+
+    if [ -e "/etc/nix/nix.conf" ]; then
+        NO_SYSTEM_SETUP=1
+    fi
+
+    if [ "$(uname -s)" = "Darwin" ]; then
+        # shellcheck source=./install-darwin-multi-user.sh
+        # shellcheck disable=1091
+        . "$EXTRACTED_NIX_PATH/install-darwin-multi-user.sh"
+
+        if _sudo "to test the nix-daemon installed" \
+                sudo launchctl list org.nixos.nix-daemon; then
+
+            if cat /Library/LaunchDaemons/org.nixos.nix-daemon.plist >/dev/null; then
+                function finish_cleanup {
+                    rm -rf "$SCRATCH"
+                    _sudo "to load the LaunchDaemon plist for nix-daemon" \
+                            launchctl load /Library/LaunchDaemons/org.nixos.nix-daemon.plist
+                }
+                _sudo "to unload the LaunchDaemon plist for previous nix-daemon" \
+                            launchctl unload /Library/LaunchDaemons/org.nixos.nix-daemon.plist
+            else
+                _sudo "to remove previous nix-daemon" \
+                            launchctl remove org.nixos.nix-daemon
+            fi
+        fi
+
+    elif [ "$(uname -s)" = "Linux" ] && [ -e /run/systemd/system ]; then
+        # shellcheck source=./install-systemd-multi-user.sh
+        # shellcheck disable=1091
+        . "$EXTRACTED_NIX_PATH/install-systemd-multi-user.sh"
+    elif [ "$(uname -s)" = "Linux" ] && [ -e /etc/runlevels ]; then
+        create_build_group() {
+            addgroup -S nix
+            addgroup -S nixbld
+        }
+        create_build_users() {
+            for n in $(seq 0 3); do
+                adduser -S -D -H -h /var/empty -s /sbin/nologin -G nixbld \
+                    -g "Nix build user $n" nixbld$n
+            done
+        }
+        poly_configure_nix_daemon_service() {
+            cat > /etc/init.d/nix-daemon <<- EOF
+#!/sbin/openrc-run
+
+description="Nix multi-user support daemon"
+
+command="/usr/sbin/nix-daemon"
+command_background="yes"
+pidfile="/run/\$RC_SVCNAME.pid"
+EOF
+        }
+    else
+        failure "Sorry, I don't know what to do on $(uname)"
+    fi
+
+
+    # welcome_to_nix
+    # chat_about_sudo
+    # validate_starting_assumptions
+    # setup_report
+
+    # if ! ui_confirm "Ready to continue?"; then
+    #     ok "Alright, no changes have been made :)"
+    #     contactme
+    #     trap finish_cleanup EXIT
+    #     exit 1
+    # fi
+    if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
+        create_build_group
+        create_build_users
+    fi
+    create_directories
+    # place_channel_configuration
+    install_from_extracted_nix
+
+    # configure_shell_profile
+
+    # set +eu
+    # . /etc/profile
+    # set -eu
+
+    setup_default_profile
+
+    if [ -z "${NO_SYSTEM_SETUP:-}" ]; then
+        place_nix_configuration
+        poly_configure_nix_daemon_service
+    fi
+    finish_cleanup
+    trap '' EXIT
+    # trap finish_success EXIT
+}
+
+
+
+install_nix_with_daemon() {
+    tmpdl=$(mktemp -d -t nix-bootstrap.XXXXXXXXXX || {
+              echo "Can\\'t create temporary directory" >&2; exit 1; })
+    cleanup() {
+        rm -rf "$tmpdl"
+    }
+    trap cleanup EXIT INT QUIT TERM
+
+    curl https://nixos.org/nix/install > "$tmpdl/nix-get.sh"
+
+    # hack to nix-get.sh
+    sed -e 's#script=.*# echo "$unpack"/*/install ; exit 0#' \
+        "$tmpdl/nix-get.sh" > "$tmpdl/nix-get.sh.1"
+    sed -e 's#trap cleanup.*##' \
+        "$tmpdl/nix-get.sh.1" > "$tmpdl/nix-get.sh.2"
+
+    mv "$tmpdl/nix-get.sh.2" "$tmpdl/nix-get.sh"
+    chmod 755 "$tmpdl/nix-get.sh"
+    install_script="$($tmpdl/nix-get.sh | tail -n 1)"
+
+    multi_script="$(dirname "$install_script")/install-multi-user"
+    sed -e 's#readonly NIX_USER_COUNT="32"#readonly NIX_USER_COUNT="4"#' \
+        "$multi_script" > "$multi_script.1"
+    sed -e 's#^main$##' \
+        "$multi_script.1" > "$multi_script.2"
+    mv "$multi_script.2" "$multi_script"
+
+    {
+        type create_directories | tail -n +2
+        type setup_default_profile | tail -n +2
+        type main | tail -n +2
+        echo "main"
+    } >> "$multi_script"
+    chmod 755 "$multi_script"
+
+    "$install_script" --daemon
+
+    trap '' EXIT INT QUIT TERM
+    cleanup
+}
+
+
+boot_nix() {
+    # NIX_REMOTE=daemon \
+    NIX_PATH=nixpkgs=https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz \
+    NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
+    /nix/var/nix/profiles/default/bin/nix-build --no-out-link - <<'EOF'
+with import <nixpkgs> { };
+buildEnv {
+  name = "gnu-environment";
+  paths = [
+    bashInteractive
+  ];
+}
+EOF
+}
+
+
+install_nix() {
+    install_nix_with_daemon 2>&1 | tee /tmp/install_nix.log
+}
+
+check_nix() {
+    if txt=$(/nix/var/nix/profiles/default/bin/nix --version) && [ -z "${txt##nix *}" ]; then
+        echo "version=${txt##* }"
+        return 0
+    fi
+    return 1
+}
+
+update_nix() {
+    # shellcheck source=libexec/enve/pathutils
+    . "$ENVE_HOME/enve/pathutils"
+
+    new_profile=$(
+        NIX_REMOTE=daemon \
+        NIX_PATH=nixpkgs=https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz \
+        NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
+        "$(canonicalize_symlinks "/nix/var/nix/profiles/default")"/bin/nix-build \
+        --no-out-link - <<'EOF'
+with import <nixpkgs> { };
+buildEnv {
+  name = "user-environment";
+  paths = [
+    nix cacert
+  ];
+}
+EOF
+) || {
+        echo "fail to build new profile in /nix/store"
+        exit 1
+    }
+
+    sudo rm /nix/var/nix/profiles/default
+    sudo ln -s "$new_profile" /nix/var/nix/profiles/default || {
+        echo "fail to link $new_profile to default profile"
+        exit 1
+    }
+    echo "link $new_profile to default profile"
+
+}
+
+[ "${SCOPE:-}" = host ] || {
+    echo "scope must be host but '$SCOPE'" >&2
+    exit 1
+}
+
+
+${1}_nix
+
+# case ${1:-} in
+#     install)
+#         shift
+#         install_nix_with_daemon 2>&1 | tee /tmp/install_nix.log
+#         ;;
+#     boot)
+#         shift
+#         boot_nix
+# esac
+

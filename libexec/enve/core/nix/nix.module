@@ -1,15 +1,23 @@
 #!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 settrace
 
 resolve_nix() {
-    given_shell=$(table_tail "shell")
+    # given_shell=$(table_tail "shell")
+    # fast_table_tail "enve\\.shell"
+    # given_shell=$TABLE_TAIL
+
+    fast_table_tail "enve\\.shell"
+    d=${TABLE_TAIL:-bash}
+    fast_basename
+    given_shell=$d
+
     if [ "$(table_tail "enve\\.no_nix")" = "true" ]; then
         if [ -n "$given_shell" ]; then
             shellpath=$(command -v $given_shell)
@@ -19,7 +27,7 @@ resolve_nix() {
             out_var SHELL "$SHELL"
             out_raw_fast SHELL "$SHELL" META
         fi
-        [ -n "$TABLE" ] && echo "$TABLE"
+        [ -n "$TABLE" ] && printf %s\\n "$TABLE"
         return
     fi
 
@@ -30,39 +38,18 @@ resolve_nix() {
 
     if [ -z "${nix_channel_url:-}" ]; then
         nix_channel_version="$(table_tail nix.channel.version)"
+        # TODO:
         if [ -z "$nix_channel_version" ]; then
-            # use newest nixpkgs version
-            ym=$(date +%y/%m)
-            year=${ym%/*}
-            month=${ym#*/}
-            totalmonth=$(( ${year#0} * 12 + ${month#0} ))
-            helfyear=$(( (totalmonth - 5) / 6 ))
-            case $((helfyear % 2)) in
-                0)  nix_channel_version="$((helfyear / 2)).03" ;;
-                1)  nix_channel_version="$((helfyear / 2)).09" ;;
-            esac
-            #  0    1    2    3    4    5     (monthcycle)
-            #  ^prev-ver           ^current-ver
-            #            ^beta-ver
-            monthcycle=$(( (totalmonth - 3) % 6 ))
-            case $monthcycle in
-                2|3)        nix_channel_version="$nix_channel_version-beta" ;;
-                0|1|4|5)    ;;
-            esac
-            debug "nix_channel_version: $nix_channel_version ($totalmonth, $helfyear, $monthcycle)"
+            # nix_channel_version=20.09
+            # nix_channel_version=21.05
+            nix_channel_version=22.11
         fi
         nix_channel_url="https://github.com/NixOS/nixpkgs/archive/$nix_channel_version.tar.gz"
-        # if [ -n "$nix_channel_version" ]; then
-        #     nix_channel_url="https://github.com/NixOS/nixpkgs/archive/$nix_channel_version.tar.gz"
-        # else
-        #     nix_channel_url="https://github.com/NixOS/nixpkgs/archive/18.09.tar.gz"
-        # fi
-        # nix_channel_sha256="405f1d6ba523630c83fbabef93f0da11ea388510a576adf2ded26a744fbf793e"
     fi
 
-
-    pkgs="$(table_subset "nix\\.require" | as_concat ' ')"
-    pkgs="$pkgs $(table_subset "nix\\.packages" | as_concat ' ')"
+    # pkgs="$(table_subset "nix\\.require" | as_concat ' ')"
+    pkgs="$(table_subset "nix\\.packages" | as_concat ' ')"
+    pkgs="$pkgs $(table_subset "nix\\.require\\.packages" | as_concat ' ')"
 
     # echo "pkgs: $pkgs" >&2
     LOGTYPE=nix _info "pkgs: $pkgs"
@@ -90,7 +77,7 @@ resolve_nix() {
     fi
 
     nix_config="$(
-        { table_subset "nix.config\\..*"; } | as_postfix "nix.config\\." | \
+        { table_subset "nix.config\\..*"; } | as_postfix "nix.config." | \
         while read -r name value; do
             if [ -n "$name" ]; then
                 echo "$name = $value;"
@@ -109,14 +96,16 @@ resolve_nix() {
             echo "we recommand install nix as soon as possible with:"
             echo "    enve bootstrap"
         } >&2
-        $ZERO/install_nix.sh install >&2 || {
-            _error "your system do not have nix installed, try install but failed"
-            return 1
-        }
+        _error "your system do not have nix installed, try install but failed"
+        return 1
+        # $ZERO/install_nix.sh install >&2 || {
+        #     _error "your system do not have nix installed, try install but failed"
+        #     return 1
+        # }
     fi
 
     p_text() {
-        printf %s\\n "v20190308v2"
+        printf %s\\n "v20190308v9"
         printf %s\\n "$nix_root"
         printf %s\\n "$nix_channel_url"
         printf %s\\n "$nix_config"
@@ -126,13 +115,23 @@ resolve_nix() {
     }
 
     p_make() {
-        # TODO: I remove openssl_1_1_0 at pkgs, maybe need add back?
         # TODO: add findutils back
+        # "man-db" is not supported on ‘x86_64-apple-darwin’, use "man" instand
+        # at pkg-2022.05 rename bashCompletion => bash-completion
+
+        # if [ "$nix_channel_version" -ge "2022.05" ]; then
+        if [ "${nix_channel_version%.*}" -ge "2022" ] ||
+           [ "${nix_channel_version#*.}" -ge "5" ]; then
+            bash_completion=bash-completion
+        else
+            bash_completion=bashCompletion
+        fi
+        # "$nix_root"/bin/nix-build --no-out-link --show-trace
         if env_root="$(
             NIX_REMOTE=daemon \
             NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt \
             NIXPKGS_ALLOW_UNFREE=1 \
-        "$nix_root"/bin/nix-build --no-out-link --show-trace - <<EOF
+        "$nix_root"/bin/nix-build --no-out-link - <<EOF
         let
           pkgs = import (builtins.fetchTarball {
             url = $nix_channel_url;
@@ -146,8 +145,10 @@ resolve_nix() {
               gnused gnugrep gawkInteractive gnutar gzip bzip2 less gettext
               git gnupatch
               xz unzip
-              bashInteractive bashCompletion
+              bashInteractive ${bash_completion}
               time rsync
+              man
+              perl lesspipe
               $pkgs
             ];
           }
@@ -160,11 +161,12 @@ EOF
     }
     catalog=nix-env cache_path ./env_root p_text p_make
     fast_readtext $cached_path
-    env_root=$text
+    env_root=${text%$newl}
 
     LOGTYPE=nix _info "env_root: $env_root"
 
     out_var ENV_ROOT "$env_root"
+    out_var "enve.sysroots" "$env_root"
     if [ -n "$given_shell" ]; then
         out_var SHELL "$env_root/bin/$given_shell"
         out_raw_fast SHELL "$env_root/bin/$given_shell" META
@@ -172,7 +174,7 @@ EOF
         out_var SHELL "$env_root/bin/bash"
         out_raw_fast SHELL "$env_root/bin/bash" META
     fi
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     [ -n "${env_root:-}" ] && out_list PATH "$env_root/bin"
 }
 
@@ -192,7 +194,7 @@ main() {
     done
 
     info "OUT $ZERO/enve.module"
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 }
 
 # if [ "${TEST:-}" != "test" ]; then
