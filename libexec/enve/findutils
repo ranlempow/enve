@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 
 if [ -n "${HAVE_ENVE_FINDUTILS:-}" ]; then
@@ -7,12 +7,6 @@ fi
 HAVE_ENVE_FINDUTILS=1
 
 
-# tab="$(printf '\tx')"
-# tab="${tab%x}"
-# feed="$(printf '\fx')"
-# feed="${feed%x}"
-# vtab="$(printf '\vx')"
-# vtab="${vtab%x}"
 newl="$(printf '\nx')"
 newl="${newl%x}"
 
@@ -48,20 +42,19 @@ newl="${newl%x}"
 fnmatch_pathname_transform_ere() {
     # fixed: grep: empty (sub)expression
 
-    # 1st line: esacpe all symbol
-    # 2nd line: single *
-    # 3rd line: double ** at subdir
-    # 4rd line: double ** at beginning
-    # 5rd line: questmark ?, represent any character
-
+    pat2=$(
     while read -r pat; do
         if [ -z "$pat" ]; then continue; fi
-        pat_without_endslash=${pat%/}
-        if  [ "${pat_without_endslash#*/}" = "$pat_without_endslash" ]; then
-            # If there is a separator at the beginning or middle (or both)
-            # of the pattern, then the pattern is relative to the .gitignore file
-            # > Otherwise the pattern may also match at any level below the .gitignore level
-            pat="**/${pat#/}"
+        # pat_without_endslash=${pat%/}
+        # if  [ "${pat_without_endslash#*/}" = "$pat_without_endslash" ]; then
+        #     # If there is a separator at the beginning or middle (or both)
+        #     # of the pattern, then the pattern is relative to the .gitignore file
+        #     # > Otherwise the pattern may also match at any level below the .gitignore level
+        #     pat="**/${pat#/}"
+        # fi
+        if [ "${pat#*/?}" = "${pat}" ]; then
+            printf %s\\n "$pat"
+            pat="**/${pat}"
         fi
         if [ "${pat#${pat%?}}" = "/" ]; then
             # If there is a separator at the end of the pattern
@@ -69,7 +62,8 @@ fnmatch_pathname_transform_ere() {
             pat="${pat}**"
         elif [ "${pat#${pat%??}}" = "/*" ]; then
             # /* at end should match both files and directories
-            pat="${pat%??}/**"
+            # pat="${pat%??}/**"
+            :
         elif [ "${pat#${pat%???}}" = "/**" ]; then
             :
         else
@@ -77,125 +71,111 @@ fnmatch_pathname_transform_ere() {
             pat="${pat}${newl}${pat}/**"
         fi
         printf %s\\n "$pat"
-    done | \
+    done <<EOF
+$1
+EOF
+)
+    # 1st line: esacpe all symbol
+    # 2nd line: single *
+    # 3rd line: double ** at subdir
+    # 4rd line: double ** at beginning
+    # 5rd line: questmark ?, represent any character
+
     sed -E \
         -e 's#([\[\]\(\)\{\}\.\^\$\+\|\ ])#\\\1#g' \
-        -e 's#([^*]|^)\*([^*]|$)#\1[^/]+\2#g' \
-        -e 's#/\*\*(/?)#/.*\1#g' \
-        -e 's#\*\*/#.*/#g' \
-        -e 's#\?#[^/]#g'
+        -e 's#([^*]|^)\*([^*]|$)#\1[^/][^/]*\2#g' \
+        -e 's#/\*\*(/?)#/.*?\1#g' \
+        -e 's#\*\*/#.*?/#g' \
+        -e 's#\?#[^/]#g' <<EOF
+$pat2
+EOF
 
 }
 
 
-# POSIX: 2.13.1 Patterns Matching a Single Character
-# http://pubs.opengroup.org/onlinepubs/009696899/utilities/xcu_chap02.html#tag_02_13_01
-fnmatch () { case "$2" in $1) return 0 ;; *) return 1 ;; esac ; }
-
-
-fnmatch_pathname () {
-    # only support in bash,zsh,ksh
-    # "*" matches anything except "/", "?" matches any one character except "/"
-    # "[/]**[/]" matches zero or more directories
-    pat="$(fnmatch_pathname_transform "$1")"
-    fnmatch "$pat" "$2"
-}
-
-
-# make_gitignore_filter() {
-#     # implement gitignore format
-#     # output '__gf' function code, '__gf' filter filename per line from stdin.
-#     # https://git-scm.com/docs/gitignore
-#     #
-#     # NOTE: this function will not respect this rule
-#     # `it would only find a match with a directory if the pattern ends with a slash ("/").`
-#     #
-
-#     echo 'function __gf() {'
-#     echo '  paths="$(cat)"'
-#     echo '  origin_paths="$paths"'
-#     echo "$1" | while IFS="$newl" read -r line; do
-#         # A line starting with # serves as a comment
-#         [ -z "$line" ] || [ "${line:0:1}" = "#" ] && continue
-#         # Trailing spaces are ignored unless they are quoted with backslash ("\").
-#         line="${line%%+([!\\][[:space:]])}"
-
-#         if ! pat="$(fnmatch_pathname_transform "$line")"; then
-#             return 1
-#         fi
-#         if [ "${pat:0:1}" = '!' ] && [ "${pat:0:2}" != '\!' ]; then
-#             pat=${pat:1}
-#             echo 'paths="$paths${paths:+$newl}$(echo "$origin_paths" | while IFS="$newl" read -r path; do'
-#             echo '  case "$path" in '"$pat"') printf %s\\n "$path";; esac ;'
-#             echo 'done)"'
-#         else
-#             echo 'paths="$(echo "$paths" | while IFS="$newl" read -r path; do'
-#             echo '  case "$path" in '"$pat"') continue;; esac ; printf %s\\n "$path" ;'
-#             echo 'done)"'
-#         fi
-#     done
-#     echo 'echo "$paths"'
-#     echo '}'
-# }
-
-
-
-# gitignore_filter() {
-#     # only support in bash,zsh,ksh
-#     (
-#         eval "$(make_gitignore_filter "$1")"
-#         shopt -s extglob
-#         __gf
-#     )
-# }
-
-# gitignore_filter_ere() {
-gitignore_filter() {
-    # echo $1 >&2
-    # echo $(echo "$1" | fnmatch_pathname_transform_ere) >&2
-    positive=
-    negative=
+_load_ex_add() {
+    exclude_pats=
+    addbacks_pats=
     while read -r pat; do
         [ -z "$pat" ] && continue
         [ "${pat%${pat#?}}" = "#" ] && continue
         if [ "${pat%${pat#?}}" = "!" ]; then
-            negative="$negative${pat#?}$newl"
+            addbacks_pats="$addbacks_pats${pat#?}$newl"
         else
-            positive="$positive$pat$newl"
+            exclude_pats="$exclude_pats$pat$newl"
         fi
     done <<EOF
 $1
 EOF
-    genre() {
-        while read -r ere; do
-            printf "%s '%s' " "-e" "^$ere\$"
-        done <<EOF
-$(echo "$1" | fnmatch_pathname_transform_ere)
+
+}
+
+_genre() {
+    RE=
+    while read -r ere; do
+        RE="$RE -e '^$ere\$'"
+    done <<EOF
+$(fnmatch_pathname_transform_ere "$1")
 EOF
-    }
-    data=$(cat)
-    if [ -n "$positive" ]; then
-        positive_pass=$(
-            printf 'grep -E -v '
-            genre "$positive"
-        )
-        echo "positive_pass: $positive_pass" >&2
-        echo "$data" | eval "$positive_pass" || true
-        if [ -n "$negative" ]; then
-            positive_fail=$(
-                printf 'grep -E '
-                genre "$positive"
-            )
-            negative_pass=$(
-                printf 'grep -E '
-                genre "$negative"
-            )
-            # echo "negative_pass: $negative_pass" >&2
-            fail=$(echo "$data" | eval "$positive_fail" || true)
-            echo "$fail" | eval "$negative_pass" || true
-        fi
+}
+
+
+gitignore_exclude() {
+    # 先用exclude_pats篩選出移除清單
+    # 再對移除清單用addbacks_pats篩選
+    _load_ex_add "$1"
+
+    if [ -z "$exclude_pats" ]; then
+        :
+    elif [ -z "$addbacks_pats" ]; then
+        _genre "$exclude_pats"
+        trace "RE:$newl$RE"
+
+        eval grep "$RE" <<EOF
+$2
+EOF
     else
-        echo "$data"
+        _genre "$exclude_pats"
+        RE1=$RE
+        _genre "$addbacks_pats"
+        eval grep "$RE" <<EOF
+$(eval grep "$RE1" <<EOF2
+$2
+EOF2
+)
+EOF
+    fi
+}
+
+
+gitignore_include() {
+    # 用exclude_pats逆向篩選出包含清單
+    # 用addbacks_pats篩選出包含清單
+    _load_ex_add "$1"
+
+    if [ -z "$exclude_pats" ]; then
+        printf %s\n "$2"
+    elif [ -z "$addbacks_pats" ]; then
+        _genre "$exclude_pats"
+        trace "RE:$newl$RE"
+        eval grep -v "$RE" <<EOF
+$2
+EOF
+
+    else
+        _genre "$exclude_pats"
+        RE1=$RE
+        _genre "$addbacks_pats"
+        eval grep -v "$RE1" <<EOF
+$2
+EOF
+        data2=$(eval grep -P "$RE1" <<EOF
+$2
+EOF
+)
+        eval grep "$RE" <<EOF
+$data2
+EOF
     fi
 }
 
@@ -272,22 +252,23 @@ _files_stats() {
     content="$1"
     shift
     first=
-    for path in "$@"; do
+    for _path in "$@"; do
 
         dirn=
         if [ -z "$first" ]; then
             set --
             first=1
         fi
-        if [ -z "$path" ]; then
+        if [ -z "$_path" ]; then
             continue
-        elif [ ! -d "$path" ]; then
-            set -- "$@" "$path"
+        elif [ ! -d "$_path" ]; then
+            set -- "$@" "$_path"
             continue
         else
-            dirn="$path"
+            dirn="$_path"
             finded=.
         fi
+
         # elif [ "${path/\//}" = "$path" ]; then
         #     # '$path' contain '/'
         #     dirn="${path%/*}"
@@ -312,10 +293,10 @@ _files_stats() {
             # LANG=C ls -ln $(find "$finded" ! -type d) | awk '!($2="")'
 
             # shellcheck disable=2012 disable=2046
-            while read -r x1 hardlink x3 x4 x5 x6 x7 x8 path; do
-                echo "$x1 - $x3 $x4 $x5 $x6 $x7 $x8 $path"
+            while read -r x1 hardlink x3 x4 x5 x6 x7 x8 _path; do
+                echo "$x1 - $x3 $x4 $x5 $x6 $x7 $x8 $_path"
             done <<EOF
-$(LANG=C ls -ln $(find "$finded" ! -type d))
+$(LANG=C /bin/ls -ln $(find "$finded" ! -type d))
 EOF
         fi
         if [ -n "$content" ]; then
@@ -327,14 +308,14 @@ EOF
         if [ "$content" != 'content-only' ]; then
             # shellcheck disable=2012
             # LANG=C ls -ln "$@" | awk '!($2="")'
-            while read -r x1 hardlink x3 x4 x5 x6 x7 x8 path; do
-                echo "$x1 - $x3 $x4 $x5 $x6 $x7 $x8 $path"
+            while read -r x1 hardlink x3 x4 x5 x6 x7 x8 _path; do
+                echo "$x1 - $x3 $x4 $x5 $x6 $x7 $x8 $_path"
             done <<EOF
-$(LANG=C ls -ln "$@")
+$(LANG=C /bin/ls -ln "$@")
 EOF
         fi
         hardlink=$hardlink
-        unset x1 hardlink x3 x4 x5 x6 x7 x8 path
+        unset x1 hardlink x3 x4 x5 x6 x7 x8 _path
 
         if [ -n "$content" ]; then
             md5sum "$@"
@@ -366,6 +347,7 @@ files_stats_by_liens() {
 $lines
 EOF
     unset lines path
+    # echo "files_stats_by_liens $#" >&2
     files_stats "$@"
 }
 

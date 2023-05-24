@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-
+#!/bin/sh
 
 if [ -n "${HAVE_ENVE_PATHUTILS:-}" ]; then
     return 0
@@ -106,16 +105,16 @@ resolve_symlinks() {
 
 normalize() {
     # (
-        path=${1:-}
+        _path=${1:-}
         nonfast=${2:-nonfast}
         tailslash=
-        if [ -n "$path" ] && [ -z "${path##*/}" ]; then
+        if [ -n "$_path" ] && [ -z "${_path##*/}" ]; then
             tailslash=/
         fi
         set --
         OLDIFS=$IFS
         IFS=/
-        for c in $path; do
+        for c in $_path; do
             IFS=$OLDIFS
             case $c in
                 '')

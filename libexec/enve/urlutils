@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 
 if [ -n "${HAVE_ENVE_URLUTILS:-}" ]; then
@@ -6,8 +6,11 @@ if [ -n "${HAVE_ENVE_URLUTILS:-}" ]; then
 fi
 HAVE_ENVE_URLUTILS=1
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# shellcheck source=libexec/enve/aws4lib
+. "$ENVE_HOME/enve/aws4lib"
 
 # shellcheck source=libexec/enve/cachelib
 . "$ENVE_HOME/enve/cachelib"
@@ -16,417 +19,874 @@ HAVE_ENVE_URLUTILS=1
 . "$ENVE_HOME/enve/pathutils"
 
 
-enve_clone() {
-    :
+_find_gitrepo_name() {
+    GITREPO_NAME=$1
+    GITREPO_NAME=${GITREPO_NAME%%@*}
+    GITREPO_NAME=${GITREPO_NAME%%#*}
+    GITREPO_NAME=${GITREPO_NAME%%/}
+    GITREPO_NAME=${GITREPO_NAME%/.git}
+    if [ -d "$GITREPO_NAME" ]; then
+        GITREPO_NAME=$(resolve_symlinks "$GITREPO_NAME")
+    fi
+    GITREPO_NAME=${GITREPO_NAME%%.*}
+    GITREPO_NAME=${GITREPO_NAME##*/}
 }
 
+gitrepourl() {
+    repo_branch="$1"
+    repo="${1%%\#*}"
+    if [ "$repo" != "$repo_branch" ]; then
+        branch="${1#*\#}"
+    else
+        branch=
+    fi
 
-parse_unified_download() {
-    true '
-URL schima
-
-https://
-git+ssh://git@github.com/username/my_private_repo
-
-curl -k sftp://root:0000@192.168.56.3:22
-
-use homebrew to get libssh2 supported curl
-
-dest=%cache|%cacheifpure(%auto)|%tmp|[path]
-pure=""|1|0
-desttype=auto|file|dir
-autodecomp=1|0
-
-TODO: "desttype=auto" is not done yet
-
-
-output
-------
-direct [false/true]         can be access directly?
-pure [false/true/seconds]   purely or expire time
-url [string]
-dl [code]
-decomp [code]
-
-'
-
-    url=$1
-    dest=$2
-    desttype=$3
-    noerror=${4:-}
-    autodecomp=1
-    # pure=
-
-    dl=
-    keepdir=
-    decomp=
-
-
-    if [ "$autodecomp" = "1" ]; then
-        case $url in
-            *.tar)
-                    if [ "$desttype" != "file" ]; then
-                        decomp='cd "${dest}"; tar -xvf "${tmpdest}"'
-                        keepdir=1
-                    fi
+    if [ -e "${repo}/.git" ]; then
+        repo="git+file://$repo"
+    else
+        # Sourced from antigen url resolution logic.
+        # https://github.com/zsh-users/antigen/blob/master/antigen.zsh
+        # Expand short github url syntax: `username/reponame`.
+        case $repo in
+            git+ssh://*|git+file://*|git+http://*|git+https://*|git+git@*:*)
+                    :
                 ;;
-            *.tar.gz)
-                    if [ "$desttype" != "file" ]; then
-                        decomp='cd "${dest}"; tar -zxvf "${tmpdest}"'
-                        keepdir=1
-                    fi
+            ssh://*|file://*|http://*|https://*|git@*:*)
+                    repo="git+$repo"
                 ;;
-            *.tar.bz2)
-                    if [ "$desttype" != "file" ]; then
-                        decomp='cd "${dest}"; tar -jxvf "${tmpdest}"'
-                        keepdir=1
-                    fi
-                ;;
-            *.tar.xz)
-                    if [ "$desttype" != "file" ]; then
-                        decomp='cd "${dest}"; tar -Jxvf "${tmpdest}"'
-                        keepdir=1
-                    fi
-                ;;
-            *.zip)
-                    if [ "$desttype" != "file" ]; then
-                        decomp='cd "${dest}"; unzip "${tmpdest}";'
-                        keepdir=1
-                    fi
-                ;;
-            *.gz)
-                    if [ "$desttype" != "dir" ]; then
-                        decomp='gzip -dc "${tmpdest}" > "${dest}"'
-                    fi
-                ;;
-            *.bz2)
-                    if [ "$desttype" != "dir" ]; then
-                        decomp='bzip2 -dc "${tmpdest}" > "${dest}"'
-                    fi
-                ;;
-            *.xz)
-                    if [ "$desttype" != "dir" ]; then
-                        decomp='xz -dc "${tmpdest}"> "${dest}"'
-                    fi
+            *)
+                    repo="git+https://github.com/${repo%.git}.git"
                 ;;
         esac
     fi
+    if [ -n "$branch" ]; then
+        echo "${repo}#${branch}"
+    else
+        echo "${repo}"
+    fi
+}
 
 
-    needunpack=
-    path=
-    branch_commit=
-    case $url in
-        ssh://*.git#*|file://*.git#*|http://*.git#*|https://*.git#*|git@*:*.git#*)
-                if [ "$desttype" = "file" ]; then
-                    _error "git with file destination is not support"
-                    return 1
-                fi
-                branch_commit="${url#*#}"
-                url="${url%%#*}"
+enve_clone_tmp() {
+    url="$1"
+    p_text() {
+        echo "gitrepo"
+        echo "$url"
+    }
+    p_make() {
+        _git_dl "$CACHED" "$url"
+    }
+    p_valid() {
+        # TODO: ?
+        cd "$CACHED" || return 0
+        git fetch origin || return 0
+        echo 1
+    }
+    # ENVE_CACHE_DIR=${ENVE_SESSION_DIR:-$(mkdtemp "$(get_tempdir)/gitrepo.XXXXXX")} \
+    catalog=gitrepo cache_path "" p_text p_make p_valid || return 1
+    echo "$cached_path"
+}
+
+
+
+
+_git_dl() {
+    src=$1
+    dst=$2
+
+    # commit or tag
+    commit=${src##*"#"}
+    branch=${src%"#$commit"}
+    if [ "${branch##*\#}" != "$branch" ]; then
+        branch=${branch##*\#}
+        src=${src%"#$branch#$commit"}
+    else
+        src=$branch
+        branch=$commit
+        commit=
+    fi
+
+    case $branch:$commit in
+        ?*:?*)
+            # shallow checkout specific commit, but clone branch first
+            # some remote host didn't allow fetch specific commit
+            DEPTH=
+            checkout=$commit
+            branch="+refs/heads/$branch:refs/remotes/origin/$branch"
             ;;
-        ssh://*.git|file://*.git|http://*.git|https://*.git|git@*:*.git)
-                if [ "$desttype" = "file" ]; then
-                    _error "git with file destination is not support"
-                    return 1
-                fi
-                branch_commit=.
+        :?*)
+            # shallow clone specific commit
+            DEPTH=--depth=1
+            checkout=$commit
+            branch=$commit
             ;;
-        http://*|https://*)
-                if [ "$desttype" = "dir" ]; then
-                    needunpack=1
-                fi
-                dl='curl -L "${url}" -o "${dest}"'
-                pure=${pure:-0}
+        \.:)
+            # shallow clone default(must case is master) branch
+            DEPTH=--depth=1
+            checkout="refs/remotes/origin/HEAD"
+            branch="+refs/heads/HEAD"
             ;;
-        ftp://*|sftp://*|ftps://*)
-                if [ "$desttype" = "dir" ]; then
-                    needunpack=1
-                fi
-                dl='curl -L "${url}" -o "${dest}"'
-                pure=${pure:-0}
+        \%all:|\*:|:)
+            # pull all branch and checkout default branch
+            DEPTH=
+            checkout="refs/remotes/origin/HEAD"
+            branch="*"
             ;;
-        scp://*)
-                url="${url%scp://}"
-                if [ "$desttype" = "file" ] || [ -n "$decomp" ]; then
-                    dl='scp "${url}" "${dest}"'
-                else
-                    dl='scp -pr "${url}" "${dest}"'
-                    keepdir=1
-                fi
-                pure=${pure:-0}
+        ?*:)
+            DEPTH=--depth=1
+            checkout="refs/remotes/origin/${branch}"
+            branch="+refs/heads/$branch:refs/remotes/origin/$branch"
             ;;
-        git+ssh://*#*|git+file://*#*|git+http://*#*|git+https://*#*|git+git@*:*#*)
-                if [ "$desttype" = "file" ]; then
-                    _error "git with file destination is not support"
-                    return 1
-                fi
-                branch_commit="${url#*#}"
-                url="${url%%#*}"
-                url=${url#git+}
-            ;;
-        git+ssh://*|git+file://*|git+http://*|git+https://*|git+git@*:*)
-                if [ "$desttype" = "file" ]; then
-                    _error "git with file destination is not support"
-                    return 1
-                fi
-                branch_commit=.
-                url=${url#git+}
-                # dl='git clone --depth 1 "${url}" "${dest}"'
-                # pure=${pure:-0}
-            ;;
-        file://*)
-                path="${url#file://}"
-                if [ -z "$path" ]; then
-                    _error "url syntex error '$url'"
-                    return 1
-                fi
-            ;;
+    esac
+    if [ ! -e "$dst/.git" ]; then
+        git init --quiet "$dst" && cd "$dst"
+        git config core.eol lf
+        git config core.autocrlf false
+        # TODO: 用這個來放置 post-checkout hook
+        # git config core.hooksPath "$POST_CHECKOUT_HOOK"
+        git remote add origin "$src"
+    fi
+    git fetch $DEPTH origin "$branch"
+    git checkout "$checkout"
+    #git reset --hard "origin/$BRANCH"
+}
+
+
+_parse_uri_stage1() {
+    uri=$1
+    case $uri in
         *://*)
-                _error "url syntex error '$url'"
-                return 1
+                scheme=${uri%%://*}
+                auth=${uri#"$scheme"://}
+                auth=${auth%%/*}
+                path=${uri#"$scheme://$auth"}
             ;;
-        /*|\./*|\~/*|\~)
-                path="$url"
+        git@*)
+                scheme=ssh
+                auth=${uri#"git@"}
+                auth=${auth%%/*}
+                path=${uri#"git@$auth"}
             ;;
-        */*)
-                # repo="${url%\#*}"
-                # if [ "$repo" != "$url" ]; then
-                #     branch_commit="${url##*\#}"
-                # else
-                #     branch_commit=.
-                # fi
-                # if [ -n "${repo#*/}" ] && [ "${repo#"${repo%/*}"}" = "/${repo#*/}" ]; then
-                #     # "user/name" pattern, try github
-                #     url="https://github.com/${repo%.git}.git"
-                #     unset repo
-                # else
-                if [ -z "$noerror" ]; then
-                    _error "unaccept relative path, use absolute path or './$url'"
+        *:*)
+                scheme=${uri%:*}
+                if [ -z "${scheme%%*:*}" ]; then
+                    # URN: https://en.wikipedia.org/wiki/Uniform_Resource_Name
+                    scheme=${uri%%:*}
+                    path=${uri#"$scheme:"}
+                elif [ -z "${scheme%%*@*}" ]; then
+                    scheme=scp
+                    auth=${uri%:*}
+                    path=${uri#"$scheme:"}
+                else
+                    scheme=${uri%%:*}
+                    path=${uri#"$scheme:"}
                 fi
-                unset repo
-                dl=relative
-                return 1
-                # fi
             ;;
         *)
-                if [ -z "$noerror" ]; then
-                    _error "url not found '$url'"
-                fi
-                dl=relative
-                return 1
-                # if [ -n "${DEFAULT_UD_PARSER:-}" ]; then
-                #     $DEFAULT_UD_PARSER
-                #     return
-                # else
-                #     # NOT_MATCH
-                #     _error "url not found '$url'"
-                #     return 1
-                # fi
+                scheme=file
+                auth=
+                path=$uri
+            ;;
+    esac
+    frag=
+    if [ -z "${path%%*\#*}" ]; then
+        frag=${path#*\#}
+        path=${path%\#"$frag"}
+    fi
+    query=
+    if [ -z "${path%%*\?*}" ]; then
+        query="${path#*\?}"
+        path=${path%\?"$query"}
+    fi
+    # 這讓 'dir/.' 與 'dir/' 的意義一致
+    # normalize "$path" fast
+    # path=$ret
+    while [ "${path%/.}" != "$path" ]; do
+        if [ "${path%./.}" != "$path" ]; then
+            path=${path%/.}
+        else
+            path=${path%.}
+        fi
+    done
+    # if [ "${path##*/}" = "." ]; then
+    #     path=${path%.}
+    # fi
+}
+
+
+
+true '
+    下載一律先本地化
+    dl的dst一定要是本地
+    up的src也一定是本地
+    enc,dec兩端一定是本地
+
+    每個處理器兩端為 $proc "$source" "$drain"
+    dl-source,dec-source端可以是unpack
+    up-drain端可以是into，沒有up時依序丟給dec-drain,dl-drain(當dst=xxx/時)
+    或是enc-source端可以是into(當dst=xxx.tar|xxx.zip時)
+
+    目標之後還有目標，創造第一個為臨時目標
+    into之後如果還有行程則那個into是臨時目標
+
+    無論成功或失敗，結束後把暫存檔移除
+
+
+
+
+
+    none -> file        touch file
+    none -> dir/        makedirs
+
+    簡單形式/檔案形式，dst是檔案名，分成
+    copy to remote      需要暫存資料夾 (dl,dec,enc,up同時有兩個以上)
+    copy to local       直接執行 dl,dec,enc,up 的dst是真實目標
+
+    file -> bz2         comparsion to bz2
+    bz2  -> bz2         create or replace dst
+    dir  -> bz2         (error)
+    tar  -> bz2         (error?) comparsion to bz2
+    git  -> bz2         (error)
+
+    file -> file        create or replace dst
+    bz2  -> file        unpack, create or replace dst
+    dir  -> file        (error)
+    tar  -> file        (error)
+    git  -> file        (error)
+
+    複雜形式/資料夾形式，dst是資料夾，分成兩種
+    into remote  需要暫存資料夾(包含tar)
+    into remote  tar後unpack
+    into local   直接執行
+    into 是掛在 source 的， dst端會允許這些into執行
+
+    ????
+    src  dst
+    ---------
+    into into       直接
+    none into       創造名字
+    into none       只留資料夾
+    none none       直接
+
+
+    file -> tar         (error)
+    bz2  -> tar         (error)
+    dir  -> tar         pack dir to tar
+    tar  -> tar         create or replace dst
+    git  -> tar         pack git root to tar without .git dir
+
+    file -> dir/        copy file into dst
+    bz2  -> dir/        write src into dst
+    dir  -> dir/        copy src into dst
+    tar  -> dir/        copy src into dst
+    git  -> dir/        clone to dst
+
+    dir/** -> dir/        copy src contents into dst
+    tar/** -> dir/        unpack tar contents into dst
+    git/** -> dir/        (?)copy src contents into dst
+
+    src/**               unpack
+    +src                 force
+    +dst                 force
+    -src                 decompress
+
+    rsync -avzP     -a 保留屬性 -z 壓縮 -P 續傳
+
+
+# backup options
+
+tar -axf "$src" --keep-newer-files --keep-directory-symlink --backup=existing -C "$dst"
+# --keep-directory-symlink 可能會造成安全性漏洞
+# --exclude-from=FILE
+
+tar -acf "$dst" --null --files-from=-
+tar -acf "$dst" $src...
+tar -cf - --zstd $src...
+tar -cf - --null
+    -C $src1 --files-from=$tmp/$src1.lst
+    -C $src2 --files-from=$tmp/$src2.lst
+
+rsync -a --backup --keep-dirlinks --update
+# --delete
+# --keep-dirlinks 可能會造成安全性漏洞
+# --exclude-from=FILE
+
+rsync -a --from0 --files-from=- --recursive --no-relative --no-dirs
+rsync -a $src... $dst
+rsync -a $src... --exclude-from=FILE $dst
+
+rsync -a --list-only $src...
+
+
+mkdir $tmp
+for s in $src..; do
+    ln -sf $s $tmp/${s##*/}
+done
+find .... $tmp > $tmp/../pattern
+cd $tmp
+zip -r - . -i @../pattern
+
+
+zip -r|--recurse-paths --no-wild -S|--system-hidden --update? $dst $src...
+zip - $src...
+# -UN=UTF8
+# -x@exclude.lst
+
+unzip -d $dst -u -B -o $src
+# -u update
+# -B backup
+# -o overwrite all
+'
+
+
+_common_dec1() {
+    case $1 in
+        # zip)      cd "$3"; unzip "$2" ;;
+        gz)       gzip -c > "$2" ;;
+        bz2)      bzip2 -c > "$2" ;;
+        xz)       xz -c > "$2" ;;
+    esac
+}
+
+_common_dec2() {
+    case $1 in
+        # zip)      cd "$3"; unzip "$2" ;;
+        gz)       gzip -dc "$2" > "$3" ;;
+        bz2)      bzip2 -dc "$2" > "$3" ;;
+        xz)       xz -dc "$2" > "$3" ;;
+    esac
+}
+
+
+_common_dl1() {
+    curl -fsL "$1"
+}
+
+_common_dl2() {
+    curl -fsL "$1" > "$2"
+}
+
+
+_http_post1() {
+    case "$1" in
+        s3://*)
+                aws4_request s3.ap-east-1 POST "$1" -- @-
+            ;;
+        *)
+                curl -i -X POST -H "Content-Type: multipart/form-data" \
+                    -F "data=@-" "$1"
+            ;;
+    esac
+}
+
+_http_post2() {
+    case "$1" in
+        s3://*)
+                aws4_request s3.ap-east-1 POST "$2" -- "@$1"
+            ;;
+        *)
+
+                curl -i -X POST -H "Content-Type: multipart/form-data" \
+                    -F "data=@$1" "$2"
+            ;;
+    esac
+}
+
+
+
+unpack1_tar() {
+    printf %s\\n "tar -axf - --keep-newer-files --keep-directory-symlink --backup=existing -C '$1'"
+}
+
+unpack1_zip() {
+    printf %s\\n "zip  -u -B -o -d '$1' -"
+}
+
+
+tar1_tar() {
+    args=
+    for src; do
+        end_slash=${src#"${src%/}"}
+        args="${args} -C '${src%/}' '.${end_slash}'"
+    done
+    eval set -- "$args"
+    case ${dname:-} in
+        *.tar.gz|*.tgz) set -- --gzip "$@";;
+        *.tar.bz2) set -- --bzip2 "$@";;
+        *.tar.xz) set -- --xz "$@";;
+        *.tar.lzma) set -- --lzma "$@";;
+        *.tar.zst) set -- --zstd "$@";;
+        *.tar|*) ;;
+    esac
+    printf %s "tar -cf - "
+    for arg; do
+        printf %s "'$arg'"
+    done
+    printf \\n
+}
+
+
+tar1_zip() {
+    printf %s\\n "mkdir $tmp"
+    for src; do
+        end_slash=${src#"${src%/}"}
+        if [ -n "$end_slash" ]; then
+            # TODO: --system-hidden
+            for path in $src*; do
+                printf %s\\n "ln -sf $path $tmp/${path##*/}"
+            done
+        else
+            printf %s\\n "ln -sf $src $tmp/${src##*/}"
+        fi
+    done
+    printf %s\\n "cd $tmp; zip -r - ."
+}
+
+
+
+
+
+
+_uri_src_protocol() {
+
+    # TODO: dont need this
+    # git_src_path() {
+    #     case $frag in
+    #         *#*)    branch=${frag#*#};  commit=${frag%%#*} ;;
+    #         ????????????????????????????????????????)
+    #                 branch=;            commit=$frag ;;
+    #         *)      branch=${frag:-.};  commit= ;;
+    #     esac
+    #     # case $branch:$commit in
+    #     #     *:?*)   pure=${pure:-1};;
+    #     #     :?*)    pure=${pure:-1};;
+    #     #     \.:)    pure=${pure:-0};;
+    #     #     \%all:) pure=${pure:-0};;
+    #     #     ?*:)    pure=${pure:-0};;
+    #     # esac
+    # }
+
+
+    expand_home_at_path() {
+        if [ -z "${path##"~/"*}" ]; then
+            path="${HOME:+"$HOME/"}${path#"~/"}"
+        fi
+    }
+
+
+    unset sinto sforce sdec dl dl2 unpack unpack2 src
+    uri=$1
+    if [ "${uri#+}" != "$uri" ]; then
+        uri=${uri#+}
+        sforce=+
+    fi
+    if [ "${uri%-}" != "$uri" ]; then
+        uri=${uri%-}
+        sdec=-
+    fi
+
+    _parse_uri_stage1 "$uri"
+
+    case "$path" in
+        *.tar*/)
+                sinto=1
+                unpack=unpack1_tar
+                path=${path%/}
+            ;;
+        *.zip/)
+                sinto=1
+                unpack=unpack1_zip
+                path=${path%/}
+                : # TODO
+            ;;
+        *)
+
+    # TODO: dpath not found
+    # if [ -z "${multisrc:-}" ]; then
+    #     case "$path:::$dpath" in
+    #         *.gz:::*.gz)    suffix_change=;;
+    #         *.gz:::*)       suffix_change="gzip -dc${suffix_change:+ | $suffix_change}" ;;
+    #         *.bz2:::*.bz2)  suffix_change=;;
+    #         *.bz2:::*)      suffix_change="bzip2 -dc${suffix_change:+ | $suffix_change}" ;;
+    #         *.xz:::*.xz)    suffix_change=;;
+    #         *.xz:::*)       suffix_change="xz -dc${suffix_change:+ | $suffix_change}" ;;
+    #     esac
+    # elif [ -n "${sdec:-}" ]; then
+    #     case "$path:::$dpath" in
+    #         *.gz:::*.gz)    ;;
+    #         *.gz:::*)       unpack="_common_dec1 gz"
+    #                         unpack2="_common_dec2 gz"
+    #                         ;;
+    #         *.bz2:::*.bz2)  ;;
+    #         *.bz2:::*)      unpack="_common_dec1 bz2"
+    #                         unpack2="_common_dec2 bz2"
+    #                         ;;
+    #         *.xz:::*.xz)    ;;
+    #         *.xz:::*)       unpack="_common_dec1 xz"
+    #                         unpack2="_common_dec2 xz"
+    #                         ;;
+    #     esac
+    # fi
+
             ;;
     esac
 
 
-    if [ -n "$path" ]; then
-        repo="${path%\#*}"
-        if [ "$repo" != "$path" ]; then
-            branch_commit="${path##*\#}"
-        else
-            branch_commit=
-        fi
-        if [ -e "${repo}/.git" ] && [ -n "$branch_commit" ] ; then
-            url="file://$path"
-            path=
-        fi
-        unset repo
-    fi
 
-
-    if [ -n "$branch_commit" ]; then
-        if [ "$branch_commit" = "." ]; then
-            branch=.
-            commit=
-        elif [ "${branch_commit#*#}" != "$branch_commit" ]; then
-            branch=${branch_commit#*#}
-            commit=${branch_commit%%#*}
-        elif [ ${#branch_commit} -eq 40 ]; then
-            branch=
-            commit=$branch_commit
-        else
-            branch=$branch_commit
-            commit=
-        fi
-        unset branch_commit
-
-        if [ -n "$commit" ] && [ -n "$branch" ]; then
-            # if [ ${#branch} -eq 40 ]; then
-            repopath=$(
-                p_text() {
-                    echo "repo"
-                    echo "$url"
-                    echo "$branch"
-                }
-                p_make() {
-                    cd $CACHED
-                    if [ ! -e "$CACHED/.git" ]; then
-                        git init >/dev/null
-                    fi
-                    git remote add origin "${url}" >/dev/null
-                    if [ "$branch" = "%all" ]; then
-                        git fetch --all >/dev/null
+    case $scheme in
+        http|https|s3|ftp|sftp|ftps)
+                if [ -z "$path" ]; then
+                    _error "source cannot be empty"
+                    return 1
+                elif [ -z "${path##*/}" ]; then
+                    _error "source unpack at http/s3/ftp is not supported currnetly"
+                    return 1
+                fi
+                src="$scheme://$auth$path"
+                dl=_common_dl1
+                dl2=_common_dl2
+                # stype=file
+                # unpack_src_path "$path" || true
+            ;;
+        file|rsync|ssh|git+*)
+                isgit=
+                if [ "${scheme#"git+"}" != "$scheme" ]; then
+                    scheme=${scheme#"git+"}
+                    isgit=1
+                elif [ -z "${path##*.git}" ] || [ -z "${path##*.git/}" ]; then
+                    isgit=1
+                fi
+                if [ -z "$path" ]; then
+                    _error "source cannot be empty"
+                    return 1
+                elif [ -z "${path##*/}" ]; then
+                    sinto=1
+                    if [ -n "$isgit" ]; then
+                        # TODO: unpack git clone
+                        dl=_git_dl
+                        dl2='git clone'
+                        # git_src_path
+                        # src="$scheme://$auth$path#$branch#$commit"
+                    elif [ "$scheme" = file ]; then
+                        src="$path"
+                        # dl=???
+                        # dl2='rsync -a'
                     else
-                        git fetch origin "$branch" >/dev/null
+                        # TODO: unpack dir
+                        dl=???
+                        dl2="rsync -a"
                     fi
-                }
-                CACHED='' \
-                dest='%cache' \
-                ENVE_CACHE_DIR=${ENVE_SESSION_DIR:-$(mkdtemp "$(get_tempdir)/gitrepo.XXXXXX")} \
-                    catalog=gitrepo cache_path "" p_text p_make || return 1
-                echo "$cached_path"
-            ) || {
+                else
+                    if [ -n "$isgit" ]; then
+                        dl=_git_dl
+                        dl2='git clone'
+                        # git_src_path
+                        # src="$scheme://$auth$path#$branch#$commit"
+                    elif [ "$scheme" = file ]; then
+                        src="$path"
+                    else
+                        dl=???
+                        dl2="rsync -a"
+                    fi
+                fi
+
+                if [ "$scheme" = file ]; then
+                    expand_home_at_path
+                elif [ -z "${isgit:-}" ] && [ "$scheme" = ssh ]; then
+                    port=
+                    case $auth in
+                        *:*)
+                                port=${auth##*:}
+                                auth=${auth%:*}
+                            ;;
+                    esac
+                    src=$auth:$path
+                    dl2="rsync -a${port:+ -e \"ssh -p $port\"}"
+                else
+                    src=${src:-"$scheme://$auth$path"}
+                fi
+            ;;
+        *)
+                _error "unsupport source scheme '$scheme'"
                 return 1
-            }
-            # echo "repopath:$repopath" >&2
-            # dl='cd "${dest}"; git init; git remote add origin "'"$repopath"/.git'";'
-            # dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
-            dl='git --git-dir='$repopath/.git' --work-tree="${dest}" checkout "'$commit'"'
-            keepdir=1
-            pure=${pure:-1}
-        elif [ -n "$commit" ]; then
-            # https://stackoverflow.com/questions/3489173/how-to-clone-git-repository-with-specific-revision-changeset?answertab=votes#tab-top
-            # commit="$branch"
-            dl='cd "${dest}"; git init; git remote add origin "${url}";'
-            dl="$dl"' git fetch --depth=1 origin "'$commit'"; git reset --hard FETCH_HEAD'
-            keepdir=1
-            pure=${pure:-1}
-        elif [ "$branch" = "." ]; then
-            dl='git clone --depth 1 "${url}" "${dest}"'
-            pure=${pure:-0}
-        elif [ "$branch" = "%all" ]; then
-            # dl='git clone "${url}" "${dest}";'
-            dl='cd "${dest}";'
-            dl="$dl"'git init; git remote add origin "${url}"; git fetch --all;'
-            dl="$dl"' { git branch -r | grep -v \\-\> | while read remote; do git branch --force --track ${remote#origin/} $remote; done; };'
-            dl="$dl"' git pull --all;'
-            keepdir=1
-            pure=${pure:-0}
-        else
-            dl='git clone --depth 1 --branch "'$branch'" "${url}" "${dest}"'
-            pure=${pure:-0}
-        fi
-        unset commit branch branch_commit
-    fi
-    # elif [ -n "$path" ]; then
-    #     repo="${path%\#*}"
-    #     if [ "$repo" != "$path" ]; then
-    #         branch="${path##*\#}"
-    #     else
-    #         branch=
-    #     fi
-    #     if [ -e "${repo}/.git" ] && [ -n "$branch"] ; then
-    #         repo="git+file://$path"
-    #     fi
-    #     elif [ ! -e "$repo" ] && [ -n "${repo#/*}" ] && [ -n "${repo%*/}" ] && \
-    #          [ "${repo#/*}" != "." ] && [ "${repo#/*}" != "~" ] && \
-    #          [ "${repo%"${repo#/*}"}" = "/${repo%*/}" ]; then
-    #         # "user/name" pattern, try github
-    #         repo="git+https://github.com/${repo%.git}.git"
-    #     fi
-    #     if [ "${repo#git+}" != "$repo" ]; then
-    #         parse_unified_download "$repo${branch:+"#$branch"}" "$dest" "$desttype"
-    #         return $?
-    #     fi
-    #     unset repo branch
-    # fi
-
-
-    if [ -n "$path" ]; then
-        # expand ~, but not /*
-        if [ "$path" = "~" ]; then
-            path="$HOME"
-        elif [ "${path%%/*}" = "~" ]; then
-            path="$HOME/${path#*/}"
-        fi
-
-        path=$(canonicalize_symlinks "$path")
-        if [ -n "$decomp" ] && [ -f "$path" ]; then
-            # direct decompress without copy first
-            decomp=${decomp%\$\{tmpdest*}"\${url}"${decomp#*tmpdest\}}
-        else
-            decomp=
-        fi
-        if [ -n "$decomp" ]; then
-            dl='true'
-        elif [ "$desttype" = "file" ]; then
-            dl='cp "${url}" "${dest}"'
-        else
-            dl='cp -R "${url}"/* "${dest}"'
-            keepdir=1
-        fi
-        if [ -n "${ENVE_CACHE_DIR:-}" ] && [ "${path%$ENVE_CACHE_DIR}" != "$path" ]; then
-            # copy or decompress from cachedir
-            pure=${pure:-1}
-        else
-            pure=${pure:-0}
-        fi
-        url=$path
-        if [ "$desttype" = "file" ] && [ -d "$path" ] && [ -z "$decomp" ]; then
-            _error "request file but directory"
-            return 1
-        elif [ "$desttype" = "dir" ] && [ ! -d "$path" ] && [ -z "$decomp" ]; then
-            _error "request directory but file"
-            return 1
-        fi
-    fi
-    unset path
-
-    if [ -n "$needunpack" ] && [ -z "$decomp" ]; then
-        _error "implicit decompression, but '$url' seems not an archive"
-        return 1
-    fi
-    unset needunpack noerror
-
-    # if [ -n "${FETCH_DEBUG:-}" ]; then
-    #     echo "url='$url'; dl='$dl'; decomp='$decomp'"
-    # fi
+            ;;
+    esac
 }
 
 
-unified_fetch() {
+
+make_multiple_action() {
+    unset suffix_change multisrc dforce
+    # up + tar 可以打包進檔案在上傳
+    unset up up2 upn
+    unset dl dl2 tar1 tar2 unpack unpack2
+    if [ "${dst_uri#+}" != "$dst_uri" ]; then
+        dst_uri=${dst_uri#+}
+        dforce=+
+    else
+        dforce=
+    fi
+
+    if [ "$#" -eq 0 ]; then
+        _error "one source must provide at least"
+        return 1
+    elif [ "$#" -eq 1 ]; then
+        _uri_src_protocol "$1" || return $?
+        if [ -n "${sinto:-}" ]; then
+            multisrc=1
+        fi
+    elif [ -z "${dst_uri##*/}" ]; then
+        multisrc=1
+    fi
+
+
+    _parse_uri_stage1 "$dst_uri" || return 1
+    dpath=$path
+    case $dpath in
+        *.tar|*.tar.*)
+                tar1=tar1_tar
+            ;;
+        *.zip)
+                tar1=tar1_zip
+            ;;
+        *.gz)   suffix_change="gzip -c" ;;
+        *.bz2)  suffix_change="bzip2 -c" ;;
+        *.xz)   suffix_change="xz -c" ;;
+    esac
+
+    case $scheme in
+        http|https|s3)
+                dst="$scheme://$auth$path${query:+\?$query}"
+                up=_http_post1
+                up2=_http_post2
+            ;;
+        ssh|enve+ssh|rsync)
+                if [ -z "${path%%*/}" ]; then
+                    dinto=1
+                fi
+                scheme=${scheme#enve+}
+                dst="$scheme://$auth$path"
+                up="ssh ssh://$auth -T \"cat > $path\" #"
+                if [ "$scheme" = ssh ]; then
+                    port=
+                    case $auth in
+                        *:*)
+                                port=${auth##*:}
+                                auth=${auth%:*}
+                            ;;
+                    esac
+                    dst=$auth:$path
+                    up2="rsync -a${port:+ -e \"ssh -p $port\"}"
+                else
+                    up2='rsync -a'
+                fi
+                upn=$up2
+            ;;
+        file)
+                if [ -n "$auth" ]; then
+                    _error "destination auth part is not implement"
+                    return 1
+                elif [ -z "$path" ]; then
+                    _error "destination cannot be empty path"
+                    return 1
+                fi
+                expand_home_at_path
+                dst=$path
+                if [ -z "${dst%%*/}" ]; then
+                    dinto=1
+                fi
+                up=
+            ;;
+        *)
+                _error "unsupport destination scheme '$scheme'"
+                return 1
+            ;;
+    esac
+
+    case $path in
+        *::*)
+                up="borg create $dst -"
+                up2="borg create $dst"
+                upn=$up2
+            ;;
+    esac
+
+
+    if [ -n "${suffix_change:-}" ] && [ -n "${multisrc:-}" ]; then
+        _error "destination with multi-source must be archive or dir"
+        return 1
+    fi
+
+    if [ -z "${up:-}${dforce:-}" ] && [ -e "$dst" ]; then
+        _error "destination already exist"
+        return 1
+    fi
+
+    ARGSTR=
+    po=
+    for src_uri; do
+        _uri_src_protocol "$src_uri" || return $?
+        if [ -z "$po" ]; then
+            out="$dst;$up;${up2:-};${upn:-};${tar1:-};${tar2:-};${multisrc:-};${suffix_change:-}"
+            printf %s\\n "$out"
+            fast_append_argument_quote2 "$out"
+            po=1
+        fi
+        dname=${path##*/}
+        out="$src;$dl;${dl2:-};${unpack:-};${unpack2:-};${sinto:-};$dname"
+        printf %s\\n "$out"
+        fast_append_argument_quote2 "$out"
+    done
+}
+
+
+
+
+perfect_compile() {
+    localcpn='rsync -a'
+
+    IFS=';' read dst up up2 upn tar1 tar2 multisrc suffix_change <<EOF
+$1
+EOF
+    shift
+    dstend=${dstend%%*/}
+
+    # multisrc=1時且有unpack時，into決定要不要把dname附加到dst
+    # multisrc=1時且有dl時，dname強制附加到dst
+    # 沒有dl也沒有unpack時，不需要考慮dname
+
+    if [ -z "$multisrc" ]; then
+        IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+$1
+EOF
+        if [ -n "${suffix_change:-}" ]; then
+            if [ -z "$dl$up" ]; then
+                printf %s\\n "$suffix_change < '$src' > '$dst'"
+            elif [ -z "$dl" ]; then
+                printf %s\\n "$suffix_change < '$src' | $up '$dst'"
+            elif [ -z "$up" ]; then
+                printf %s\\n "$dl '$src' | $suffix_change > '$dst'"
+            else
+                printf %s\\n "$dl '$src' | $suffix_change | $up '$dst'"
+            fi
+        elif [ -z "$dl$up" ]; then
+            printf %s\\n "$localcpn '$src' '$dst'"
+        elif [ -z "$dl" ]; then
+            printf %s\\n "$up2 '$src' '$dst'"
+        elif [ -z "$up" ]; then
+            printf %s\\n "$dl2 '$src' '$dst'"
+        else
+            printf %s\\n "$dl '$src' | $up '$dst'"
+        fi
+    elif [ -z "${up:-}${tar1:-}" ]; then
+        # srclist=
+        ARGSTR=
+        for spec; do
+            IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+$spec
+EOF
+            if [ -n "${dl:-}" ] && [ -n "${unpack:-}" ]; then
+                printf %s\\n "$dl '$src' | $unpack '$dst${dstend:+/}${into:+$dname}'"
+            elif [ -n "${unpack:-}" ]; then
+                printf %s\\n "$unpack2 '$src' '$dst${dstend:+/}${into:+$dname}'"
+            elif [ -n "${dl:-}" ]; then
+                printf %s\\n "$dl2 '$src' '$dst${dstend:+/}$dname'"
+            else
+                fast_append_argument_quote2 "$src"
+            fi
+        done
+        if [ -n "$ARGSTR" ]; then
+            printf %s\\n "$localcpn $ARGSTR '$dst'"
+        fi
+    else
+        tmpbase=
+        tmpindex=0
+        ARGSTR=
+        for spec; do
+            IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+$spec
+EOF
+            if [ -n "${dl:-}${unpack:-}" ]; then
+                if [ -z "$tmpbase" ]; then
+                    tmpbase=$(mkdtemp $TMPDIR/urlutils.XXXXXX)
+                fi
+                tmpdst=$tmpbase/src$tmpindex/
+                tmpindex=$((tmpindex + 1))
+                if [ -n "${dl:-}" ] && [ -n "${unpack:-}" ]; then
+                    printf %s\\n "mkdir -p '$tmpdst'"
+                    printf %s\\n "$dl '$src' | $unpack '$tmpdst${into:+$dname}'"
+                elif [ -n "${unpack:-}" ]; then
+                    tmpdst=$tmpdst/${into:+$dname}
+                    printf %s\\n "mkdir -p '$tmpdst'"
+                    printf %s\\n "$unpack2 '$src' '$tmpdst${into:+$dname}'"
+                elif [ -n "${dl:-}" ]; then
+                    printf %s\\n "mkdir -p '$tmpdst'"
+                    printf %s\\n "$dl2 '$src' '$tmpdst$dname'"
+                fi
+                fast_append_argument_quote2 "$tmpdst"
+            else
+                fast_append_argument_quote2 "$src"
+            fi
+        done
+        if [ -z "$ARGSTR" ]; then
+            :
+        elif [ -n "${up:-}" ] && [ -n "$tar1" ]; then
+            printf %s\\n "dname='$dname' $tar1 $ARGSTR | $up '$dst'"
+        elif [ -n "$tar1" ]; then
+            # printf %s\\n "$tar2 '$dst' $srclist"
+            printf %s\\n "dname='$dname' $tar1 $ARGSTR > '$dst'"
+        elif [ -n "${up:-}" ] && [ -z "${upn:-}" ]; then
+            eval set -- "$ARGSTR"
+            for srclocal; do
+                printf %s\\n "$up2 '$srclocal' '$dst'"
+            done
+        elif [ -n "${up:-}" ]; then
+            printf %s\\n "$upn $ARGSTR '$dst'"
+        else
+            printf %s\\n "$localcpn $ARGSTR '$dst'"
+        fi
+        printf %s\\n "rm -rf '$tmpbase'"
+    fi
+}
+
+
+fetch() {
+    # dest=%cache|%cacheifpure(%auto)|%tmp|[localpath]
+    # fetch "$source" "$dest"
+    arg_src=$1
+    arg_dest=$2
+    dst_uri="+." make_multiple_action "$1" >/dev/null || return 1
+
+    eval set -- "$ARGSTR"
+        IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+$2
+EOF
+
     p_text() {
-        echo "$url"
-        echo "$dl"
-        echo "$decomp"
+        eval set -- "$ARGSTR"
+        for _arg in "$@"; do
+            printf %s\n "$_arg"
+        done
     }
     p_make() {
         dest=$CACHED
-        if [ -n "$keepdir" ]; then
-            mkdir -p "$CACHED"
-        elif [ -d "$dest" ]; then
-            rmdir "$dest"
+        if [ -d "$dest" ]; then
+            rmdir "$dest" || return 1
         fi
-        if [ -n "$decomp" ]; then
-            tmpdest=$(mkstemp "$(get_tempdir)/needunpack.XXXXXX")
-            ( dest=$tmpdest eval echo "\"$dl\"" ) >&2
-            ( dest=$tmpdest eval "$dl" ) >/dev/null
-            ( eval echo "\"$decomp\"" ) >&2
-            ( eval "$decomp" ) >/dev/null
-        else
-            # ( eval echo "\"$dl\"" ) >&2
-            ( eval "$dl" ) >/dev/null
-        fi
+        dst_uri="$dest" make_multiple_action "$arg_src" >/dev/null || return 1
+        # echo "dest/dst_uri: $dest" >&2
+        eval set -- "$ARGSTR"
+        script=$(perfect_compile "$@") || return 1
+        # printf 'script:\n%s\n' "$script" >&2
+        while read -r cmd; do
+            eval $cmd >&2 || return 1
+        done <<EOF
+$script
+EOF
     }
-    if [ $# -gt 0 ]; then
-        FASTRUN="" parse_unified_download "$@"
-    fi
-
-    title="${url##*/}"
-    title=${title%.zip}
-    title=${title%.gz}
-    title=${title%.bz2}
-    title=${title%.xz}
-    title=${title%.tar}
-    FASTRUN="" title="$title" dest="$dest" catalog=${catalog:-fetch} cache_rebuild p_text p_make
+    # echo "dname: $dname" >&2
+    FASTRUN="" title="$dname" dest="$arg_dest" catalog=${catalog:-fetch} \
+        cache_rebuild p_text p_make
 
     dest=$CACHED
     if [ -z "${FASTRUN:-}" ]; then
@@ -434,70 +894,189 @@ unified_fetch() {
     fi
 }
 
-fetch() {
-    unified_fetch "$@"
+
+copy() {
+    dst_uri=$dst_uri make_multiple_action "$@" >/dev/null
+    eval set -- "$ARGSTR"
+    # result=$($(perfect_compile "$@"))
+    while read -r cmd; do
+        eval $cmd >&2 || return 1
+    done <<EOF
+$(perfect_compile "$@")
+EOF
 }
 
-# gitrepourl() {
-#     repo_branch="$1"
-#     repo="${1%\#*}"
-#     if [ "$repo" != "$repo_branch" ]; then
-#         branch="${1##*\#}"
-#     else
-#         branch=
-#     fi
-#     if [ -e "${repo}/.git" ]; then
-#         repo="git+file://$repo"
-#     else
-#         # Sourced from antigen url resolution logic.
-#         # https://github.com/zsh-users/antigen/blob/master/antigen.zsh
-#         # Expand short github url syntax: `username/reponame`.
-#         case $repo in
-#             git+ssh://*|git+file://*|git+http://*|git+https://*|git+git@*:*)
-#                     :
-#                 ;;
-#             ssh://*|file://*|http://*|https://*|git@*:*)
-#                     repo="git+$repo"
-#                 ;;
-#             *)
-#                     repo="git+https://github.com/${repo%.git}.git"
-#                 ;;
-#         esac
-#     fi
-#     if [ -n "$branch" ]; then
-#         echo "${repo}#${branch}"
-#     else
-#         echo "${repo}"
-#     fi
-# }
+copy2() {
+    '''
+    cp [OPTION]... [-T] SOURCE DEST
+    cp [OPTION]... SOURCE... DIRECTORY
+    cp [OPTION]... -t DIRECTORY SOURCE...
+    '''
+
+    ARGSTR=
+    dst_uri=
+    while [ $# -gt 0 ]; do
+        case $1 in
+            -T)
+                    if [ $# -ne 3 ]; then
+                        error "need only source and only dest"
+                        return 1
+                    fi
+                    dst_uri=$3
+                    set -- "$2"
+                ;;
+            -t)
+                    if [ -z "${2:-}" ]; then
+                        error "option requires an argument '-t'"
+                        return 1
+                    fi
+                    dst_uri=$2
+                    shift 2
+                ;;
+            -*)
+                    error "unknown option: $1"
+                    return 1
+                ;;
+            *)
+                    if [ -z "$dst_uri" ] && [ $# -eq 1 ]; then
+                        if [ -z "$ARGSTR" ]; then
+                            error "missing destination file operand after '$1'"
+                            return 1
+                        fi
+                        dst_uri="$1"
+                        shift
+                    else
+                        fast_append_argument_quote2 "$1"
+                        shift
+                    fi
+                ;;
+        esac
+    done
+
+    if [ -z "$ARGSTR" ]; then
+        error "missing file operand"
+        return 1
+    fi
+    eval set -- $ARGSTR
+
+    case $dst_uri in
+        %cache);;
+        %tmp);;
+    esac
+
+    if ! dst_uri=$dst_uri make_multiple_action "$@" >/dev/null; then
+        return 1
+    fi
+    eval set -- "$ARGSTR"
+    code=$(perfect_compile "$@")
+
+    while read -r cmd; do
+        eval $cmd >&2 || return 1
+    done <<EOF
+$code
+EOF
+    # result=$($(perfect_compile "$@"))
+}
 
 
 
-# clone_git_commit() {
-#     url=$1
-#     commit=$2
-#     # make a new blank repository in the current directory
-#     git init >&2
-#     # add a remote
-#     git remote add origin $url >&2
-#     # fetch a commit (or branch or tag) of interest
-#     # Note: the full history up to this commit will be retrieved unless
-#     #       you limit it with '--depth=...' or '--shallow-since=...'
-#     git fetch --depth=1 origin $commit >&2
-#     # reset this repository's master branch to the commit of interest
-#     git reset --hard FETCH_HEAD >&2
-# }
-# fetch_git_commit() {
-#     (
-#         p_text() {
-#             echo "$url"
-#             echo "$commit"
-#         }
-#         p_make() {
-#             cd $CACHED || return 1
-#             clone_git_commit "$url" "$commit"
-#         }
-#         title="${url##*/}-${commit##*/}" catalog=fetch cache_rebuild p_text p_make
-#         echo $CACHED
-#     )
-# }
+
+
+
+# ------------------------------------
+
+_get_program_meta() {
+    programfile=$1
+    attr=$2
+    defline="$(grep "# ${attr}=" "$programfile")"
+    eval "${defline#??}"
+    eval echo \"\$"${attr}"\"
+}
+
+_get_program_meta_all() {
+    programfile=$1
+    while read -r attrdef; do
+        eval "${attrdef#?}"
+    done <<EOF
+$(grep -e "^# __[A-Z_]*__=[^; ]*$" "$programfile")
+EOF
+}
+
+reexec_if_req_not_match() {
+    reqver=$1
+    reqshell=$2
+    shift 2
+    if [ -n "${ENVE_REEXEC:-}" ]; then
+        return 0
+    fi
+
+    # curver=$(_get_program_meta "$ENVE_HOME/$ENVE_PROGRAM" __VERSION__)
+    # repo=$(_get_program_meta "$ENVE_HOME/$ENVE_PROGRAM" __REPO__)
+    _get_program_meta_all "$ENVE_HOME/$ENVE_PROGRAM"
+    if [ -n "${reqver:-}" ] && [ "$__VERSION__" != "$reqver" ]; then
+        # NEW_ENVE_HOME="$(url="$__REPO__" commit=$reqver fetch_git_commit)/libexec"
+        NEW_ENVE_HOME="$(fetch "${__REPO__}#$reqver" "%cache" "dir")/libexec"
+    else
+        NEW_ENVE_HOME=$ENVE_HOME
+    fi
+
+    # curshell=$(ps -p "$$" -o comm || echo "$SHELL" )
+    curshell=${shell:-${BASH:-${ZSH_NAME:-${SHELL:-/bin/sh}}}}
+    NEW_SHELL=${reqshell:-$curshell}
+
+    if [ "$NEW_ENVE_HOME" != "$ENVE_HOME" ] || [ "$NEW_SHELL" != "$curshell" ]; then
+        _debug "reexec $NEW_SHELL $NEW_ENVE_HOME/$ENVE_PROGRAM"
+        ENVE_REEXEC=1 exec "$NEW_SHELL" "$NEW_ENVE_HOME/$ENVE_PROGRAM" "$@"
+    else
+        _debug "noexec $NEW_SHELL $NEW_ENVE_HOME/$ENVE_PROGRAM"
+    fi
+}
+
+
+# ------------------------------------
+
+
+
+
+# ENVE_HOME=./libexec sh libexec/enve/urlutils5
+test1() {
+    dst_uri=a/ make_multiple_action b/
+    printf \\n
+    dst_uri=a/ make_multiple_action ssh://host1/b c
+    printf \\n
+    dst_uri=a make_multiple_action b.gz
+    printf \\n
+
+    dst_uri=a.xz make_multiple_action b.gz
+    printf \\n
+    dst_uri=ssh://host/a.tar make_multiple_action b c
+    printf \\n
+    dst_uri=ssh://host/a.tar.gz make_multiple_action b.zip/ c.tar/ d.tar
+    printf \\n
+    dst_uri=http://host/a.zip make_multiple_action b c http://host/c
+    printf \\n
+
+    dst_uri=a make_multiple_action git+ssh://host/b c
+    printf \\n
+    dst_uri=a/ make_multiple_action git+ssh://host/b/ c
+    printf \\n
+
+    dst_uri=http://host/a.gz make_multiple_action http://host/b.xz
+    printf \\n
+
+    dst_uri=ssh://host/a/ make_multiple_action http://host/b.xz
+    printf \\n
+
+    dst_uri=ssh://host/a/ make_multiple_action http://host/b.xz c
+    printf \\n
+
+    dst_uri=ssh://host/a/ make_multiple_action http://host/b.xz- c
+    printf \\n
+
+    dst_uri=ssh://host/a/ make_multiple_action http://host/b.xz c/ http://host/d.tar/
+    printf \\n
+    eval set -- "$ARGSTR"
+    perfect_compile "$@"
+}
+
+
