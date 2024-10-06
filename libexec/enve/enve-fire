@@ -43,6 +43,7 @@
 # shellcheck source=libexec/enve/baselib
 . "$ENVE_HOME/enve/baselib"
 
+
 settrace
 
 # shellcheck source=libexec/enve/tablelib
@@ -294,6 +295,7 @@ else
     ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}core.target=$cmd$newl"
 fi
 
+
 case $cmd in
     run)
             EXEC_USE_EXEC=1 RCFILE_STARTUP=${RCFILE_STARTUP:-} fire2 "$@"
@@ -302,7 +304,7 @@ case $cmd in
             EXEC_USE_EXEC=1 RCFILE_STARTUP=${RCFILE_STARTUP:-} fire2
         ;;
     '')
-            print_program_help fire2 >&2
+            print_program_help fire >&2
             die
         ;;
 esac

@@ -1713,7 +1713,8 @@ settrace() {
 
 _extend_path() {
     oIFS=${IFS+_${IFS}} && IFS=:
-    set -- $PATH ${ENVE_WIDGETS:-} \
+    # 不要搜尋 PATH, 因為WSL的PATH中有太多奇怪的東西
+    set -- ${ENVE_WIDGETS:-} \
            "$ENVE_HOME/enve" \
            "$ENVE_HOME/enve/core/"* \
            "$ENVE_HOME/enve/contrib/"*
@@ -1721,8 +1722,8 @@ _extend_path() {
 
     reteval=
     while [ $# -gt 0 ]; do
-        if [ -n ${1:-} ] && [ -n "${1#*\'*}" ] && \
-           [ "${1%\*}" = "$1" ] && [ "${1##*/}" != 'sbin' ]; then
+        if [ -n "${1:-}" ] && [ -n "${1#*\'*}" ] && \
+           [ "${1%\*}" = "$1" ] && [ "${1##*/}" != 'sbin' ] && [ -d "$1" ]; then
             reteval="${reteval:+$reteval }'$1'"
         fi
         shift
@@ -1731,11 +1732,13 @@ _extend_path() {
 
 
 # shellcheck disable=2120
-list_enve_program() {
+list_enve_program_old() {
     _extend_path
     eval set -- $reteval
     unset reteval
-    find_programs=$(find -L "$@" -type f -perm -a=x -depth 1 -name "enve-*")
+    # find_programs=$(find -depth 1 -L "$@" -type f -perm -a=x -name "enve-*")
+    find_programs=$(find -L "$@" -type f -perm -a=x -name "enve-*" ! -name . -prune)
+
     enve_programs=
     haved_programs=:
     while read -r _path; do
@@ -1753,7 +1756,19 @@ EOF
 }
 
 
-search_enve_program() {
+list_enve_program() {
+    # posix ok
+    enve_programs=
+    for _path in "$ENVE_HOME/enve/"*; do
+        prog=${_path##*/enve-}
+        if [ "$prog" != "$_path" ] && [ -x "$_path" ]; then
+            enve_programs="${enve_programs:+$enve_programs$newl}$_path"
+        fi
+    done
+}
+
+
+search_enve_program_old() {
     # extend_path=$PATH
     # for p in "$ENVE_HOME/enve" "$ENVE_HOME/enve/core/"* "$ENVE_HOME/enve/contrib/"*; do
     #     extend_path="$extend_path:$p"
@@ -1769,6 +1784,15 @@ search_enve_program() {
     set -- "$?"
     unset prog _PATH
     return "$1"
+}
+
+search_enve_program() {
+    prog=$1
+    if [ -x "$ENVE_HOME/enve/$prog" ]; then
+        echo "$ENVE_HOME/enve/$prog"
+    else
+        return 1
+    fi
 }
 
 parse_enve_program() {
