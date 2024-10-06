@@ -1735,7 +1735,9 @@ list_enve_program() {
     _extend_path
     eval set -- $reteval
     unset reteval
-    find_programs=$(find -depth 1 -L "$@" -type f -perm -a=x -name "enve-*")
+    # find_programs=$(find -depth 1 -L "$@" -type f -perm -a=x -name "enve-*")
+    find_programs=$(find -L "$@" -type f -perm -a=x -name "enve-*" ! -name . -prune)
+
     enve_programs=
     haved_programs=:
     while read -r _path; do
