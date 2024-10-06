@@ -1721,7 +1721,7 @@ _extend_path() {
 
     reteval=
     while [ $# -gt 0 ]; do
-        if [ -n ${1:-} ] && [ -n "${1#*\'*}" ] && \
+        if [ -n "${1:-}" ] && [ -n "${1#*\'*}" ] && \
            [ "${1%\*}" = "$1" ] && [ "${1##*/}" != 'sbin' ]; then
             reteval="${reteval:+$reteval }'$1'"
         fi
