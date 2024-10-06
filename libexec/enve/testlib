@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 if [ -n "${HAVE_ENVE_TESTLIB:-}" ]; then
     return 0
@@ -7,6 +7,108 @@ HAVE_ENVE_TESTLIB=1
 
 # shellcheck source=libexec/enve/urlutils
 . "$ENVE_HOME/enve/urlutils"
+
+
+_works_count() {
+    cnt=0
+    IFS=$t
+    for work in $works; do
+        if [ -z "${work#*$1*}" ]; then
+            cnt=$((cnt + 1))
+        fi
+    done
+    ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_}
+    eval "$2=\$cnt"
+}
+
+
+parallel() {
+    MAX_WORKER=$1
+    invoke_func=$2
+    finish_func=$3
+    # call by order when finish
+    order_func=$4
+    shift 4
+
+    oIFS=${IFS+_${IFS}}
+
+    tab="$(printf '\tx')"
+    tab="${tab%x}"
+    # t="\`"
+    t=$tab
+
+    total=$#
+    works=$t
+    while [ "$#" -gt 0 ]; do
+        _i=$((total-$#))
+        works="${works}W${_i}!$1$t"
+        shift
+    done
+    cmdlist=$works
+
+    while true; do
+        IFS=$t
+        for work in $works; do
+            ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_}
+            if [ -n "${work#*@*}" ]; then
+                continue
+            fi
+            W=${work%%@*}
+            pid=${work#*@}
+            if ! kill -0 $pid; then
+                wait $pid
+                works="${pids%$t$work$t}$t$W:$?$t${works#$t$work$t}"
+                [ -n "$finish_func" ] && ${finish_func} "${W#W}" "$pid" "$ret"
+            fi
+        done
+        _works_count '*' fincnt
+        if [ "$fincnt" -eq "$total" ]; then
+            break
+        fi
+        IFS=$t
+        for work in $works; do
+            ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_}
+            if [ -n "${work#*[:\*]*}" ]; then
+                break
+            elif [ -n "${work#*[:]*}" ]; then
+                continue
+            fi
+            W=${work%%:*}
+            ret=${work#*:}
+            works="${pids%$t$work$t}$t$W*$ret$t${works#$t$work$t}"
+            if [ -n "$order_func" ]; then
+                cmd=
+                IFS=$t
+                for cmdw in cmdlist; do
+                    if [ "${cmdw#$W!}" != "${cmdw}" ]; then
+                        cmd=${cmdw#$W!}
+                        break
+                    fi
+                done
+                ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_}
+                ${order_func} "${W#W}" "$cmd" "$ret"
+            fi
+        done
+        ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_}
+
+        _works_count '@' runcnt
+        _works_count '!' precnt
+        if [ "$runcnt" -lt "$MAX_WORKER" ] && [ "$precnt" -gt 0 ]; then
+            IFS=$t
+            for work in $works; do
+                ${oIFS:+'false'} unset -v IFS || IFS=${oIFS#_}
+                if [ -n "${work#*!*}" ]; then
+                    continue
+                fi
+                W=${work%%!*}
+                cmd=${work#*!}
+                ${invoke_func} "$cmd" &
+                works="${works%$t$work$t}$t$W@$!$t${works#$t$work$t}"
+            done
+        fi
+        fast_sleep 1
+    done
+}
 
 
 harness() {
@@ -174,6 +276,7 @@ output "success|failure %problem/%skipped/%total" to stdout
         echo $setname
     }
     harness_make() {
+        # TODO: use enve_clone_tmp
         thedir=$(
             CACHED='' fetch "git+$url#$commit" %cache dir
         )
@@ -240,6 +343,7 @@ tablize() {
 testsets() {
     url=$1
     branch=${2:-master}
+    # TODO: use enve_clone_tmp
     dest=$(
         fetch "git+$url#$branch" %cache dir
     )
@@ -251,8 +355,9 @@ testsets() {
     # test.sets.*.branches        test commits on branch
     # test.sets.*.limit           test only recent commits by limit number
     # test.sets.*.after           test commits after that date
-    # echo "$TABLE" >&2
+    # printf %s\\n "$TABLE" >&2
 
+    # TODO: use enve_clone_tmp
     gitdest=$(
         dest='' fetch "git+$url#%all" %cache dir
     )

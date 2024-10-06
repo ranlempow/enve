@@ -1,0 +1,186 @@
+#!/bin/sh
+
+if [ -n "${HAVE_ENVE_HTTPLIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_HTTPLIB=1
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+
+# daemonlize() {
+#     (
+#         cd /
+#         exec 0<&-
+#         exec 1>&-
+#         exec 2>&-
+#         hascmd setsid && setsid
+#         exec ${CHROOT:+chroot -u nobody -g nobody /} "$@" &
+#     ) &
+# }
+
+
+# checkpidfile() {
+#     cnt=0
+#     while ! obtain_filelock "$PIDFILE"; do
+#         if [ -n "${pid:-}" ]; then
+#             kill $pid || true
+#         fi
+#         sleep 1
+#         cnt=$((cnt + 1))
+#         if [ $cnt -gt 3 ]; then
+#             echo "cannot kill old process" >&2
+#             return 1
+#         fi
+#     done
+# }
+
+createsslcert() {
+        cfg="[ req ]
+distinguished_name = req_dn
+prompt             = no
+x509_extensions    = req_ext
+
+[ req_dn ]
+CN=${BINDIF}
+
+[ req_ext ]
+subjectKeyIdentifier   = hash
+basicConstraints = critical,CA:true
+keyUsage = critical,digitalSignature,keyCertSign,keyEncipherment
+authorityKeyIdentifier = keyid:always,issuer:always
+extendedKeyUsage = critical,clientAuth
+"
+    if [ "$BINDIF" != "localhost" ]; then
+        case $BINDIF in
+            [0-9]*) altnames="IP:$BINDIF" ;;
+            *) altnames="DNS:$BINDIF,IP:$(host $BINDIF | awk '/has address/ { print $4 }')" ;;
+        esac
+        altnames="$altnames,DNS:localhost,IP:127.0.0.1"
+    else
+        altnames="DNS:localhost,IP:127.0.0.1"
+    fi
+    cfg="$cfg${newl}subjectAltName = ${ALTNAMES:+$ALTNAMES,}$altnames"
+    openssl genrsa -out $FILENAME.key 1024
+    echo "$cfg" > /tmp/sslca.cfg
+    openssl req -new -key $FILENAME.key -x509 -days 3653 -out $FILENAME.crt -config /tmp/sslca.cfg
+    cat $FILENAME.key $FILENAME.crt >$FILENAME.pem
+    chmod 600 $FILENAME.key $FILENAME.pem
+}
+
+cleanup() {
+    rm -rf $RUNDIR/$APPNAME-$$
+    release_filelock "$RUNDIR/$APPNAME.pid"
+}
+
+_service_basic_setup() {
+    if [ -z "${APPNAME:-}" ] || [ -z "${RUNDIR:-}" ]; then
+        echo "RUNDIR not assigned" >&2
+        exit 1
+    fi
+    BINDIF=${BINDIF:-localhost}
+
+    try_kill=
+    while ! obtain_filelock "$RUNDIR/$APPNAME.pid"; do
+        reason=$?
+        if [ "$reason" = 1 ]; then
+            kill $pid || fast_sleep 1
+            if [ -n "$try_kill" ]; then
+                _error "cannot kill http process"
+                return 1
+            fi
+            try_kill=1
+        else
+            _error "lockfile '$RUNDIR/$APPNAME.pid' broken"
+            return 1
+        fi
+    done
+
+    STATDIR=$RUNDIR/$APPNAME-$$
+    mkdir -p "$STATDIR"
+
+    trap cleanup EXIT
+    trap 'trap - INT; echo exit by INT; kill $socat_pid; exit 0' INT
+    trap 'trap - TERM; echo exit by TERM; kill $socat_pid; doexit=1' TERM
+}
+
+
+run_httpserver() {
+    _service_basic_setup
+
+    mkfifo "$STATDIR/http-req.pipe"
+    mkfifo "$STATDIR/http-res.pipe"
+
+    doexit=
+    while [ -z "$doexit" ]; do
+        exec 3<> "$STATDIR/http-res.pipe"
+        nc -l $BINDIF 1500 <&3 >"$STATDIR/http-req.pipe" &
+        socat_pid=$!
+        "$@" <"$STATDIR/http-req.pipe" &
+        service_pid=$!
+        wait $socat_pid && wait $service_pid || {
+            kill -INT $service_pid 2>/dev/null || true
+            sleep 1
+        }
+        exec 3<&- 3>&-
+    done
+}
+
+
+run_httpsserver() {
+    _service_basic_setup
+
+    FILENAME=$STATDIR/ssl
+    createsslcert
+
+    mkfifo "$STATDIR/https-req.pipe"
+    mkfifo "$STATDIR/https-res.pipe"
+
+    doexit=
+    while [ -z "$doexit" ]; do
+        socat pipe:"$STATDIR/https-res.pipe",nonblock,rdonly!!pipe:"$STATDIR/https-req.pipe",wronly \
+        openssl-listen:1500,reuseaddr,bind=$BINDIF,cert=$FILENAME.pem,cafile=$FILENAME.crt,verify=1 &
+        socat_pid=$!
+        "$@" < "$STATDIR/https-req.pipe" 3>"$STATDIR/https-res.pipe" &
+        service_pid=$!
+        wait $socat_pid && wait $service_pid || {
+            kill -INT $service_pid 2>/dev/null || true
+            sleep 1
+        }
+    done
+}
+
+
+
+response() {
+    DATA="Date: $(date)${newl}URL: $REQUEST_URL${newl}";
+    LENGTH=$(printf %s "$DATA" | wc -c);
+    printf "HTTP/1.1 200 OK\nContent-Length: %s\n\n%s" "$LENGTH" "$DATA"
+}
+
+
+handler() {
+    trap 'echo exit handler; trap - INT; exit 0' INT
+    REQUEST_URL=
+    while read -r line; do
+        line=${line%"$cr"}
+        if [ -n "$line" ] && [ -z "${line%%"GET /"*}" ]; then
+            REQUEST_URL=${line#GET }
+            echo "REQ: $REQUEST_URL"
+        elif [ -z "$line" ] && [ -n "$REQUEST_URL" ]; then
+            echo "RES: $REQUEST_URL"
+            response >&3
+            exec 3>&-
+        fi
+    done
+}
+
+
+# APPNAME=x RUNDIR=outs BINDIF=localhost run_httpserver handler
+
+# test:
+#   printf "a\\nb\\nc\\nd" | xargs -P 1 -I {} curl http://localhost:1500/{}
+#   for p in a b c d; do curl http://localhost:1500/${p}; done
+#   curl -v --cacert outs/ssl.crt --cert outs/ssl.pem https://localhost:1500/x
+#   printf "a\\nb\\nc\\nd" | xargs -P 1 -I {} curl --cacert outs/*/ssl.crt --cert outs/*/ssl.pem https://localhost:1500/{}

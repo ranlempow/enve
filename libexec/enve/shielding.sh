@@ -40,6 +40,8 @@ EOF
 
 
 run() {
+    # 需要這個才可以讓pid運作正確
+    set +o posix
     if [ -z "${first_run:-}" ]; then
         first_run=1
     else
@@ -72,7 +74,7 @@ run() {
         else
             wait $pid
         fi
-        if ! kill -0 $pid; then
+        if ! kill -0 $pid 2>/dev/null; then
             # 信號中斷並且處理結束之後，wait(1)會返回
             # 只有SIGCHLD才代表子行程結束。回傳真正的終止碼。
             # 其他的情形，回傳讓父行程中斷的信號種類
@@ -89,6 +91,7 @@ run() {
 
 
 _shield() {
+    running=1
     while true; do
         # rundone=
         restart=
@@ -130,6 +133,7 @@ _shield() {
             break
         fi
     done
+    running=
     if [ -n "$EXIT" ]; then
         exit $retcode
     fi
@@ -143,6 +147,13 @@ trap_signal() {
     fi
 }
 
+restart() {
+    # if [ -z "${running:-}" ]; then
+    #     restart
+    # fi
+    eval _shield $RC_CMD
+}
+
 setup_shield() {
     ctrl_chars=$(printf '\022x\004')
     ctrlR=${ctrl_chars%%x*}
@@ -153,6 +164,7 @@ setup_shield() {
     trap "trap_signal HUP" HUP
     trap "trap_signal QUIT" QUIT
     trap "kill -TERM \$pid; kill -CONT \$pid; restart=1" USR1
+
     # trap "rundone=1" SIGCHLD
 }
 
@@ -178,6 +190,10 @@ on_shell_exit() {
 #   重啟過程符合PM_HOME規範
 #   (O)超時強制結束
 
+get_current_pid() {
+    subshell_pid=${BASHPID:-$(exec sh -c 'echo "$PPID"')}
+}
+
 if [ -z ${RC_CMD:-} ]; then
     trap on_shell_exit INT TERM HUP QUIT EXIT
     if [ -n "${ENVE_WELCOME:-}" ]; then
@@ -188,7 +204,7 @@ elif [ -n "${EXEC_ARG1_AS_SCRIPT:-}" ]; then
     $1
 elif [ -z "${EXEC_SHIELD:-}" ]; then
     if [ -n "${PIDFILE:-}" ] && check_writable "$PIDFILE"; then
-        subshell_pid=${BASHPID:-$(exec sh -c 'echo "$PPID"')}
+        get_current_pid
         echo $subshell_pid > "$PIDFILE"
     fi
     # eval set -- $CMD
@@ -197,12 +213,18 @@ elif [ -z "${EXEC_SHIELD:-}" ]; then
     [ -n "${EXEC_STDERR:-}" ] && RC_CMD="$RC_CMD 2>'\$EXEC_STDERR'"
     [ -n "${EXEC_STDOUT:-}" ] && RC_CMD="$RC_CMD >'\$EXEC_STDOUT'"
     cmd=$RC_CMD
-    unset CMD
+    unset RC_CMD
     eval exec $cmd
 else
+    if [ -n "${SHIELD_PIDFILE:-}" ] && check_writable "$SHIELD_PIDFILE"; then
+        get_current_pid
+        echo $subshell_pid > "$SHIELD_PIDFILE"
+    fi
+
     trap on_shell_exit EXIT
-    shopt -s expand_aliases
+    # shopt -s expand_aliases
     setup_shield
-    alias restart="_shield $RC_CMD"
-    eval _shield $RC_CMD
+    # alias restart="_shield $RC_CMD"
+    # eval _shield $RC_CMD
+    restart
 fi

@@ -1184,6 +1184,7 @@ fire2() {
         ENVE_FIRE_DEPTH=$((ENVE_FIRE_DEPTH + 1))
         ENVE_ROLES="${ENVE_ROLES:+,${ENVE_ROLES}},${out_system_roles}" \
         RCFILE_STARTUP="" \
+        EXEC_SHIELD="" \
         get_rcfile_from_profiles_usecache
         if [ -z "$RCFILE_PATH" ]; then
             return 1

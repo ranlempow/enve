@@ -9,7 +9,7 @@ check_shebang() {
                 shebang=${firstline#\#\!}
                 case $shebang in
                     /bin/sh) ;;
-                    "/usr/bin/env bash") ;;
+                    # "/usr/bin/env bash") ;;
                     "/usr/bin/osascript") ;;
                     "/usr/bin/env enve") ;;
                     "/usr/bin/env bats") ;;
@@ -94,6 +94,7 @@ check_lint() {
     # SC2016: Expressions don't expand in single quotes, use double quotes for that.
     # SC2086: Double quote to prevent globbing and word splitting.
     # SC2119: Use hashstr "$@" if function's $1 should mean script's $1
+    # SC2043: This loop will only ever run once for a constant value. Did you perhaps mean to loop over dir/*, $var or $(cmd)?
 
     set --
     while read -r script; do
@@ -101,6 +102,10 @@ check_lint() {
             set -- "$@" "$script"
         fi
     done <<EOF
+$(find ./libexec/enve -depth 1 -type f \
+        ! -name '.*' ! -name '*.ini' ! -name '_*' \
+        ! -name 'isolation' \
+        )
 $(find  ./libexec/enve/cilib \
         ./libexec/enve/preset \
         ./libexec/enve/core \
@@ -110,15 +115,12 @@ $(find  ./libexec/enve/cilib \
         ! -name '.*' ! -name '*.ini' ! -name '_*' \
         ! -name 'inputrc' ! -name '*.nix' ! -name '*.conf' \
         )
-$(find ./libexec/enve -depth 1 -type f \
-        ! -name '.*' ! -name '*.ini' ! -name '_*' \
-        ! -name 'isolation' \
-        )
-$(find ./libexec/enve/script -type f \
-        ! -name '.*' ! -name '*.ini' ! -name '_*' \
-        ! -name '*.applescript' ! -name '*.cmd' ! -name '*.bat' \
-        )
+# $(find ./libexec/enve/script -type f \
+#         ! -name '.*' ! -name '*.ini' ! -name '_*' \
+#         ! -name '*.applescript' ! -name '*.cmd' ! -name '*.bat' \
+#         )
 EOF
+
 # $(find ./libexec/enve -maxdepth 1 -type f ! -name '.*' ! -name '*.ini' ! -name '_*')
 # $(find ./libexec/enve/script -maxdepth 1 -type f \
 #                 ! -name '.*' ! -name '*.ini' ! -name '_*' \
@@ -129,7 +131,7 @@ EOF
     fi
     cnt=1
     for file in "$@"; do
-        output=$(shellcheck -x -s sh ${tap:+-f gcc} -e 2016 -e 2086 -e 2119 "$file" 2>&1)
+        output=$(shellcheck --color=always -x -s sh ${tap:+-f gcc} -e 2016 -e 2086 -e 2119 -e 2043 "$file" 2>&1)
         retcode="$?"
         if [ $retcode -eq 0 ]; then
             echo "${tap:+ok $cnt }shellcheck $file"

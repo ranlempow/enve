@@ -20,6 +20,9 @@
 # shellcheck source=libexec/enve/tablelib
 . "$ENVE_HOME/enve/tablelib"
 
+# shellcheck source=libexec/enve/pathutils
+. "$ENVE_HOME/enve/pathutils"
+
 settrace
 
 resolve_first() {
@@ -84,6 +87,24 @@ resolve_basic_early() {
         fi
         mkdir -p "$out"
         out_var "PRJ_OUT" "$out"
+    fi
+
+    fast_table_tail "codebase\\.out"
+    s=$TABLE_TAIL
+
+    out=
+    if [ "$s" = "true" ]; then
+        d=../out
+        fast_resolve_path
+        normalize "$d"
+        out=$ret
+    elif [ -n "$s" ]; then
+        out=$s
+    fi
+    if [ -n "$out" ]; then
+        out_var "PRJ_OUT" "$out"
+        out_var "CODEBASE_OUT" "$out"
+        out_fast cachedir "$out"
     fi
 }
 

@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 settrace
 
@@ -92,7 +92,7 @@ settrace
 
 # resolve_ruby() {
 #     TABLE=$(cat "${configfile:--}")
-#     echo "$TABLE"
+#     printf %s\\n "$TABLE"
 #     RUBY_TMP="$HOME/.cache/enve/ruby"
 #     mkdir -p "$RUBY_TMP"
 
@@ -152,7 +152,7 @@ create_env_two() {
             echo "bundler version: $(eval $bundler_exec --version)"
         fi
     }
-    p_vaild() {
+    p_valid() {
         if [ ! -e "$CACHED/Gemfile.lock" ]; then
             return 0
         fi
@@ -186,7 +186,7 @@ EOF
         # echo "$requires" > "$CACHED/req.in"
         # "$pipc_exec" --rebuild --verbose "$CACHED/req.in" >&2
     }
-    catalog=gemfile cache_path "Gemfile" p_text p_make p_vaild
+    catalog=gemfile cache_path "Gemfile" p_text p_make p_valid
     gemfile=$cached_path
     cached_path=
 
@@ -227,7 +227,7 @@ EOF
             cat "$gemfile"
         fi
     }
-    p_vaild() {
+    p_valid() {
         echo 1
     }
     p_make() {
@@ -245,7 +245,7 @@ EOF
         GEM_HOME="$CACHED" "$gem_exec" pristine --all
         fi
     }
-    catalog=rbvenv cache_path "." p_text p_make p_vaild "non-mv-lock"
+    catalog=rbvenv cache_path "." p_text p_make p_valid "non-mv-lock"
     echo "$cached_path"
 
     # THE_GEM_HOME="$RUBY_TMP/venvs/$reqhash"
@@ -268,7 +268,7 @@ EOF
 
 resolve_ruby_two() {
     # TABLE=$(cat "${configfile:--}")
-    # echo "$TABLE"
+    # printf %s\\n "$TABLE"
     # RUBY_TMP="$HOME/.cache/enve/ruby"
     # mkdir -p "$RUBY_TMP/rubies/"
 
@@ -288,13 +288,13 @@ resolve_ruby_two() {
         p_text() {
             echo "$ruby_ver"
         }
-        p_vaild() {
+        p_valid() {
             echo 1
         }
         p_make() {
             ruby-build $ruby_ver "$CACHED" >&2
         }
-        catalog=rubies cache_path "bin" p_text p_make p_vaild "non-mv-lock"
+        catalog=rubies cache_path "bin" p_text p_make p_valid "non-mv-lock"
         export PATH="$cached_path:$PATH"
         out_list PATH "$cached_path"
     fi
@@ -315,7 +315,7 @@ resolve_ruby_two() {
         create_env_two 1 "$gem_exec" "$bundler_exec" \
             "
 $({ table_subset "ruby\\.require\\.packages" | as_value || true; })
-$({ table_subset "ruby\\.require\\.packages\\..*" | as_postfix "ruby\\.require\\.packages\\." || true; })" \
+$({ table_subset "ruby\\.require\\.packages\\..*" | as_postfix "ruby.require.packages." || true; })" \
             "$({ table_subset "ruby\\.gemfile" || true; })"
     )
 
@@ -331,7 +331,7 @@ $({ table_subset "ruby\\.require\\.packages\\..*" | as_postfix "ruby\\.require\\
 main() {
     info "IN $(basename $ZERO)/enve.module"
     TABLE=$(cat)
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     resolve_ruby_two
     info "OUT $(basename $ZERO)/enve.module"
 }

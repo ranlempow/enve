@@ -26,6 +26,7 @@ builtin_loader() {
 
     normalize "$ENVE_HOME/enve/core/base"
 
+    # TODO: 支援WSL2
     fast_get_system
     case "$ENVE_CACHED_OS" in
         FreeBSD)    normalize "$ENVE_HOME/enve/core/freebsd" ;;

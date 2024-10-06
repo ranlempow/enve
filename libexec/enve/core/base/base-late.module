@@ -149,6 +149,24 @@ resolve_basic_late() {
     fi
 }
 
+resolve_cachedir() {
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    { table_subset "cachedir" || true; } | as_value | \
+    while read -r value; do
+        if [ "${value%"${value#?}"}" != '$' ]; then
+            d=$value
+            fast_resolve_path
+            value=$d
+        fi
+        mkdir -p "$value"
+        write_file_only_nonexist "$value/CACHEDIR.TAG" "Signature: 8a477f597d28d172789f06886806bc55
+# This file is a cache directory tag created by (application name).
+# For information about cache directory tags, see:
+#   http://www.brynosaurus.com/cachedir/
+" || true
+    done
+}
 
 resolve_command() {
     [ -n "$TABLE" ] && printf %s\\n "$TABLE"
@@ -517,7 +535,7 @@ main() {
     info "IN $ZERO/base-late.module"
     TABLE=$(cat "${configfile:--}")
     for proc in basic_late command install_files prompt secret boundfiles \
-                bypass gitconfig; do
+                bypass gitconfig cachedir; do
         info "IN resolve_$proc"
         if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
             _error "error at resolve_$proc"

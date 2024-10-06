@@ -5,7 +5,7 @@ load common
 ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"
 
 @test "b1" {
-    . "$ENVE_HOME/enve/base"
+    . "$ENVE_HOME/enve/baselib"
 
     hascmd bats
     ! hascmd bats-xxxxxx
@@ -58,7 +58,7 @@ ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"
 
     echo xx > "$BATS_TMPDIR/fast_readtext"
     fast_readtext "$BATS_TMPDIR/fast_readtext"
-    [ "$text" = "xx" ]
+    [ "$text" = "xx$newl" ]
 
     d=a/b/c
     fast_dirname
@@ -84,7 +84,7 @@ ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"
 
 
 @test "fast_sleep" {
-    . "$ENVE_HOME/enve/base"
+    . "$ENVE_HOME/enve/baselib"
 
     tm1=$(date +%s)
     fast_sleep 1
@@ -93,7 +93,7 @@ ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"
 }
 
 @test "fast_timestamp_ms" {
-    . "$ENVE_HOME/enve/base"
+    . "$ENVE_HOME/enve/baselib"
 
     tm=
     fast_timestamp_ms

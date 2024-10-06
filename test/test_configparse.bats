@@ -80,14 +80,14 @@ EOF
 #     # echo "$OUT_TABLE" >&2
 
 #     TABLE=$OUT_TABLE
-#     echo "$TABLE" | grep -E "VAR${tab}layout.root${tab}" >/dev/null
-#     echo "$TABLE" | grep -E "VAR${tab}bound${tab}" >/dev/null
+#     printf %s\\n "$TABLE" | grep -E "VAR${tab}layout.root${tab}" >/dev/null
+#     printf %s\\n "$TABLE" | grep -E "VAR${tab}bound${tab}" >/dev/null
 
-#     TABLE=$(echo "$TABLE" | grep -E -v \
+#     TABLE=$(printf %s\\n "$TABLE" | grep -E -v \
 #             -e "^VAR${tab}enve\.roles${tab}"
 #         )
 
-#     echo "$TABLE" >&2
+#     printf %s\\n "$TABLE" >&2
 #     [ "${TABLE}" = "$(printf %s%s%s%s%s%s%s%s \
 #         "VAR${tab}layout.root${tab}$(canonicalize_symlinks "$BATS_TMPDIR/test_parse_config")${newl}" \
 #         "VAR${tab}this.is${tab}not true${newl}" \
@@ -111,7 +111,7 @@ EOF
 
     write_config1
     # roles=select1,select2 enve_parse_config2 "$BATS_TMPDIR/test_parse_config/enve.ini"
-    # echo "$TABLE" >&2
+    # printf %s\\n "$TABLE" >&2
 
     loaded=
     TABLE=
@@ -119,7 +119,7 @@ EOF
 a=1${newl}\
 __include=$BATS_TMPDIR/test_parse_config/enve.ini,select1,select2${newl}\
 b=2"
-    # echo "$TABLE" >&2
+    # printf %s\\n "$TABLE" >&2
     # false
 
 
@@ -130,7 +130,7 @@ a=1${newl}\
 __include=$BATS_TMPDIR/test_parse_config/enve.ini,select1,select2${newl}\
 __include=$BATS_TMPDIR/test_parse_config/enve.ini,select1,select2${newl}\
 b=2"
-    # echo "$TABLE" >&2
+    # printf %s\\n "$TABLE" >&2
     echo "$OUT_TABLE" >&2
     set > "$BATS_TMPDIR/sv2"
     diff "$BATS_TMPDIR/sv1" "$BATS_TMPDIR/sv2"

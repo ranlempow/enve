@@ -1,0 +1,286 @@
+#!/bin/sh
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+if [ -n "${HAVE_ENVE_AWS4LIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_AWS4LIB=1
+
+
+_debug_http_request() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    if [ "$loglevel" -le 1 ]; then
+        if LOGGROUPS="http" _check_debug_group; then
+            _format_head "${LOGTYPE:-"${method:-http}"}" >&2
+            _format_tail "${LOGTYPE:-"${method:-http}"}" "$url" >&2
+        fi
+    fi
+    if [ "$loglevel" -le 0 ]; then
+        if LOGGROUPS="http" _check_debug_group; then
+            if [ -n "${payload:-}" ]; then
+                printf %s\\n "$payload"
+            fi
+        fi
+    fi
+}
+
+_debug_http_response() {
+    _loglevel_form_symbol "${ENVE_VERBOSE:-}"
+    _http_line="${code:+$code }${method:+$method }${url:-$1}"
+    if [ "$loglevel" -le 1 ]; then
+        if LOGGROUPS="http,aws4" _check_debug_group; then
+            if [ "$loglevel" -le 0 ] && [ -n "${headers:-}" ]; then
+                _format_head "${LOGTYPE:-headers}" >&2
+                _format_tail "${LOGTYPE:-headers}" "$_http_line" >&2
+                printf %s\\n "$headers"
+            fi
+            if [ -n "${body:-}" ]; then
+                _format_head "${LOGTYPE:-body}" >&2
+                _format_tail "${LOGTYPE:-body}" "$_http_line" >&2
+                printf %s\\n "$body"
+            fi
+        fi
+    elif [ "$loglevel" -le 2 ]; then
+        _format_head "${LOGTYPE:-http}" >&2
+        _format_tail "${LOGTYPE:-http}" "$_http_line" >&2
+    fi
+    unset _http_line
+}
+
+
+HMAC_SHA256(){
+    key="$1"
+    if [ "${#key}" -eq 64 ]; then
+        ret=$(printf %s "$2" |
+              openssl dgst -sha256 -mac hmac -macopt "hexkey:$key")
+    else
+        ret=$(printf %s "$2" |
+              openssl dgst -sha256 -hmac "$1")
+    fi
+    ret=${ret##(stdin)= }
+    printf %s\\n "$ret"
+}
+
+SHA256() {
+    ret=$(printf %s "$1" | openssl sha256)
+    ret=${ret##(stdin)= }
+    printf %s\\n "$ret"
+}
+
+SHA256_FILE() {
+    ret=$(openssl sha256 < "$1")
+    ret=${ret##(stdin)= }
+    printf %s\\n "$ret"
+}
+
+
+amz_header() {
+    access_key="${AWS_ACCESS_KEY_ID}"
+    secret_key="${AWS_SECRET_ACCESS_KEY}"
+
+    method=${method:-GET}
+    uri=${uri:-/}
+    request_parameters=${request_parameters:-}
+    body=${body:-}
+
+    amz_date=${amz_date:-$(date -u +"%Y%m%dT%H%M%SZ")}
+    datestamp=${amz_date%T*Z}
+
+    # for s3bucket url
+    combine_service=$service
+    service=${service##*.}
+
+    host="${host:-"${combine_service}${region:+."$region"}.amazonaws.com"}"
+    endpoint="${endpoint:-"https://${host}"}"
+
+    if [ -n "${bodyfile:-}" ] && [ "$bodyfile" != - ]; then
+        amz_content_sha256=$(SHA256_FILE "${bodyfile}")
+    else
+        amz_content_sha256=$(SHA256 "${body}")
+    fi
+
+    amz_headers="${amz_headers:+"$amz_headers"$newl}host:${host}"
+    amz_headers="${amz_headers:+"$amz_headers"$newl}x-amz-content-sha256:${amz_content_sha256}"
+    amz_headers="${amz_headers:+"$amz_headers"$newl}x-amz-date:${amz_date}"
+    amz_headers=$(printf %s\\n "$amz_headers" | sort -k1 -t "$newl")
+
+    # echo "$amz_headers" >&2
+    canonical_headers=
+    OLDIFS=$IFS
+    IFS=$newl
+    for header in ${amz_headers:-}; do
+        canonical_headers="${canonical_headers:+"$canonical_headers;"}${header%%:*}"
+    done
+    IFS=$OLDIFS
+
+    canonical_request="${method}
+${uri}
+${request_parameters}
+${amz_headers}
+
+$canonical_headers
+$amz_content_sha256"
+
+    credential_scope="${datestamp}/${region:-us-east-1}/${service}/aws4_request"
+
+    string_to_sign="AWS4-HMAC-SHA256
+${amz_date}
+${credential_scope}
+$(SHA256 "$canonical_request")"
+
+    if [ ! -e /tmp/amz_sign_cache ]; then
+        mkdir -p -m 700 /tmp/amz_sign_cache
+    fi
+    sign_cache_filename="${service}.${region:-us-east-1}.${access_key}.${datestamp}.sign"
+    if [ -f /tmp/amz_sign_cache/$sign_cache_filename ]; then
+        read -r signing_key < /tmp/amz_sign_cache/$sign_cache_filename
+    else
+        # Key derivation functions. See:
+        # http://docs.aws.amazon.com/general/latest/gr/signature-v4-examples.html#signature-v4-examples-python
+        kDate=$(HMAC_SHA256 "AWS4${secret_key}" "$datestamp")
+        kRegion=$(HMAC_SHA256 "$kDate" "${region:-us-east-1}")
+        kService=$(HMAC_SHA256 "$kRegion" "$service")
+        signing_key=$(HMAC_SHA256 "$kService" "aws4_request")
+        if [ -d /tmp/amz_sign_cache ]; then
+            echo "$signing_key" > /tmp/amz_sign_cache/$sign_cache_filename
+        fi
+    fi
+    signature=$(HMAC_SHA256 "$signing_key" "$string_to_sign")
+
+
+    amz_authorization_header="\
+AWS4-HMAC-SHA256 \
+Credential=${access_key}/${credential_scope}, \
+SignedHeaders=$canonical_headers, \
+Signature=$signature"
+
+    amz_request_url="${endpoint}${uri}${request_parameters:+?}${request_parameters}"
+    unset datestamp \
+          access_key secret_key \
+          canonical_request credential_scope string_to_sign \
+          kDate kRegion kService signing_key signature \
+          sign_cache_filename
+}
+
+
+
+aws4_request() {
+    # usage: aws4_request s3.ap-east-1 METHOD [URI] [-- BODY|@FILE]
+    #
+    #  optional variable:
+    #    amz_headers=k1:v1${newl}k2:v2${newl}
+    #    amz_target
+    #    amz_content_type
+
+    service="$1"
+    region=
+    if [ -z "${service##*.*}" ]; then
+        region="${service##*.}"
+        service="${service%.*}"
+    fi
+    method="$2"
+    shift 2
+    uri=${1:-}
+    if [ "$#" -eq 0 ]; then
+        :
+    elif [ -z "${uri##/*}" ]; then
+        if [ "${uri%%\?*}" != "${uri}" ]; then
+            request_parameters=${uri#*\?}
+            uri=${uri%%\?*}
+        fi
+        shift
+    else
+        uri=
+    fi
+
+    unset body bodyfile
+    if [ "${1:-}" = "--" ]; then
+        body=${2:-}
+        shift 2
+    elif [ -n "${1:-}" ] && [ -z "${1##@*}" ]; then
+        bodyfile=${1%@}
+        shift 1
+    fi
+
+
+    amz_headers=${amz_headers:+"${amz_headers%%"$newl"}"}
+    if [ -n "${amz_target:-}" ]; then
+        # set -- "$@" -H "X-Amz-Target: $amz_target"
+        amz_headers="${amz_headers:+"$amz_headers$newl"}x-amz-target:$amz_target"
+    fi
+
+    if [ "${amz_content_type:-}" = "None" ] || [ "${body-NOBODY}" = "NOBODY" ]; then
+        # set -- "$@" -H "Content-Type:"
+        amz_headers="${amz_headers:+"$amz_headers$newl"}content-type:"
+    elif [ -n "${amz_content_type:-}" ]; then
+        # set -- "$@" -H "Content-Type: $amz_content_type"
+        amz_headers="${amz_headers:+"$amz_headers$newl"}content-type:$amz_content_type"
+    elif [ -n "${body:-}" ] && [ "${body%"${body#?}"}" = '{' ]; then
+        # set -- "$@" -H "Content-Type: application/x-amz-json-1.0"
+        # amz_headers="${amz_headers:+"$amz_headers$newl"}content-type:application/x-amz-json-1.0"
+        amz_headers="${amz_headers:+"$amz_headers$newl"}content-type:application/x-amz-json-1.1"
+    else
+        # set -- "$@" -H "Content-Type: application/x-www-form-urlencoded; charset=utf-8"
+        amz_headers="${amz_headers:+"$amz_headers$newl"}content-type:application/x-www-form-urlencoded; charset=utf-8"
+    fi
+
+    method="$method" uri="$uri" request_parameters="${parameters:-}" \
+    body="${body-UNSIGNED-PAYLOAD}" \
+    region="$region" service="$service" host="" endpoint="" \
+    amz_header
+
+
+    OLDIFS=$IFS
+    IFS=$newl
+    for header in ${amz_headers:-}; do
+        header_key=${header%%:*}
+        header_value=${header#*:}
+        set -- "$@" -H "$header_key: $header_value"
+    done
+
+    if [ -n "${bodyfile:-}" ]; then
+        set -- "$@" --data-binary "@$bodyfile"
+    elif [ "${body-NOBODY}" != "NOBODY" ]; then
+        set -- "$@" --data-binary "$body"
+    fi
+
+    IFS=$OLDIFS
+    curl ${aws4_debug:---silent} ${aws4_debug:+-v} \
+        "${amz_request_url}" \
+        -X "$method" \
+        -H "Authorization: ${amz_authorization_header}" \
+        "$@"
+
+    # -H "X-Amz-Date: ${amz_date}" \
+    # -H "x-amz-content-sha256: ${amz_content_sha256}" \
+    unset amz_headers
+}
+
+
+true '
+AWS_ACCESS_KEY_ID=XXXX
+AWS_SECRET_ACCESS_KEY=YYYY
+
+
+body="
+{
+    \"RequestItems\": {
+        \"testdb\": {
+            \"Keys\": [
+                {
+                    \"key\": { \"S\": \"xxx\" }
+                }
+            ],
+            \"ProjectionExpression\": \"a,map1.yes\"
+        }
+    },
+    \"ReturnConsumedCapacity\": \"TOTAL\"
+}
+"
+
+echo "$(amz_target=DynamoDB_20120810.BatchGetItem
+        aws4_request dynamodb.ap-east-1 POST -- "$body")"
+'
+

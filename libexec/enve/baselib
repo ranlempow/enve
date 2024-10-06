@@ -1784,18 +1784,24 @@ parse_enve_program() {
             :
         elif [ -z "$state" ]; then
             if [ "${line#\# Usage: }" != "${line}" ]; then
-                usage=${line#\# Usage: }
-                if [ "${usage#enve-}" != "$usage" ]; then
-                    usage="enve ${usage#enve-}"
+                u=${line#\# Usage: }
+                if [ "${u#enve-}" != "$u" ]; then
+                    u="enve ${u#enve-}"
                 fi
+                usage=$u
                 state=summary_or_usage
             fi
         elif [ "$state" = "summary_or_usage" ]; then
             if [ "${line#\#        }" != "${line}" ]; then
-                usage="$usage$newl${line#\#       }"
-                if [ "${usage#enve-}" != "$usage" ]; then
-                    usage="enve ${usage#enve-}"
+                u=${line#\#        }
+                # usage="$usage$newl${line#\#       }"
+                # if [ "${usage#enve-}" != "$usage" ]; then
+                #     usage="enve ${usage#enve-}"
+                # fi
+                if [ "${u#enve-}" != "$u" ]; then
+                    u="enve ${u#enve-}"
                 fi
+                usage="$usage$newl$u"
             else
                 summary=${line#\# }
                 state=help
@@ -1866,7 +1872,7 @@ print_program_help() {
                 if [ -n "${usage:-}" ]; then
                     s=$usage
                     replace "${newl}" "%%%%"
-                    replace "%%%%" "${newl}        "
+                    replace "%%%%" "${newl}       "
                     printf %s\\n "Usage: $s"
                 fi
                 if [ -n "${summary:-}" ]; then

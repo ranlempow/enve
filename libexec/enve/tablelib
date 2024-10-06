@@ -298,8 +298,8 @@ fast_resolve_path() {
         :
     elif [ "${d%"${d#?}"}" = '/' ]; then
         :
-    elif [ -n "$PRJROOT" ]; then
-        d="${PRJROOT%/}/$d"
+    # elif [ -n "$PRJROOT" ]; then
+    #     d="${PRJROOT%/}/$d"
     else
         fast_table_tail "layout\\.root"
         PRJROOT=${TABLE_TAIL:-$PWD}

@@ -1,15 +1,15 @@
 #!/bin/sh
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
 
-# shellcheck source=libexec/enve/envelib
-. "$ENVE_HOME/enve/envelib"
+# shellcheck source=libexec/enve/tablelib
+. "$ENVE_HOME/enve/tablelib"
 
 settrace
 
 resolve_test() {
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 #     elif [ "$target" = "test" ]; then
 #         eval_line '. $ENVE_HOME/enve/testlib'
 #         eval_line 'ENVE_TEST_OUTPUT=${ENVE_TEST_OUTPUT:-$(mkdtemp "$(get_tempdir)"/enve-test.XXXXXX)}; export ENVE_TEST_OUTPUT'
@@ -58,7 +58,7 @@ main() {
     done
 
     info "OUT $(basename $ZERO)/enve.module"
-    [ -n "$TABLE" ] && echo "$TABLE"
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
 }
 
 # if [ "${TEST:-}" != "test" ]; then

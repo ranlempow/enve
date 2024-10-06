@@ -284,8 +284,15 @@ if [ -z "${_main_profile}" ]; then
 fi
 
 
-ENVE_ROLES="$cmd,${ENVE_ROLES:-}"
-ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}core.target=$cmd$newl"
+
+if [ -n "${EXEC_SHIELD:-}" ]; then
+    # 這樣shield結束之後，可以直接進到漂亮的命令列。
+    ENVE_ROLES="shell,${ENVE_ROLES:-}"
+    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}core.target=shell$newl"
+else
+    ENVE_ROLES="$cmd,${ENVE_ROLES:-}"
+    ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}core.target=$cmd$newl"
+fi
 
 case $cmd in
     run)

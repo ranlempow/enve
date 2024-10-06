@@ -1,0 +1,552 @@
+#!/bin/sh
+
+# http://www.launchd.info/
+
+# macos
+# -----
+# launchctl load ~/Library/LaunchAgents/com.example.app.plist
+# launchctl unload ~/Library/LaunchAgents/com.example.app.plist
+
+# cygwin
+# ------
+# http://web.mit.edu/cygwin/cygwin_v1.3.2/usr/doc/Cygwin/cygrunsrv.README
+# https://gist.github.com/samhocevar/00eec26d9e9988d080ac
+
+true '
+service <service> start
+cygrunsrv --start <svc_name>
+launchctl start com.example.app
+/etc/init.d/<service> start
+systemctl start <service>
+
+service <service> stop
+cygrunsrv --stop <svc_name>
+launchctl stop com.example.app
+/etc/init.d/<service> stop
+systemctl stop <service>
+
+service <service> restart
+/etc/init.d/<service> restart
+systemctl restart <service>
+
+service <service> status
+launchctl list | grep com.example.app
+/etc/init.d/<service> status
+systemctl status <service>
+
+[edit /etc/rc.conf <service>_enable="YES"]| service <service> rcvar
+cygrunsrv --install svc_name --path /cygwin/style/path/to/daemon.exe --args "<args>" --user <user name> --passwd <password>
+launchctl load -w ~/Library/LaunchAgents/com.example.app.plist
+rc-update add <service> <runlevel>
+systemctl enable <service>
+
+[edit /etc/rc.conf <service>_enable="NO"]
+cygrunsrv --remove <svc_name>
+launchctl unload -w ~/Library/LaunchAgents/com.example.app.plist
+rc-update del <service> <runlevel>
+systemctl disable <service>
+
+
+
+Show known startup script:
+rc-status|rc-update show
+systemctl list-units
+
+Show all startup scripts:
+ls /etc/init.d/|rc-update -v show
+systemctl list-unit-files --type=service
+
+
+systemctl kill <service>
+journalctl _SYSTEMD_UNIT=<service>.service
+'
+
+true '
+bsdinit
+openrc
+runit
+sysvinit
+systemd
+cygrunsrv
+launchctl
+
+- detect: detect system service provider style
+- enable: let service can be started
+- disable:
+- create: create service profile
+- remove: remove service profile
+- start:
+- stop:
+- restart:
+- status: query service status
+- list: check service exists
+- listall: list all service
+'
+
+ENVE_ALL_SRV_SYSTEMS=
+
+
+ENVE_ALL_SRV_SYSTEMS="${ENVE_ALL_SRV_SYSTEMS:+$ENVE_ALL_SRV_SYSTEMS }bsdinit"
+
+bsdinit_detect() {
+    [ -e /etc/rc.subr ]
+}
+
+bsdinit_enable() {
+    sed -e 's/.*'"${service}"'_enable=.*/'"${service}"'_enable="YES"/' /etc/rc.conf > /etc/rc.conf
+}
+bsdinit_disable() {
+    sed -e 's/.*'"${service}"'_enable=.*/'"${service}"'_enable="NO"/' /etc/rc.conf > /etc/rc.conf
+}
+
+bsdinit_create() {
+    cat > /etc/rc.d/$service << EOF
+#!/bin/sh
+#
+
+# PROVIDE: foo
+# REQUIRE: bar_service_required_to_precede_foo
+
+. /etc/rc.subr
+
+name="$service"
+rcvar=${service}_enable
+command="/usr/local/bin/$bin"
+
+load_rc_config \$name
+run_rc_command "\$1"
+EOF
+
+}
+bsdinit_remove() { rm /etc/rc.d/$service; }
+bsdinit_start() { service $service start; }
+bsdinit_stop() { service $service stop; }
+bsdinit_restart() { service $service restart; }
+bsdinit_status() { service $service status; }
+bsdinit_list() { service -e; }
+bsdinit_listall() { service -l; }
+
+
+
+
+
+ENVE_ALL_SRV_SYSTEMS="${ENVE_ALL_SRV_SYSTEMS:+$ENVE_ALL_SRV_SYSTEMS }openrc"
+
+openrc_detect() {
+    [ -d /etc/inid.d ] && [ -d /etc/conf.d ]
+}
+
+openrc_enable() {
+    rc-update add $service default
+}
+
+openrc_disable() {
+    rc-update del $service default
+}
+
+openrc_create() {
+    # refs: https://github.com/OpenRC/openrc/blob/master/service-script-guide.md
+    cat > /etc/init.d/$service << EOF
+#!/sbin/openrc-run
+name="$service"
+command="/usr/bin/nrpe"
+command_args="--config=/etc/nagios/nrpe.cfg"
+# pidfile="/run/\${RC_SVCNAME}.pid"
+command_background=true
+
+depend() { :; }
+EOF
+}
+openrc_remove() { rm /etc/init.d/$service; }
+openrc_start() { rc-service $service start; }
+openrc_stop() { rc-service $service stop; }
+openrc_restart() { rc-service $service restart; }
+openrc_status() { rc-service $service status; }
+openrc_list() { rc-status; }
+openrc_listall() { rc-status -s; }
+
+
+ENVE_ALL_SRV_SYSTEMS="${ENVE_ALL_SRV_SYSTEMS:+$ENVE_ALL_SRV_SYSTEMS }runit"
+
+runit_detect() {
+    [ -d /etc/sv ]
+}
+
+runit_enable() {
+    ln -s /etc/sv/$service /etc/runit/runsvdir/default/$service
+}
+
+runit_disable() {
+    rm /etc/runit/runsvdir/default/$service
+}
+
+runit_create() {
+    mkdir /etc/sv/$service
+    cat > /etc/sv/$service << EOF
+???????
+EOF
+}
+runit_remove() { rm -rf /etc/sv/$service; }
+runit_start() { sv start $service; }
+runit_stop() { sv stop $service; }
+runit_restart() { sv restart $service; }
+runit_status() { sv status $service; }
+runit_list() { ls /etc/runit/runsvdir/default; }
+runit_listall() { ls /etc/sv; }
+
+
+ENVE_ALL_SRV_SYSTEMS="${ENVE_ALL_SRV_SYSTEMS:+$ENVE_ALL_SRV_SYSTEMS }sysvinit"
+
+sysvinit_detect() {
+    [ -d /etc/rc.d ] && [ -d /etc/init.d ]
+}
+
+sysvinit_enable() {
+    ln -s /etc/init.d/$service /etc/rc.d/rc{2,3,4}.d/S90$service
+}
+
+sysvinit_disable() {
+    rm /etc/rc.d/rc{2,3,4}.d/S90$service
+}
+
+sysvinit_create() {
+    cat > /etc/init.d/$service << EOF
+
+#!/bin/sh
+
+. /etc/rc.conf
+. /etc/rc.d/functions
+
+DAEMON=crond
+ARGS=
+
+[ -r /etc/conf.d/\$DAEMON ] && . /etc/conf.d/\$DAEMON
+
+PID=\$(get_pid \$DAEMON)
+
+case "\$1" in
+    start)
+        stat_busy "Starting \$DAEMON"
+        [ -z "\$PID" ] && \$DAEMON \$ARGS &>/dev/null
+        if [ \$? = 0 ]; then
+            add_daemon \$DAEMON
+            stat_done
+        else
+            stat_fail
+            exit 1
+        fi
+    ;;
+    stop)
+        stat_busy "Stopping \$DAEMON"
+        [ -n "\$PID" ] && kill \$PID &>/dev/null
+        if [ \$? = 0 ]; then
+            rm_daemon \$DAEMON
+            stat_done
+        else
+            stat_fail
+            exit 1
+        fi
+    ;;
+    restart)
+        \$0 stop
+        sleep 1
+        \$0 start
+    ;;
+    *)
+        echo "usage: \$0 {start|stop|restart}"
+    ;;
+esac
+EOF
+}
+sysvinit_remove() { rm /etc/init.d/$service; }
+sysvinit_start() { sv start $service; }
+sysvinit_stop() { sv stop $service; }
+sysvinit_restart() { sv restart $service; }
+sysvinit_status() { sv status $service; }
+sysvinit_list() {
+    ls /etc/rc.d/rc2.d
+    ls /etc/rc.d/rc3.d
+    ls /etc/rc.d/rc4.d
+}
+sysvinit_listall() { ls /etc/init.d; }
+
+
+ENVE_ALL_SRV_SYSTEMS="${ENVE_ALL_SRV_SYSTEMS:+$ENVE_ALL_SRV_SYSTEMS }systemd"
+
+systemd_detect() {
+    [ -d /etc/systemd ]
+}
+
+systemd_enable() {
+    systemctl enable $service
+}
+
+systemd_disable() {
+    systemctl disable $service
+}
+
+systemd_create() {
+    # contname="$(basename $1)"
+
+    # cat > "/run/systemd/$service.service" << EOF
+    cat > "/etc/systemd/system/$service.service" << EOF
+[Unit]
+Description=${contname} Namespace Daemon
+Before=cont-${contname}.service
+StopWhenUnneeded=true
+
+[Service]
+ExecStart=$0 serveroot $1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+systemd_remove() { rm "/etc/systemd/system/$service.service"; }
+systemd_start() { systemctl start $service; }
+systemd_stop() { systemctl stop $service; }
+systemd_restart() { systemctl restart $service; }
+systemd_status() { systemctl status $service; }
+systemd_list() { systemctl; }
+systemd_listall() { systemctl list-unit-files --type=service; }
+
+ENVE_ALL_SRV_SYSTEMS="${ENVE_ALL_SRV_SYSTEMS:+$ENVE_ALL_SRV_SYSTEMS }cygrunsrv"
+
+cygrunsrv_detect() {
+    command -v cygrunsrv >/dev/null 2>&1
+}
+
+cygrunsrv_enable() {
+    sc config $service start=auto
+}
+
+cygrunsrv_disable() {
+    sc config $service start=demand
+}
+
+cygrunsrv_create() {
+    cygrunsrv --install $service \
+        --path /cygwin/style/path/to/daemon.exe \
+        --args "<args>" \
+        --user "<user name>" --passwd "<password>"
+}
+
+cygrunsrv_remove() { cygrunsrv --remove $service; }
+cygrunsrv_start() { cygrunsrv --start $service; }
+cygrunsrv_stop() { cygrunsrv --stop $service; }
+cygrunsrv_restart() { cygrunsrv --stop $service; cygrunsrv --start $service; }
+cygrunsrv_status() { sc query $service; }
+cygrunsrv_list() { sc query $service; }
+cygrunsrv_listall() { sc query type= service state= all; }
+
+ENVE_ALL_SRV_SYSTEMS="${ENVE_ALL_SRV_SYSTEMS:+$ENVE_ALL_SRV_SYSTEMS }launchctl"
+launchctl_detect() {
+    command -v launchctl >/dev/null \
+        && [ -d ~/Library/LaunchAgents ] && [ -d /Library/LaunchDaemons ]
+}
+
+
+# launchctl_enable() {
+#     sudo launchctl load -w "/Library/LaunchDaemons/com.enve.launched.$service.plist"
+# }
+# launchctl_enable_user() {
+#     launchctl load -w /"Library/LaunchAgents/com.enve.launched.$service.plist"
+# }
+# launchctl_disable() {
+#     sudo launchctl unload "/Library/LaunchDaemons/com.enve.launched.$service.plist"
+# }
+# launchctl_disable_user() {
+#     launchctl unload /"Library/LaunchAgents/com.enve.launched.$service.plist"
+# }
+
+launchctl_enable() {
+    sudo launchctl bootstrap system /Library/LaunchAgents/com.enve.launched.$service.plist
+    # sudo launchctl enable system/com.enve.launched.$service.plist
+    # sudo launchctl bootstrap system /Library/LaunchAgents/com.enve.launched.$service.plist
+}
+
+launchctl_enable_user() {
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.enve.launched.$service.plist
+    # launchctl enable gui/$(id -u)/com.enve.launched.$service
+    # launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.enve.launched.$service.plist
+}
+
+launchctl_disable() {
+    sudo launchctl bootout system /Library/LaunchAgents/com.enve.launched.$service.plist
+}
+launchctl_disable_user() {
+    launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.enve.launched.$service.plist
+}
+
+_launchctl_create_plist() {
+    chmod 755 "$script_path"
+    the_PATH=~/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+    the_log=~/Library/Logs/com.enve.launched.$service.log
+
+    cat > /tmp/plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.enve.launched.$service</string>
+    <key>Program</key>
+    <string>/bin/sh</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>$script_path</string>
+    </array>
+    ${StartCalendarInterval:+<key>StartCalendarInterval</key>
+    <array>
+        ${StartCalendarInterval}
+    </array>}
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>$the_PATH</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>$the_log</string>
+    <key>StandardErrorPath</key>
+    <string>$the_log</string>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+EOF
+}
+
+launchctl_create() {
+    _launchctl_create_plist
+    sudo chown root:wheel /tmp/plist
+    sudo mv /tmp/plist "/Library/LaunchDaemons/com.enve.launched.$service.plist"
+}
+launchctl_create_user() {
+    _launchctl_create_plist
+    mv /tmp/plist ~/"Library/LaunchAgents/com.enve.launched.$service.plist"
+}
+
+launchctl_remove() {
+    sudo rm -f "/Library/LaunchDaemons/com.enve.launched.$service.plist"
+}
+launchctl_remove_user() {
+     rm -f ~/"Library/LaunchAgents/com.enve.launched.$service.plist"
+}
+launchctl_start() {
+    sudo launchctl kickstart system/com.enve.launched.$service
+}
+launchctl_start_user() {
+    launchctl kickstart gui/$(id -u)/com.enve.launched.$service
+}
+launchctl_stop() {
+    sudo launchctl kill SIGTERM system/com.enve.launched.$service
+}
+launchctl_stop_user() {
+    launchctl kill SIGTERM gui/$(id -u)/com.enve.launched.$service
+}
+launchctl_restart() {
+    sudo launchctl kickstart -k system/com.enve.launched.$service
+}
+launchctl_restart_user() {
+    launchctl kickstart -k gui/$(id -u)/com.enve.launched.$service
+}
+launchctl_status() { launchctl list $service; }
+launchctl_list() { launchctl list $service; }
+launchctl_listall() { launchctl list; }
+
+
+detect_host_service_provider_type() {
+    if [ -z "${ENVE_SRV_SYSTEM:-}" ]; then
+        ENVE_SRV_SYSTEM=
+        for srvsys in $ENVE_ALL_SRV_SYSTEMS; do
+            if ${srvsys}_detect; then
+                ENVE_SRV_SYSTEM=$srvsys
+                break
+            fi
+        done
+    fi
+}
+
+
+macos_keepwake() {
+    if [ "${1:-}" == install ]; then
+        sudo pmset repeat wake MTWRF 08:00:00
+        enve daemon create - <<EOF
+0 8 * * 1-5 $0
+EOF
+    elif [ "${1:-}" == uninstall ]; then
+        sudo pmset repeat cancel
+        enve daemon remove "$0"
+    else
+        macos_prevent_sleep
+    fi
+}
+
+macos_prevent_sleep() {
+    sudo pmset -c sleep 0 displaysleep 0
+    trap 'sudo pmset -c sleep 10 displaysleep 10' EXIT
+    while [ "$(date +%H)" -lt 13 ]; do
+        read -t 5 -N 0 </dev/zero || true
+    done
+}
+
+
+
+
+true '
+- service: name of service
+- args: script or command args with out any withespace
+- cron: timming setup
+- system: is a root daemon, need root password
+
+service=* * * * * args
+system.service=* * * * * args
+'
+
+
+
+
+
+enve_daemon_create() {
+    detect_host_service_provider_type
+    ${ENVE_SRV_SYSTEM}_create${system_daemon:-_user}
+    ${ENVE_SRV_SYSTEM}_enable${system_daemon:-_user}
+    # ${HOST_PROIVDER}_start${system_daemon:-_user}
+}
+
+enve_daemon_start() {
+    detect_host_service_provider_type
+    ${ENVE_SRV_SYSTEM}_start${system_daemon:-_user}
+}
+
+enve_daemon_restart() {
+    detect_host_service_provider_type
+    ${ENVE_SRV_SYSTEM}_restart${system_daemon:-_user}
+}
+enve_daemon_stop() {
+    detect_host_service_provider_type
+    ${ENVE_SRV_SYSTEM}_stop${system_daemon:-_user}
+}
+
+enve_daemon_remove() {
+    detect_host_service_provider_type
+    ${ENVE_SRV_SYSTEM}_stop${system_daemon:-_user} || true
+    ${ENVE_SRV_SYSTEM}_disable${system_daemon:-_user} || true
+    ${ENVE_SRV_SYSTEM}_remove${system_daemon:-_user}
+}
+
+enve_daemon_status() {
+    detect_host_service_provider_type
+    if [ "$service" ]; then
+        ${ENVE_SRV_SYSTEM}_list "$service"
+    else
+        ${ENVE_SRV_SYSTEM}_list
+    fi
+}
+
+enve_daemon_table() {
+    # 各 SRV_SYSTEM 都列出同樣的格式
+    :
+}
+

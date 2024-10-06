@@ -8,8 +8,9 @@ if [ -n "${HAVE_ENVE_WSLIB:-}" ]; then
 fi
 HAVE_ENVE_WSLIB=1
 
-# shellcheck source=libexec/enve/base
-. "$ENVE_HOME/enve/base"
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
 # # shellcheck source=libexec/enve/findutils
 # . "$ENVE_HOME/enve/findutils"
 
@@ -21,17 +22,63 @@ HAVE_ENVE_WSLIB=1
 # # shellcheck source=libexec/enve/urlutils
 # . "$ENVE_HOME/enve/urlutils"
 
+# shellcheck source=libexec/enve/urlutils
+. "$ENVE_HOME/enve/tablelib"
 
-settrace
+# settrace
+
+
+print_diff_keyvalue() {
+    key=$1
+    value=$2
+    if [ -n "${ORIGIN_TABLE:-}" ]; then
+        TABLE=ORIGIN_TABLE fast_table_tail "$key"
+        origin=$TABLE_TAIL
+    elif [ -n "${NEW_TABLE:-}" ]; then
+        TABLE=NEW_TABLE fast_table_tail "$key"
+        origin=$value
+        value=$TABLE_TAIL
+    else
+        origin=$value
+    fi
+
+    if [ -z "$value" ]; then
+        # delete
+        printf '  %s=%s    # (origin=%s)\n' "$key" "$value" "$origin"
+    elif [ -z "$origin" ]; then
+        # add
+        printf '  %s=%s    # (origin=%s)\n' "$key" "$value" "$origin"
+    elif [ "$value" != "$origin" ]; then
+        # change
+        printf '  %s=%s    # (origin=%s)\n' "$key" "$value" "$origin"
+    else
+        printf '  %s=%s\n' "$key" "$value"
+    fi
+}
+
+get_workspace_config_path() {
+
+}
+
+
+make_cache_dir() {
+    mkdir -p "$1"
+    cat > "$1/CACHEDIR.TAG" <<EOF
+Signature: 8a477f597d28d172789f06886806bc55
+# This file is a cache directory tag created by enve.
+# For information about cache directory tags, see:
+#   http://www.brynosaurus.com/cachedir/
+EOF
+}
 
 
 _where_into() {
-    case ${path%/*} in
-        project)
-        extra)
-        out)    loctype=out
+    case ${_path%/*} in
+        project) ;;
+        extra) ;;
+        out)    loctype=out;;
         sub)
-                o=${path#sub}
+                o=${_path#sub}
                 if [ -z "$o" ] || [ "$o" = "/" ]; then
                     loctype=sub
                 # elif [ -n "${o#/*}" ]; then
@@ -45,7 +92,7 @@ _where_into() {
                     return
                 else
                     depth=$((depth + 1))
-                    path=$o _where_into
+                    _path=$o _where_into
                 fi
             ;;
         *)
@@ -56,18 +103,18 @@ _where_into() {
 
 
 ws_where() {
-    path=$1
-    path=$(canonicalize_symlinks "$1")
-    if [ -z "${path#$WS_BASE*}" ]; then
+    _path=$1
+    _path=$(canonicalize_symlinks "$1")
+    if [ -z "${_path#$WS_BASE*}" ]; then
         return 1
     fi
-    path=${path#$WS_BASE}
+    _path=${_path#$WS_BASE}
 
-    case ${path%/*} in
-        project)
-        extra)
-        out)
-        sub)
+    case ${_path%/*} in
+        project);;
+        extra);;
+        out);;
+        sub);;
     esac
 
     depth=
@@ -91,33 +138,6 @@ ws_clone() {
     :
 }
 
-_should_install_command_line_tools() {
-    macos_version=$(sw_vers -productVersion)
-    IFS='.' read -r macos_major macos_minor <<EOF
-$macos_version
-EOF
-    if [ "$macos_major" -gt 10 ] || { [ "$macos_major" -eq 10 ] && [ "$macos_minor" -gt 13 ]; }; then
-        [ -e "/Library/Developer/CommandLineTools/usr/bin/git" ]
-    else
-        [ -e "/Library/Developer/CommandLineTools/usr/bin/git" ] || \
-        [ -e "/usr/include/iconv.h" ]
-    fi
-}
-
-
-
-
-
-
-setup_command_line_tools() {
-    if _should_install_command_line_tools && [ -t 0 ]; then
-        echo "Installing the Command Line Tools (expect a GUI popup):" >&2
-        sudo "/usr/bin/xcode-select" --install
-        any_key_continue "Press any key when the installation has completed."
-        sudo "/usr/bin/xcode-select" --switch "/Library/Developer/CommandLineTools"
-    fi
-}
-
 deps='tmux->homebrew@user | tmux->msys2'
 deps='sublime->homebrew@user'
 deps='kitty->homebrew@user'
@@ -138,21 +158,21 @@ ws_setup() {
     (O)setup command-line-tools
     setup xcode
     setup android-sdk
-    setup curl
-    setup 7z
+    (X)setup curl
+    (?)setup 7z
 
     (O)setup nix
     (O)setup homebrew
-    setup cygwin
-    setup msya2
+    (X)setup cygwin
+    (X)setup msys2
     (O)setup sublime|sublime-life
     (O)setup tmux
     (O)setup kitty(font-hack-nerd-font)
-    setup comemu(font-hack-nerd-font)
+    (X)setup comemu(font-hack-nerd-font)
     (O)setup skhd
     (.)setup github
     (.)setup google
-    setup enve
+    (.)setup enve
 '
 
     # TODO: make workspace directory structure
@@ -173,4 +193,349 @@ ws_setup() {
 
 
 }
+
+enve_git_clone() {
+    GIT_CONFIG_NOSYSTEM=1
+    VISUAL="/Applications/Sublime\\ Text.app/Contents/SharedSupport/bin/subl -n -w"
+    git clone \
+        --config include.path="../../config/git/config" \
+        --config include.path="../../../.config/git/config" \
+        --config include.path="../.gitconfig" $@
+}
+
+
+_error_notdir() {
+    if [ ! -d "$1" ]; then
+        _error "workspace have not '$1'"
+    fi
+}
+check_workspace_dirs() {
+    if [ -n "${XDG_CONFIG_HOME:+x}" ]; then
+        _error_notdir "$XDG_CONFIG_HOME"
+    else
+        _error_notdir "$ENVE_WORKSPACE/config"
+    fi
+    if [ -n "${ENVE_LOCAL_SYSROOT:+x}" ]; then
+        _error_notdir "$ENVE_LOCAL_SYSROOT"
+    else
+        _error_notdir "$ENVE_WORKSPACE/local"
+    fi
+    if [ -n "${ENVE_PROJECT_DIR:+x}" ]; then
+        _error_notdir "$ENVE_PROJECT_DIR"
+    else
+        _error_notdir "$ENVE_WORKSPACE/projects" # TODO rename project
+    fi
+    if [ -n "${ENVE_VAR_DIR:+x}" ]; then
+        _error_notdir "$ENVE_VAR_DIR"
+    else
+        _error_notdir "$ENVE_WORKSPACE/var"
+    fi
+}
+
+
+true '
+
+system level          (/etc/enve/system.enve.ini)
+user level            ($HOME/config/enve/user.enve.ini)
+!workspace level      (%ws/config/enve/workspace.enve.ini)
+project level         (%root/enve.ini)
+environ level         (\*|%root/\*-enve.ini)
+
+domain level           (public static inventory/directory)
+organization level     (public static inventory/directory)
+group level            (public static inventory/directory)
+team level             (from team leader GitHub/gist)
+!workspace team fork   (%ws/secret/db)
+
+
+system|user -> team -> workspace -> project|environ
+
+
+資料夾因素 Situation
+1. user (root or daemon or loginuser)
+2. os (--windows, --posix)
+3. workspace or no-workspace
+4. project
+
+# Situation會影響到以下因素
+XDG_DATA_HOME   (appliaction and appliaction state, MAY not backup)
+XDG_CONFIG_HOME (configure, MUST backup)
+(X)ENVE_SECRETDIR  (mode MUST 0700, MAY backup, expire at entries-define)
+
+ENVE_DATADIR    (meaningful data, MUST backup)
+
+ENVE_WORKSPACE/project
+ENVE_WORKSPACE/out
+(X)ENVE_PRJDIR     (projects under version contorl without work-tree pollution)
+(X)ENVE_OUTDIR     (build output, repoducable)
+
+XDG_CACHE_HOME (mode MAY 0700, write-once, read-only, no expire time, safely clean-up)
+XDG_RUNTIME_DIR (mode MUST be 0700, MUST not survive reboot or logout, periodic clean-up access time timestamp modified at least once every 6 hours)
+
+TMPDIR (mode MUST be 1777, MAY not survive reboot)
+
+
+
+support multi-user(or not), multi-host, multi-workspace
+
+runas root:               hostspace
+runas wheel(daemon):      hostspace <- workspace
+runas loginuser:          userspace <- workspace
+runas nobody(daemon):     workspace
+chroot runas root:        chrootspace
+chroot runas other:       chrootspace
+
+
+
+[WORKSPACE]
+- workspace($ENVE_WORKSPACE)
+  - config($XDG_CONFIG_HOME)
+    - ws/{ws-id, ws.config}
+    - secret
+      - db
+  - local($ENVE_LOCAL_SYSROOT)
+         (Caskroom bin include opt sbin var Cellar Homebrew etc lib share)
+    - apps
+    - enve/.git
+    - Homebrew/.git
+    - var/log
+    - var/lib: holds state information pertaining to an application or the system
+      - sublime/*.sublime-project
+    - share($XDG_DATA_HOME): static large database or other user data
+  - sync 存放長期一般資料
+  - workspaces 其他工作區
+  - project($ENVE_PROJECT_DIR)
+    - .sublime-projects/*.sublime-project
+    - .profile/*.enve.ini
+    - P1/.git
+    - P3/.git
+    - sub/P1/P2/.git
+    - sub/P1/sub/P2/P4.git
+  - var($ENVE_VAR_DIR)(var)
+    - log/
+    - out/
+    - run/
+    - extra
+      - P1/*.txt
+      - P3
+
+/var/tmp/ws/$(id -u)/$WS_ID/out ($ENVE_OUTPUT_DIR)
+/var/tmp/ws/$(id -u)/$WS_ID/cache ($XDG_CACHE_HOME)
+/run/ws/$(id -u)/$WS_ID ($XDG_RUNTIME_DIR)
+/tmp/run/ws/$(id -u)/$WS_ID ($XDG_RUNTIME_DIR)
+/tmp ($TMPDIR)
+
+
+
+
+2022簡化成兩層 enve.ini
+1. workspace(user/system/daemon)    $XDG_CONFIG_HOME/enve.ini
+2. project(codebase|environ)        $PWD/enve.ini
+其中workspace的預設值會按照作業系統微調。
+
+
+[USER_WORKSPACE]
+/home/$USER ($HOME)
+  - .workspace($ENVE_WORKSPACE)
+    - project
+    - data($ENVE_DATA_DIR)
+      - log/
+      - out/ -> /var/tmp/user/$(id -u)/out
+      - run/ -> /tmp/run/user/$(id -u)
+  - .config($XDG_CONFIG_HOME)
+  - .local($ENVE_SYSROOT)
+    - share($XDG_DATA_HOME)
+  - .cache($XDG_CACHE_HOME)
+
+/var/tmp/user/$(id -u)/out ($ENVE_OUTPUT_DIR)
+/run/user/$(id -u) ($XDG_RUNTIME_DIR)
+/tmp/run/user/$(id -u) ($XDG_RUNTIME_DIR)
+/tmp ($TMPDIR)
+
+
+[HOST_WORKSPACE]
+/var/lib/enve/workspace ($ENVE_WORKSPACE)
+  - project
+  - data ($ENVE_DATA_DIR)
+  - log -> /var/log
+  - out -> /var/tmp/out
+  - run -> /tmp/run
+/var/cache ($XDG_CACHE_HOME)
+/var/tmp/out ($ENVE_OUTPUT_DIR)
+/usr/local ($ENVE_SYSROOT)
+/usr/local/share ($XDG_DATA_HOME)
+/root,/var/root ($HOME)
+/run,/tmp/run ($XDG_RUNTIME_DIR)
+/etc ($XDG_CONFIG_HOME)
+/tmp ($TMPDIR)
+'
+
+
+true '
+google
+github
+ssh-key
+'
+
+
+ws_init() {
+    :
+}
+
+
+
+fillup_ws() {
+    if [ -z "${ENVE_WORKSPACE:-}" ] ||
+       ! WORKSPACE_ID=$(cat $ENVE_WORKSPACE/config/ws/ws-id); then
+        echo "'${ENVE_WORKSPACE:-}' is not workspace" >&2
+        return 1
+    fi
+    ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+    ENVE_SYSROOT=$ENVE_WORKSPACE/local
+    XDG_CONFIG_HOME=$ENVE_WORKSPACE/config
+    XDG_DATA_HOME=$ENVE_WORKSPACE/local/share
+    XDG_CACHE_HOME=/var/tmp/cache-$ENVE_UID/ws-$WORKSPACE_ID
+    ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/ws-$WORKSPACE_ID
+    if [ -d /run ]; then
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/ws-$WORKSPACE_ID}
+    elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/ws-$WORKSPACE_ID}
+    else
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-ws-$WORKSPACE_ID}
+    fi
+    TMPDIR=${TMPDIR:-/tmp}
+}
+
+fillup_user_ws2() {
+    ENVE_WORKSPACE=~
+    ENVE_LOCAL_SYSROOT=$ENVE_WORKSPACE/.local
+    WS_CONFIG=~/.config/enve/ws.enve.ini
+    if [ -f "$WS_CONFIG" ]; then
+        XDG_CONFIG_HOME=$ENVE_WORKSPACE/.config
+        TABLE=$(
+            if ! parse_config_non_recursive_text < "$WS_CONFIG"; then
+                _error "parse error at $WS_CONFIG"
+                return 1
+            fi
+        )
+        fast_table_tail "var"
+        [ -n "$TABLE_TAIL" ] && ENVE_VAR_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
+        fast_table_tail "project"
+        [ -n "$TABLE_TAIL" ] && ENVE_PROJECT_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
+        fast_table_tail "restore"
+        [ -n "$TABLE_TAIL" ] && ENVE_RESTORE_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
+    fi
+    XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$ENVE_WORKSPACE/.config}
+    XDG_DATA_HOME=${XDG_DATA_HOME:-$ENVE_LOCAL_SYSROOT/share}
+    XDG_CACHE_HOME=${XDG_CACHE_HOME:-$ENVE_WORKSPACE/.cache}
+    ENVE_VAR_DIR=${ENVE_VAR_DIR:-$ENVE_WORKSPACE/var}
+    ENVE_PROJECT_DIR=${ENVE_PROJECT_DIR:-$ENVE_WORKSPACE/project}
+    ENVE_RESTORE_DIR=${ENVE_RESTORE_DIR:-$ENVE_WORKSPACE/restore}
+
+    XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-$ENVE_VAR_DIR/run}
+    # ENVE_OUTPUT_DIR=${ENVE_OUTPUT_DIR:-$ENVE_VAR_DIR/out}
+}
+
+
+
+fillup_user_ws() {
+    ENVE_WORKSPACE=${OUT_HOME:-$HOME}/workspace
+    ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+    ENVE_SYSROOT=${OUT_HOME:-$HOME}/.local
+    XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-${OUT_HOME:-$HOME}/.config}
+    XDG_DATA_HOME=${XDG_DATA_HOME:-${OUT_HOME:-$HOME}/.local/share}
+    XDG_CACHE_HOME=${XDG_CACHE_HOME:-${OUT_HOME:-$HOME}/.cache}
+    ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/user/
+    if [ -d /run ]; then
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user-$ENVE_UID}
+    elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/user-$ENVE_UID}
+    else
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-user-$ENVE_UID}
+    fi
+    TMPDIR=${TMPDIR:-/tmp}
+}
+
+fillup_host_ws() {
+    ENVE_WORKSPACE=/var/lib/enve/workspace
+    ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+    ENVE_SYSROOT=/usr/local
+    XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/etc}
+    XDG_DATA_HOME=${XDG_DATA_HOME:-/usr/local/share}
+    XDG_CACHE_HOME=${XDG_CACHE_HOME:-/var/cache}
+    ENVE_OUTPUT_DIR=/var/tmp/out-root
+    if [ -d /run ]; then
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run}
+    elif [ -d /tmp/run ]; then
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run}
+    else
+        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-root}
+    fi
+    TMPDIR=${TMPDIR:-/tmp}
+}
+
+probe_ws() {
+    if [ -n "${ENVE_DATA_DIR:-}" ]; then
+        return 0
+    fi
+
+    ENVE_WORKSPACE=
+    USER="" HOME="" SHELL="" probe_situation
+    if [ -n "${ENVE_WORKSPACE:-}" ]; then
+        if ! WORKSPACE_ID=$(cat $ENVE_WORKSPACE/config/ws/ws-id); then
+            echo "'$ENVE_WORKSPACE' is not workspace" >&2
+            return 1
+        fi
+        ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+        ENVE_SYSROOT=$ENVE_WORKSPACE/local
+        XDG_CONFIG_HOME=$ENVE_WORKSPACE/config
+        XDG_DATA_HOME=$ENVE_WORKSPACE/local/share
+        XDG_CACHE_HOME=/var/tmp/cache-$ENVE_UID/ws-$WORKSPACE_ID
+        ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/ws-$WORKSPACE_ID
+        if [ -d /run ]; then
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/ws-$WORKSPACE_ID}
+        elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/ws-$WORKSPACE_ID}
+        else
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-ws-$WORKSPACE_ID}
+        fi
+        TMPDIR=${TMPDIR:-/tmp}
+    elif [ "$ENVE_OUT_USER" != "root" ]; then
+        ENVE_WORKSPACE=$OUT_HOME/workspace
+        ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+        ENVE_SYSROOT=$OUT_HOME/.local
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$OUT_HOME/.config}
+        XDG_DATA_HOME=${XDG_DATA_HOME:-$OUT_HOME/.local/share}
+        XDG_CACHE_HOME=${XDG_CACHE_HOME:-$OUT_HOME/.cache}
+        ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/user/
+        if [ -d /run ]; then
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user-$ENVE_UID}
+        elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/user-$ENVE_UID}
+        else
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-user-$ENVE_UID}
+        fi
+        TMPDIR=${TMPDIR:-/tmp}
+    else
+        ENVE_WORKSPACE=/var/lib/enve/workspace
+        ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+        ENVE_SYSROOT=/usr/local
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/etc}
+        XDG_DATA_HOME=${XDG_DATA_HOME:-/usr/local/share}
+        XDG_CACHE_HOME=${XDG_CACHE_HOME:-/var/cache}
+        ENVE_OUTPUT_DIR=/var/tmp/out-root
+        if [ -d /run ]; then
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run}
+        elif [ -d /tmp/run ]; then
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run}
+        else
+            XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-root}
+        fi
+        TMPDIR=${TMPDIR:-/tmp}
+    fi
+}
+
+
+
+
 
