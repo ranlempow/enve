@@ -22,7 +22,8 @@ settrace
 install_enve_tar() {
     CLONE_TO="${CLONE_TO:-"$HOME/.local/enve/repository"}"
     ENVE_TAR_URL="https://github.com/ranlempow/enve/archive/refs/heads/master.tar.gz"
-    curl -fsL "$ENVE_TAR_URL" | tar xvz -C "$CLONE_TO"
+    # busybox支援 `tar --strip-components`
+    curl -fsL "$ENVE_TAR_URL" | tar xz -C "$CLONE_TO" --strip-components 1
     if [ "${INSTALL_LINKS:-}" = 1 ]; then
         "$CLONE_TO/libexec/enve/core/base/enve.setup" install-link
     fi

@@ -134,6 +134,8 @@ build_installer() {
     cat > "$(dirname $0)/installer.sh" <<EOF
 #!/bin/sh
 
+set -euo pipefail
+
 # $(type clone_to)
 # $(type install_enve_tar)
 

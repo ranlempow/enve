@@ -63,8 +63,8 @@ uninstall_homebrew() {
     :
 }
 
-check_variable ENVE_LOCAL_SYSROOT
-HOMEBREW_PREFIX=$ENVE_LOCAL_SYSROOT
+# check_variable ENVE_LOCAL_SYSROOT
+HOMEBREW_PREFIX=${ENVE_LOCAL_SYSROOT:-~/.local}
 
 case $1 in
     install) install_homebrew;;
