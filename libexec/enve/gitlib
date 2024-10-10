@@ -1,0 +1,290 @@
+#!/bin/sh
+
+# shellcheck disable=2016
+true
+
+if [ -n "${HAVE_ENVE_GITLIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_GITLIB=1
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+# shellcheck source=libexec/enve/urlutils
+. "$ENVE_HOME/enve/tablelib"
+
+# 測試程式放在doc/confex-showcase.sh
+
+
+is_branch_exists() {
+    git rev-parse --verify $1 2>/dev/null
+    return $?
+}
+
+is_inside_rebase() {
+    git rebase --show-current-patch 1>&2 2>/dev/null
+    return $?
+}
+
+get_current_branch_name() {
+    git symbolic-ref --short HEAD
+}
+
+get_current_confex_branch() {
+    # for branch in $(git --no-pager branch --list --format "%(refname:short)"); do
+    #     if [ -n "$branch" ] && [ "$branch" != "${branch%%confexing/}" ]; then
+    #         echo "${branch%%confexing/}"
+    #         return 0
+    #     fi
+    # done
+    # return 1
+    target=
+    br=
+    for branch in $(git --no-pager tag); do
+        if [ -n "$branch" ] && [ "$branch" != "${branch#confexing/}" ]; then
+            branch=${branch#confexing/}
+            target=${branch##*/}
+            br=${branch%/to/"$target"}
+            return 0
+        fi
+    done
+    return 1
+}
+
+abort() {
+  printf "%s\n" "$@" >&2
+  exit 1
+}
+
+shell_join() {
+    printf "%s" "$1"
+    shift
+    for s in "$@"; do
+        replace " " "\\ "
+        printf " "
+        printf "%s" "$s"
+    done
+}
+
+execute() {
+    if ! "$@"; then
+        abort "$(printf "Failed during: %s" "$(shell_join "$@")")"
+    else
+        printf "execute %s\\n" "$(shell_join "$@")"
+    fi
+}
+
+USABLE_GIT=git
+
+clone_to() {
+    execute mkdir -p "$CLONE_TO"
+    cd "$CLONE_TO" >/dev/null || return
+
+    if [ -z "${NONINTERACTIVE-}" ]; then
+        quiet_progress="--quiet --progress"
+    else
+        quiet_progress="--quiet"
+    fi
+
+    execute "${USABLE_GIT}" -c init.defaultBranch=master init --quiet
+    execute "${USABLE_GIT}" config remote.origin.url "${GIT_REMOTE_URL}"
+    execute "${USABLE_GIT}" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    execute "${USABLE_GIT}" config --bool "core.autocrlf" "false"
+    execute "${USABLE_GIT}" config --bool "core.symlinks" "true"
+    execute "${USABLE_GIT}" fetch --force $quiet_progress origin
+    execute "${USABLE_GIT}" fetch --force $quiet_progress --tags origin
+    # execute "${USABLE_GIT}" fetch --force $quiet_progress \
+    #     origin "refs/heads/master:refs/remotes/origin/master"
+    execute "${USABLE_GIT}" remote set-head origin --auto >/dev/null
+    execute "${USABLE_GIT}" reset --hard origin/master
+
+  #   LATEST_GIT_TAG="$("${USABLE_GIT}" tag --list --sort="-version:refname" | head -n1)"
+  # if [[ -z "${LATEST_GIT_TAG}" ]]
+  # then
+  #   abort "Failed to query latest Homebrew/brew Git tag."
+  # fi
+  # execute "${USABLE_GIT}" "checkout" "--quiet" "--force" "-B" "stable" "${LATEST_GIT_TAG}"
+
+}
+
+
+confex_to() {
+    if is_inside_rebase; then
+        echo "your engage rebasing, try 'rebase --abort' first" >&2
+        return 1
+    elif is_branch_exists request; then
+        echo "request exists. use --abort to exit rebase" >&2
+        return 1
+    elif br=$(get_current_confex_branch); then
+        echo "fatch: other branch $br is confexing" >&2
+        return 1
+    elif [ -z "${1:-}" ]; then
+        echo "confex target undefined" >&2
+        return 1
+    elif ! is_branch_exists $1; then
+        echo "confex target '$1' not exists" >&2
+        return 1
+    fi
+
+    target=$1
+    br=$(get_current_branch_name)
+    # git switch dev
+    git tag -f confexing/$br/to/$target
+    git checkout -b __request
+    if is_branch_exists tail/$br &&
+       ! git merge-base --is-ancestor tail/$br $target; then
+        # 當tail/$br不再是$target的祖節點時，以tail/$br作為最尾端
+        tail=tail/$br
+    else
+        tail=$target
+    fi
+
+    # rebase同時也要改變committer，這樣才和merge的操作一樣
+    if git -c rebase.instructionFormat='%s%nexec GIT_COMMITTER_DATE="%cD" GIT_COMMITTER_NAME="%cn" GIT_COMMITTER_EMAIL="%ce" git commit --amend --no-edit' \
+                rebase -i --empty=drop --autosquash --onto $target $tail __request; then
+        _confex_make_request
+    elif is_inside_rebase; then
+        :
+    else
+        # rebase nothing or other error
+        git switch $br
+        git branch -D __request
+        git tag -d confexing/$br/to/$target
+    fi
+}
+
+confex_continue() {
+    if is_inside_rebase; then
+        echo "your engage rebasing, try 'rebase --abort' first" >&2
+        return 1
+    elif ! is_branch_exists __request; then
+        echo "nothing to continue" >&2
+        return 1
+    fi
+    _confex_make_request
+}
+
+_confex_make_request() {
+    if ! git switch __request; then
+        return 1
+    fi
+    git checkout -b request
+    git branch -D __request
+}
+
+confex_abort() {
+    if is_inside_rebase; then
+        echo "your engage rebasing, try 'rebase --abort' first" >&2
+        return 1
+    elif ! is_branch_exists request; then
+        echo "nothing to abort" >&2
+        return 1
+    elif ! get_current_confex_branch; then
+        echo "nothing to abort, confexing not found" >&2
+        return 1
+    fi
+    git switch $br
+    git branch -D request
+    git tag -d confexing/$br/to/$target
+}
+
+confex_finish() {
+    # ## accept a pull request
+    #
+    # 1. git pull --rebase=merges origin $target
+    # 2. 檢查 $request..$target 的 ancestor 是 remotes/origin/$target
+    # 3. 否則 rebase $request 到新的 $target, 並且重新命名$request, 如果衝突則退出
+    # 4. 測試 $request, 如果失敗則退出
+    # 5. 進行 bump 作業 (可選)
+    # 6. 對 $target update-ref to $request
+    # 7. git push origin $target, 如果失敗則退出或回到步驟1
+    # 8. 刪除 $request
+    # 9. git push origin
+
+    if is_inside_rebase; then
+        echo "your engage rebasing, try 'rebase --abort' first" >&2
+        return 1
+    elif ! is_branch_exists request; then
+        echo "request not exists, maybe rebase failed" >&2
+        return 1
+    elif ! get_current_confex_branch; then
+        echo "nothing to finish, confexing not found" >&2
+        return 1
+    fi
+    if [ "${1:-}" = "--check" ]; then
+        # TODO: 確定 notes 中有 Tests-Success: 字樣
+        shift 1
+    fi
+    if [ "${1:-}" = "--group" ]; then
+        # --group "message": merge --no-ff 用來製造特殊紀錄
+        message=${2:-}
+        case $message in
+            '') shift 1;;
+            -*) message=; shift 1;;
+            *)  shift 2;;
+        esac
+        git switch $target
+        if [ -n "$message" ]; then
+            git merge --no-ff -m "$message" request
+        else
+            git merge --no-ff request
+        fi
+    else
+        echo "**** update-ref"
+        git update-ref -m "fast-forwart $target to new rebased branch" \
+            refs/heads/$target request
+    fi
+    git switch $br
+    git branch -D request
+    git tag -d confexing/$br/to/$target
+    if [ "${1:-}" = "--update" ]; then
+        # merge back to $br
+        git merge --no-edit $target
+        shift
+    fi
+    if [ "${1:-}" = "--tail" ]; then
+        git tag -f tail/$br
+        shift
+    fi
+}
+
+test_mark() {
+    git notes --ref test add -F test.file $request
+    git notes --ref testlog add -F short-log.file $request
+}
+
+test_list() {
+    GIT_NOTES_DISPLAY_REF=test git log
+}
+
+test_show() {
+    git notes --ref testlog show
+}
+
+bump() {
+    # 只能用在request
+    # 會創造一個新的commit
+    # 裡面有new version還有CHANGELOG
+    :
+}
+
+create_confex_branch() {
+    # 指定要複製的confex
+    # 或是製作新的confex
+    :
+}
+
+deploy() {
+    # 計算出哪個commit可以發布
+    # 1. 必須在指定版本範圍內，包含主線或是hotfix branch
+    # 2. 所有滿足測試條件或設定條件的commit
+    # 3. 那之中的最新版本
+    # 因此不需要
+    # 1. version tag
+    # 2. stage branch
+    # 3. release branch
+    # hotfix直接在主線中進行，只有這個時候會有hotfix branch
+    # note: Last-Stable，會在穩定發佈一段時間後自動加上
+    # 如果發生災難，可以回復到之前幾個 Last-Stable
+    :
+}
