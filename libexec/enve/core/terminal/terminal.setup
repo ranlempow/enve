@@ -4,6 +4,8 @@
 # shellcheck source=libexec/enve/baselib
 . "$ENVE_HOME/enve/baselib"
 
+settrace
+
 # _install_config() {
 #     _path=$1
 #     template=$2
@@ -25,10 +27,20 @@
 
 install_terminal() {
     # _install_config ~/.tmux.conf "$ZERO/../term/tmux.conf"
-    HOMEBREW_PREFIX=~/.local brew install tmux
+
+    # TODO:
+    # HOMEBREW_PREFIX=~/.local brew install tmux
+
     if [ ! -e ~/.tmux.conf ]; then
-        echo "source-file $ZERO/../term/tmux.conf" > ~/.tmux.conf
+        echo "source-file $ZERO/../terminal/tmux.conf" > ~/.tmux.conf
     fi
+    if [ ! -e ~/.inputrc ]; then
+        echo "\$include $ZERO/../terminal/inputrc" > ~/.inputrc
+    fi
+    if [ ! -e ~/.vimrc ]; then
+        echo "source $ZERO/../terminal/vimrc" > ~/.vimrc
+    fi
+
     # _install_config ~/.inputrc "$ZERO/../term/inputrc"
     # if [ -d ~/.config/kitty ] ; then
     #     _install_config ~/.config/kitty/kitty.conf "$ZERO/../term/kitty.conf"
