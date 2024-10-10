@@ -1708,7 +1708,22 @@ settrace() {
     # fi
 }
 
-
+posix_which() {
+    all=
+    case "${1:-}" in
+        -a) all=-a; shift; ;;
+        '') return 1; ;;
+    esac
+    if command -v which; then
+        which $all "$@" 2>/dev/null
+    elif [ -n "${BASH_VERSION:-}" ]; then
+        type -p $all "$@" 2>/dev/null
+    elif [ -n "${ZSH_VERSION:-}" ]; then
+        whence $all bash 2>/dev/null
+    else
+        command -v "$@"
+    fi
+}
 
 
 _extend_path() {
