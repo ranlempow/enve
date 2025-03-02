@@ -1829,7 +1829,8 @@ list_enve_program() {
     enve_programs=
     for _path in "$ENVE_HOME/enve/"*; do
         prog=${_path##*/enve-}
-        if [ "$prog" != "$_path" ] && [ -x "$_path" ]; then
+        if [ -n "${prog##*/*}" ] && [ "$prog" != "$_path" ] &&
+           [ -f "$_path" ] && [ -x "$_path" ]; then
             enve_programs="${enve_programs:+$enve_programs$newl}$_path"
         fi
     done
