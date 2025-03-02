@@ -83,38 +83,45 @@ _load_basic_variable() {
         node2nix_node_version=8
     fi
     node_dev="$(table_tail "nodejs\\.development")" || node_dev=
+    npmdirect="$(table_tail "nodejs\\.npmdirect")" || npmdirect=
 
-    d="package-lock.json"
-    fast_resolve_path
-    package_lock=$d
-    # package_lock=$(resolve_path "package-lock.json")
-    if [ -f "$package_lock" ]; then
-        node_lockfile=1
+    node_lockfile=
+    if [ -n "$npmdirect" ]; then
+        d="package-lock.json"
+        fast_resolve_path
+        package_lock=$d
+        # package_lock=$(resolve_path "package-lock.json")
+        if [ -f "$package_lock" ]; then
+            node_lockfile=1
+        fi
     fi
+
 
     packages="
 $({ table_subset "nodejs\\.require\\.packages" || true; } | as_value)
 $({ table_subset "nodejs\\.require\\.packages\\..*" | as_postfix "nodejs.require.packages." || true; })
 "
 
-    # package_json="$(resolve_path "package.json")"
-    d="package.json"
-    fast_resolve_path
-    package_json=$d
+    package_json=
+    if [ -n "$npmdirect" ]; then
+        # package_json="$(resolve_path "package.json")"
+        d="package.json"
+        fast_resolve_path
+        package_json=$d
 
-    echo "PACKAGE.JSON: $package_json" >&2
-    if [ ! -f "$package_json" ]; then
-        # if [ -z "${packages//[[:space:]]/}" ]; then
-        # packages_json_without_space=${packages}
-        # packages_json_without_space=${packages_json_without_space%%[:space:]}
-        # packages_json_without_space=${packages_json_without_space##[:space:]}
-        # if [ -z "${packages_json_without_space}" ]; then
-        if [ -z "${packages%%[:space:]}" ]; then
-            echo "error: package.json not found" >&2
-            return 1
+        echo "PACKAGE.JSON: $package_json" >&2
+        if [ ! -f "$package_json" ]; then
+            # if [ -z "${packages//[[:space:]]/}" ]; then
+            # packages_json_without_space=${packages}
+            # packages_json_without_space=${packages_json_without_space%%[:space:]}
+            # packages_json_without_space=${packages_json_without_space##[:space:]}
+            # if [ -z "${packages_json_without_space}" ]; then
+            if [ -z "${packages%%[:space:]}" ]; then
+                echo "error: package.json not found" >&2
+                return 1
+            fi
         fi
     fi
-
 }
 
 _create_package_json() {
@@ -129,14 +136,14 @@ _create_package_json() {
 ' > "$package_json"
     pkgs="$(echo "$packages" | while read -r name ver; do
         if [ -n "$name" ]; then
-            echo "node-packages: $name, version :${ver:-}" >&2
+            # echo "node-packages: $name, version :${ver:-}" >&2
             if [ -z "$ver" ]; then
                 ver=latest
             fi
             echo "    \"$name\": \"$ver\"${newl}"
         fi
     done)"
-    echo "$pkgs" >&2
+    # echo "$pkgs" >&2
     echo "$pkgs" | paste -sd ",${newl}" - >&2
     echo "$pkgs" | paste -sd ",${newl}" - >> "$package_json"
     echo "${newl}  }${newl}}" >> "$package_json"
@@ -199,11 +206,11 @@ resolve_nodejs_nix() {
     p_text() {
         echo 1
         command -v node
-        echo "$packages"
+        echo "$packages+++"
         echo "$(table_tail "nix\\.channel\\.version")"
         echo "node_version: $node_version"
         echo "PACKAGE.JSON: $package_json"
-        echo "package_lock: $package_lock"
+        echo "package_lock: ${package_lock:-}"
 
     }
     p_valid() {
@@ -220,58 +227,24 @@ resolve_nodejs_nix() {
         echo 1
     }
     p_make() {
-
-        if [ ! -f "$package_json" ]; then
-            # if [ -z "${packages//[[:space:]]/}" ]; then
-            #     echo "error: package.json not found" >&2
-            #     return 1
-            # fi
-            # mkdir -p "$NODE2NIX_TMP/tmp_project"
-            package_json="$CACHED/package.json"
-            _create_package_json "$package_json" "$packages"
-        fi
-#             echo '
-# {
-#   "name": "enve-node-env",
-#   "version": "0.0.1",
-#   "description": "enve-node-env",
-#   "dependencies": {
-# ' > "$package_json"
-#             pkgs="$(echo "$packages" | while read -r name ver; do
-#                 if [ -n "$name" ]; then
-#                     echo "node-packages: $name, version :${ver:-}" >&2
-#                     if [ -z "$ver" ]; then
-#                         ver=latest
-#                     fi
-#                     echo "    \"$name\": \"$ver\"${newl}"
-#                 fi
-#             done)"
-#             echo "$pkgs" >&2
-#             echo "$pkgs" | paste -sd ",${newl}" - >&2
-#             echo "$pkgs" | paste -sd ",${newl}" - >> "$package_json"
-#             echo "${newl}  }${newl}}" >> "$package_json"
-#         fi
-
-        # '--bypass-cache' maybe useful, when: cache-mode is 'only-if-cached'
-        # echo node2nix --nodejs-$node2nix_node_version \
+        package_json="$CACHED/package.json"
+        _create_package_json "$package_json" "$packages"
+        # node2nix --help >&2
+        node2nix -v >&2
+        # node2nix --nodejs-$node2nix_node_version \
         #         ${node_dev:+ --development} \
         #         ${node_lockfile:+ --lock "$package_lock"} \
         #         --input "$package_json" \
         #         --output "$CACHED/node-packages.nix" \
         #         --composition "$CACHED/default.nix" \
-        #         --node-env "$CACHED/node-env.nix" >&2
+        #         --node-env "$CACHED/node-env.nix"
         #         # --bypass-cache
-        node2nix --help >&2
-        node2nix -v >&2
-
         node2nix --nodejs-$node2nix_node_version \
                 ${node_dev:+ --development} \
-                ${node_lockfile:+ --lock "$package_lock"} \
                 --input "$package_json" \
                 --output "$CACHED/node-packages.nix" \
                 --composition "$CACHED/default.nix" \
                 --node-env "$CACHED/node-env.nix"
-                # --bypass-cache
     }
     catalog=package_json cache_path "." p_text p_make p_valid
     node2nix_dir=$cached_path
@@ -299,6 +272,17 @@ resolve_nodejs_nix() {
 
 }
 
+resolve_node_path() {
+    out_join NODE_PATH ":"
+    while IFS="${newl}" read -r value; do
+        if [ -n "$value" ]; then
+            out_list NODE_PATH "$value"
+        fi
+    done <<EOF
+$({ table_subset "nodejs\\.path" || true; } | as_value)
+EOF
+}
+
 
 main() {
     info "IN $(basename $ZERO)/enve.module"
@@ -309,6 +293,7 @@ main() {
     else
         resolve_nodejs_nix
     fi
+    resolve_node_path
     info "OUT $(basename $ZERO)/enve.module"
 }
 
