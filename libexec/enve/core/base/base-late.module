@@ -60,7 +60,6 @@ resolve_basic_late() {
     # fast_table_tail "layout\\.root"
     # root=${TABLE_TAIL:-$PWD}
     # root=${root%/}
-
     { table_subset "path" || true; } | as_value | \
     while read -r value; do
         if [ "${value%"${value#?}"}" != '$' ]; then
@@ -293,8 +292,10 @@ resolve_prompt() {
             chmod 755 "$dest/lesspipe.sh"
             out_var LESSOPEN "|$dest/lesspipe.sh %s"
             lessbin=$(PATH=$TABLE_AS command -v less)
-            "${lessbin%/*}/lesskey" -o "$dest/lesskey" "$ENVE_HOME/enve/core/base/lesskey"
-            out_var LESSKEY "$dest/lesskey"
+            ## lesskey is deprecated. It is no longer necessary to run lesskey,
+            # "${lessbin%/*}/lesskey" -o "$dest/lesskey" "$ENVE_HOME/enve/core/base/lesskey"
+            # out_var LESSKEY "$dest/lesskey"
+            out_var LESSKEY "$ENVE_HOME/enve/core/base/lesskey"
             # please keep in mind that --quit-if-one-screen also relies on --no-init option to work properly.
             if LESS="" $lessbin --help | grep "\-\-mouse" >/dev/null; then
                 out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines --mouse"
@@ -451,7 +452,10 @@ EOF
         if [ -f "$PRJROOT/.gitignore" ]; then
             # bounds="$(echo "$bounds" | gitignore_filter "$(cat "$PRJROOT/.gitignore")" )"
             # bounds="$(echo "$bounds" | gitignore_exclude "$(cat "$PRJROOT/.gitignore")" -)" || return 1
-            bound=$(gitignore_include "$(cat "$PRJROOT/.gitignore")" "$bounds") || return 1
+            # bound=$(gitignore_include "$(cat "$PRJROOT/.gitignore")" "$bounds") || return 1
+            # 應該是 gitignore_exclude 搞反了
+            bound=$(gitignore_exclude "$(cat "$PRJROOT/.gitignore")" "$bounds") || return 1
+
         fi
 
         # _clock 'bound4'
@@ -461,7 +465,9 @@ EOF
             # fast_as_concat "$newl"
             # bounds="$(echo "$bounds" | gitignore_filter "$TABLE_AS")"
             # bounds="$(echo "$bounds" | gitignore_exclude "$TABLE_AS" -)" || return 1
-            bound=$(gitignore_include "$TABLE_AS" "$bounds") || return 1
+            # bound=$(gitignore_include "$TABLE_AS" "$bounds") || return 1
+            # 應該是 gitignore_exclude 搞反了
+            bound=$(gitignore_exclude "$TABLE_AS" "$bounds") || return 1
         fi
         # bounds="$(echo "$bounds" | gitignore_filter "$(table_subset "enve\\.bound\\.ignore" | as_concat "$newl" || true)" )"
         # echo "== BOUND:" >&2
