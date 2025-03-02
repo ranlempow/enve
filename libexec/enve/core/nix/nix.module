@@ -18,7 +18,8 @@ resolve_nix() {
     fast_basename
     given_shell=$d
 
-    if [ "$(table_tail "enve\\.no_nix")" = "true" ]; then
+    if [ "$(table_tail "enve\\.no_nix")" = "true" ] ||
+       [ -n "${ENVE_NO_NIX:-}" ] ; then
         if [ -n "$given_shell" ]; then
             shellpath=$(command -v $given_shell)
             out_var SHELL "$shellpath"
@@ -105,7 +106,7 @@ resolve_nix() {
     fi
 
     p_text() {
-        printf %s\\n "v20190308v9"
+        printf %s\\n "v2025v1"
         printf %s\\n "$nix_root"
         printf %s\\n "$nix_channel_url"
         printf %s\\n "$nix_config"
@@ -149,6 +150,7 @@ resolve_nix() {
               time rsync
               man
               perl lesspipe
+              tree
               $pkgs
             ];
           }

@@ -221,6 +221,7 @@ resolve_python_two() {
     #     venv_exec="$reqhash2/bin/virtualenv"
     # fi
 
+
     pipc_exec="$(command -v pip-compile)"
     venv_exec="$(command -v virtualenv)"
 
@@ -242,6 +243,17 @@ resolve_python_two() {
     # echo "END resolve_python" >&2
 }
 
+resolve_python_path() {
+    out_join PYTHONPATH ":"
+    while IFS="${newl}" read -r value; do
+        if [ -n "$value" ]; then
+            out_list PYTHONPATH "$value"
+        fi
+    done <<EOF
+$({ table_subset "python\\.path" || true; } | as_value)
+EOF
+}
+
 # TODO: assign python version
 
 # pip-compile version: pip-compile, version 3.6.0
@@ -253,6 +265,7 @@ main() {
     TABLE=$(cat)
     [ -n "$TABLE" ] && printf %s\\n "$TABLE"
     resolve_python_two
+    resolve_python_path
     info "OUT $(basename $ZERO)/enve.module"
 }
 

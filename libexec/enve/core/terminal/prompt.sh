@@ -159,6 +159,7 @@ prompt_command() {
     unset RED YELLOW BLUE GRAY PINK NOCOLOR
     unset LAST_DURATION LAST_RET_VAULE LAST_COMMAND
 
+    # detect $PWD
     _PREEXEC_READY=1
 }
 
