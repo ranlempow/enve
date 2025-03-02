@@ -136,7 +136,6 @@ enve_parse_config() {
     #
     # inout
     #   TABLE
-    #   [loaded]
     #
 
     if [ -n "${stage1_is_text:-}" ]; then
@@ -282,9 +281,11 @@ EOF
                     fi
                 ;;
             JOIN)
-                    eval "s=\"\$_LIST_$name\""
+                    eval "s=\"\${_LIST_$name:-}\""
                     replace "$feed" "$value"
-                    eval_line "$name='$s'; export $name"
+                    if [ -n "$s" ]; then
+                        eval_line "$name='$s'; export $name"
+                    fi
                     # eval "_JOIN_$name='$value'; _LIST_$name=\"\${_LIST_$name:-}\""
                     # _lists="${_lists}${_lists:+ }$name"
                 ;;
@@ -349,6 +350,7 @@ get_module_info() {
     define.module.$i.$p.exec            default is %root/$procedure.enve.module
     define.module.$i.$p.after           this may help ordering modules
     define.module.$i.$p.before
+
     '
 
     : '
@@ -396,7 +398,7 @@ get_module_info() {
                     if [ -n "$value" ]; then
                         s=$value
                         replace "," ":"
-                        eval "${mdict}_${attrib}=\"\${$mdict:-}\${s}:\""
+                        eval "${mdict}_${attrib}=\"\${${mdict}_${attrib}:-}\${s}:\""
                     else
                         eval "${mdict}_${attrib}="
                     fi
@@ -432,7 +434,7 @@ EOF
         eval "exec=\${${mdict}_exec:-./\$name.\$proce}"
         eval "enve=\${${mdict}_enve:-./enve.ini}"
         eval "after=\${${mdict}_after:-}"
-        eval "before=:\${${mdict}_before:-}"
+        eval "before=\${${mdict}_before:-}"
 
         after=":${after}"
         before=":${before}"
@@ -449,6 +451,9 @@ EOF
 
         printf '%s,%s,%s,%s,%s,%s,%s,%s\n' \
             "$name" "$proce" "$after" "$before" "$exec" "$_options" "$enve" "$_path"
+        eval unset ${mdict}_native_exec ${mdict}_source_exec \
+                   ${mdict}_exec ${mdict}_enve \
+                   ${mdict}_after ${mdict}_before
     done
     unset TABLE TABLE_SUBSET s mdict module_names key value attrib \
           name proce after before exec _options enve _path
@@ -650,6 +655,19 @@ resolve_with_info() {
             fast_table_tail "module\\.$e_name\\.roles"
             extra_roles=$TABLE_TAIL
 
+            # TODO: 這個看以後要怎麼辦
+            # 可能要弄一個config階段
+            if [ "$e_name" = 'pyvenv' ]; then
+                fast_table_tail "python\\.version"
+                py_version=${TABLE_TAIL:-3.8}
+                py_major=${py_version%%"."*}
+                py_minor=${py_version#"$py_major."}
+                py_minor=${py_minor%%"."*}
+                py_var=$py_major$py_minor
+                module_config_kv="$module_config_kv${newl}nix.packages${tab}( python${py_var}Full.withPackages (ps: with ps; [setuptools pip pip-tools]) )"
+                module_config_kv="$module_config_kv${newl}nix.packages${tab}python${py_var}Packages.virtualenv"
+            fi
+
             ENVE_CONFIG_TEXT=
             while read -r key value; do
                 if [ -n "$key" ]; then
@@ -666,6 +684,8 @@ EOF
             done <<EOF
 $module_config_kv
 EOF
+
+
             # SC2097: This assignment is only seen by the forked process.
             # SC2098: This expansion will not see the mentioned assignment.
             # shellcheck disable=2097,2098

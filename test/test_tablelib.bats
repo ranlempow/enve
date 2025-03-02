@@ -3,61 +3,76 @@
 
 load common
 
-setup() {
-    mkstab ../libexec/enve/tablelib \
-        table_tail table_subset table_exclude table_substi \
-        as_postfix as_rootkey as_value as_uniquekey as_concat \
-        out_var out_var_fast \
-        parse_config_non_recursive_text
+# setup() {
+#     mkstab ../libexec/enve/tablelib \
+#         table_tail table_subset table_exclude table_substi \
+#         as_postfix as_rootkey as_value as_uniquekey as_concat \
+#         out_var out_var_fast \
+#         parse_config_non_recursive_text
 
-    mkstab ../libexec/enve/tablelib value_substi <<"EOF"
-printf %s "$_subsited_value"
-EOF
+#     mkstab ../libexec/enve/tablelib value_substi <<"EOF"
+# printf %s "$_subsited_value"
+# EOF
 
-    # mkstab ../libexec/enve/pathutils \
-    #     canonicalize_symlinks
+#     # mkstab ../libexec/enve/pathutils \
+#     #     canonicalize_symlinks
 
-    tab="$(printf '\tx')"
-    tab="${tab%x}"
-    feed="$(printf '\fx')"
-    feed="${feed%x}"
-    vtab="$(printf '\vx')"
-    vtab="${vtab%x}"
-    newl="$(printf '\nx')"
-    newl="${newl%x}"
+#     tab="$(printf '\tx')"
+#     tab="${tab%x}"
+#     feed="$(printf '\fx')"
+#     feed="${feed%x}"
+#     vtab="$(printf '\vx')"
+#     vtab="${vtab%x}"
+#     newl="$(printf '\nx')"
+#     newl="${newl%x}"
 
-}
+# }
 
 
 @test "value_substi" {
-    [ "$(a=1  _value='3${a}4' value_substi)" = "314" ]
-    [ "$(a=1  _value='3\${a}4' value_substi)" = '3${a}4' ]
-    [ "$(_a=1 _value='3${_a}4' value_substi)" = '3${_a}4' ]
-    [ "$(a=1  _value='${a}' value_substi)" = "1" ]
-    [ "$(a=1  _value='3${a}' value_substi)" = "31" ]
-    [ "$(a=1  _value='${a}4' value_substi)" = "14" ]
-    [ "$(a=1  _value='\${a}' value_substi)" = '${a}' ]
+    . "$ENVE_HOME/enve/tablelib"
+    _get_var() {
+        if eval "[ -z \"\${$_var+x}\" ]"; then
+            # as undefined
+            return 1
+        else
+            eval "_val=\"\${$_var:-}\""
+        fi
+    }
+    value_substi_o() {
+        value_substi
+        echo $_subsited_value
+    }
 
-    [ "$(a=1      _value='3${a}${a}4' value_substi)" = '3114' ]
-    [ "$(a=1 b=2  _value='3${a}${b}4' value_substi)" = '3124' ]
+    [ "$(a=1  _value='3${a}4' value_substi_o)" = "314" ]
+    [ "$(a=1  _value='3\${a}4' value_substi_o)" = '3${a}4' ]
+    [ "$(_a=1 _value='3${_a}4' value_substi_o)" = '3${_a}4' ]
+    [ "$(a=1  _value='${a}' value_substi_o)" = "1" ]
+    [ "$(a=1  _value='3${a}' value_substi_o)" = "31" ]
+    [ "$(a=1  _value='${a}4' value_substi_o)" = "14" ]
+    [ "$(a=1  _value='\${a}' value_substi_o)" = '${a}' ]
 
-    [ "$(a=1  _value='$a' value_substi)" = '$a' ]
-    [ "$(a=1  _value='${a' value_substi)" = '${a' ]
-    [ "$(a=1  _value='$a}' value_substi)" = '$a}' ]
-    [ "$(a=1  _value='\${a' value_substi)" = '\${a' ]
-    ! a=1  _value='${notExist}' value_substi
+    [ "$(a=1      _value='3${a}${a}4' value_substi_o)" = '3114' ]
+    [ "$(a=1 b=2  _value='3${a}${b}4' value_substi_o)" = '3124' ]
+
+    [ "$(a=1  _value='$a' value_substi_o)" = '$a' ]
+    [ "$(a=1  _value='${a' value_substi_o)" = '${a' ]
+    [ "$(a=1  _value='$a}' value_substi_o)" = '$a}' ]
+    [ "$(a=1  _value='\${a' value_substi_o)" = '\${a' ]
+    ! a=1  _value='${notExist}' value_substi_o
 
     # [ "$(a=1  _value='3${c:-5"$a"6}4' value_substi)" = '35164' ]
     # ! a=1  _value='3${c:-5"$(echo x)"6}4' value_substi
     # ! a=1  _value='3${$(echo x)}4' value_substi
     # [ "$(PASSVARS="a$newl" a=1  _value='3${a}4' value_substi)" = '3'\''"${a}"'\''4' ]
 
-    [ "$(PASSVARS="a$newl" a=1  _value='3${a}4' value_substi)" = '3${a}4' ]
-    [ "$(STAY_UNDEFINED=1  _value='3${a}4' value_substi)" = '3${a}4' ]
+    [ "$(PASSVARS="a$newl" a=1  _value='3${a}4' value_substi_o)" = '3${a}4' ]
+    [ "$(STAY_UNDEFINED=1  _value='3${a}4' value_substi_o)" = '3${a}4' ]
 
 }
 
 @test "table_substi" {
+    . "$ENVE_HOME/enve/tablelib"
     TABLE="$(
     out_var AA '3${a}4'
     out_var BB '3${b}\${a}4'
@@ -75,6 +90,7 @@ EOF
 
 
 @test "tabels operations 1" {
+    . "$ENVE_HOME/enve/tablelib"
 
     [ "$(out_var A 1)" = "$(printf VAR\\tA\\t1)" ]
     [ "$(out_var A "")" = "$(printf VAR\\tA\\t)" ]
@@ -113,6 +129,8 @@ EOF
 
 
 @test "tabels operations with unset" {
+    . "$ENVE_HOME/enve/tablelib"
+
     TABLE="$(
     out_var AA 11
     out_var AA 22
@@ -137,6 +155,8 @@ EOF
 }
 
 @test "tabels operations with default" {
+    . "$ENVE_HOME/enve/tablelib"
+
     TABLE="$(
     out_var AA 11
     out_var AA 22
@@ -162,6 +182,7 @@ EOF
 
 
 @test "parse_config" {
+    . "$ENVE_HOME/enve/tablelib"
 
     rm -rf "$BATS_TMPDIR/test_parse_config"
     mkdir -p "$BATS_TMPDIR/test_parse_config"
@@ -223,6 +244,7 @@ EOF
 }
 
 @test "parse_config multiline" {
+    . "$ENVE_HOME/enve/tablelib"
 
     rm -rf "$BATS_TMPDIR/test_parse_config_multiline"
     mkdir -p "$BATS_TMPDIR/test_parse_config_multiline"

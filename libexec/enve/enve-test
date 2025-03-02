@@ -1,0 +1,209 @@
+#!/bin/sh
+#
+# Usage: enve-init [COMMON_OPTIONS] [<workspace>]
+# Environment encapsulation tool
+#
+# Common Options:
+#     --studio[=URL]          init studio
+#     -i, --include FILE      include config from the file
+#     -c, --config KEY=VALUE  append a key-value pair to config
+#
+#
+#
+# __noexec__=true
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/tablelib"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/pathutils"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/prjlib"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/testlib"
+
+# shellcheck source=libexec/enve/envelib2
+. "$ENVE_HOME/enve/envelib"
+
+true '
+Exit code 0:
+    All tests were collected and passed successfully
+Exit code 1:
+    Tests were collected and run but some of the tests failed
+Exit code 2:
+    Test execution was interrupted by the user
+Exit code 3:
+    Internal error happened while executing tests
+Exit code 4:
+    pytest command line usage error
+Exit code 5:
+    No tests were collected
+'
+
+
+has_value() {
+    [ -n "$TABLE_AS" ] && {
+        [ -z "${TABLE_AS##"$1${newl}"*}" ] ||
+        [ -z "${TABLE_AS##*"${newl}$1${newl}"*}" ]
+    }
+}
+
+gather_tests() {
+    if [ ! -f './enve.ini' ]; then
+        _error 'not in project root'
+        return 1
+    fi
+
+    TABLE=$(roles="$TEST_ROLES" parse_config_non_recursive_text < './enve.ini') || return 1
+    # echo "$TABLE"
+
+    project_detect_type .
+    if [ -n "${python:-}" ]; then
+        fast_table_subset "python\\.require\\.packages"
+        fast_as_value
+        if has_value pytest; then
+            if [ ! -t 1 ] && has_value pytest-tap; then
+                set -- py 'python -m pytest --tap'
+            else
+                set -- py 'python -m pytest'
+            fi
+        else
+            if [ ! -t 1 ] && has_value tap.py; then
+                set -- py 'python -m tap'
+            else
+                set -- py 'python -m unittest'
+            fi
+        fi
+    fi
+
+    if [ -n "${nodejs:-}" ]; then
+        if [ ! -t 1 ]; then
+            set -- js 'node --test --test-reporter tap'
+        else
+            set -- js 'node --test'
+        fi
+    fi
+
+    if [ -x './test.sh' ]; then
+        set -- sh './test.sh'
+    fi
+    ARGSTR=
+    for c in "$@"; do
+        fast_append_argument_quote2 "$c"
+    done
+}
+
+sets=
+TEST_ROLES=
+TEST_OUTPUT=
+while [ "$#" -ge 1 ]; do
+    case $1 in
+        @*)
+                sets=$sets$1$newl
+                shift
+            ;;
+        --role)
+                TEST_ROLES=${TEST_ROLES}${2:+"$2,"}
+                shift 2
+            ;;
+        --output)
+                TEST_OUTPUT=${2:-}
+                shift 2
+            ;;
+    esac
+done
+
+
+if [ -n "$sets" ]; then
+    # set --
+    files=
+    for set in $sets; do
+        rolestext=
+        CASENAME=
+        OLDIFS=$IFS; IFS=",@"
+        for role in $set; do
+            role=${role##*\@}
+            if [ -n "$role" ]; then
+                CASENAME=${CASENAME}@${role}
+                rolestext="$rolestext --role $role"
+            fi
+        done
+        IFS=$OLDIFS
+        fast_get_tempdir
+        if ! outputfile="$(mkstemp "$d/rcfile.XXXXXX")"; then
+            _error "failed to create tempfile"
+            return 1
+        fi
+        files=${files}${outputfile}${newl}
+        enve test $rolestext --output "$outputfile"
+        echo "${CASENAME:-@}" >> "$outputfile"
+    done
+    report=
+    while read -r file; do
+        if [ -n "$file" ]; then
+            { read -r result; read -r roles; } < "$file"
+            report="$report$roles $result "
+        fi
+    done <<EOF
+$files
+EOF
+    report=${report%" "}
+
+    C0='\033[0m'
+    C1='\033[36m'
+    C2='\033[35m'
+    Cr='\033[31m'
+    printf "$C2%s$C0"\\n "$report"
+    if [ -n "$TEST_OUTPUT" ]; then
+        echo "$report" > "$TEST_OUTPUT"
+    fi
+
+    return 0
+elif [ -n "$TEST_ROLES" ]; then
+    set --
+    if [ -n "$TEST_OUTPUT" ]; then
+        set -- --output "$TEST_OUTPUT"
+    fi
+    ENVE_ROLES="$TEST_ROLES" EXEC_USE_EXEC=1 fire2 enve test "$@"
+    # exit because EXEC_USE_EXEC=1
+else
+    gather_tests
+    if [ ! -t 1 ]; then
+        eval harness2 "$ARGSTR"
+        # echo "sucesse:$success_count failure:$failure_count wanted:$wanted"
+        missing=$((wanted - success_count - failure_count))
+        if [ "$missing" -eq 0 ]; then
+            result="($success_count/$wanted)"
+        else
+            result="($success_count?$missing/$wanted)"
+        fi
+        if [ -n "$TEST_OUTPUT" ]; then
+            echo "$result" > "$TEST_OUTPUT"
+        fi
+        if [ "$wanted" -eq 0 ]; then
+            _error 'nothing test found'
+            exit 5
+        elif [ "$success_count" -lt "$wanted" ]; then
+            exit 1
+        fi
+    else
+        eval set -- "$ARGSTR"
+        if [ $# -lt 2 ]; then
+            _error 'nothing test found'
+            exit 5
+        fi
+        while [ $# -ge 2 ]; do
+            $2 || exit $?
+            shift 2
+        done
+    fi
+fi
+
+
+
+
+
+
+

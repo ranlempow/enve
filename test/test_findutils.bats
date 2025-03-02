@@ -1,17 +1,60 @@
 #!/usr/bin/env bats
 
 load common
+ENVE_VERBOSE=TRACE
 
-setup() {
-    mkstab ../libexec/enve/findutils \
-        fnmatch fnmatch_pathname_transform \
-        make_gitignore_filter gitignore_filter \
-        files_stats files_stats_contents
+# setup() {
+#     mkstab ../libexec/enve/findutils \
+#         fnmatch fnmatch_pathname_transform \
+#         make_gitignore_filter gitignore_filter \
+#         files_stats files_stats_contents
+# }
 
+@test "build_minmax_slashs" {
+    . "$ENVE_HOME/enve/findutils"
+    build_minmax_slashs 'a/b/c/d'
+    [ "$maxp" = '/*/*/*/*' ]
+    [ "$minp" = '/*/*/*' ]
 }
 
+@test "build_gitignore_to_find_logic" {
+    . "$ENVE_HOME/enve/findutils"
+    build_gitignore_to_find_logic "root" "**" "--action"
+    [ "$ARGSTR" = "'-path' 'root/*' '-name' '*' '-prune' '-o'" ]
+    build_gitignore_to_find_logic "root" "!**" "--action"
+    [ "$ARGSTR" = "'-path' 'root/*' '-name' '*' '--action' '-o'" ]
+    build_gitignore_to_find_logic "root" "a/*/b/*/c" "--action"
+    [ "$ARGSTR" = "'(' '!' '-path' 'root/*/*/*/*/*/*' '-path' 'root/*/*/*/*/*' '-path' 'root/a/*/b/*/*' '-name' 'c' '-prune' ')' '-o'" ]
+}
+
+@test "gitignore_ls2" {
+    . "$ENVE_HOME/enve/findutils"
+    list=$(gitignore_ls2 "$ENVE_HOME" --ignore "enve/*/macos/*" --ignore "_*" -name "*.setup")
+    enve_home=$(normalize "$ENVE_HOME")
+    names=
+    while read -r filename; do
+        filename=${filename#"${enve_home}/enve/core/"}
+        names=${names}${filename}${newl}
+    done <<EOF
+$list
+EOF
+    echo "$list"
+    [ "$names" = 'nix/nix.setup
+terminal/terminal.setup
+pyvenv/python-msvc.setup
+base/hostpkgs.setup
+base/enve.setup
+' ]
+}
+
+@test "gitignore_walk" {
+    . "$ENVE_HOME/enve/prjlib"
+    devfile=$(normalize "$ENVE_HOME/../.dev")
+    gitignore_walk "$ENVE_HOME/.." -print | grep -v "$devfile"
+}
 
 @test "fnmatch" {
+    . "$ENVE_HOME/enve/findutils"
 
     fnmatch 'a*c' 'abbbc'
     fnmatch 'a*c' 'ac'
@@ -44,7 +87,6 @@ setup() {
     #     fnmatch 'a+(b+(1))c' 'ab1b11b111c'
     #     ! fnmatch 'a+(b)c' 'abccc'
     # }
-
     # {
     #     fnmatch 'a/+([!/])/+([!/])/c' 'a/b/b/c'
     #     fnmatch 'a/+([!/])123/c' 'a/b123/c'
@@ -61,28 +103,41 @@ setup() {
 
 
 @test "make_gitignore_filter" {
+    . "$ENVE_HOME/enve/findutils"
 
-    # make_gitignore_filter "$(printf abc\\ndef\\n)" >&2
+    ENVE_VERBOSE=TRACE
 
-    [ "$(printf abc\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n%s\\n 'abc' 'def')")" = "123" ]
-    # shopt -s extglob
-    [ "$(printf abc\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n%s\\n 'a*' 'd?f')")" = "123" ]
-    [ "$(printf abc/def\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n '**/def')")" = "123" ]
-    [ "$(printf abc/def\\n123\\n | gitignore_filter "$(printf %s\\n 'abc/**')")" = "123" ]
-    [ "$(printf abc/def/123\\n123\\n | gitignore_filter "$(printf %s\\n '**/def/**')")" = "123" ]
-
-    [ "$(printf abc/def\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n%s\\n '**/def' '!def')")" = "123
-def" ]
-
-    [ "$(printf abc\\n123\\ndef\\n | gitignore_filter "")" = "abc
+    list='abc
 123
-def" ]
+d/e/f
+'
+    # gitignore_include "$(printf %s\\n%s\\n '!abc' 'def')" "$list"
+    # gitignore_exclude "$(printf %s\\n%s\\n 'a*c' '!abc' 'def')" "$list"
 
-    [ "$(printf abc\\n123\\ndef\\n | gitignore_filter "$(printf %s\\n%s\\n '*' '!abc')")" = "abc" ]
+    [ "$(gitignore_exclude "$(printf %s\\n%s\\n 'abc' 'd/e/f')" "$list")" = \
+      "123" ]
+    [ "$(gitignore_exclude "$(printf %s\\n%s\\n 'a*c' '!abc' 'd/e/f')" "$list")" = \
+      "123${newl}abc" ]
+    [ "$(gitignore_exclude "" "$list")" = \
+      "abc${newl}123${newl}d/e/f" ]
+    [ "$(gitignore_include "" "$list")" = \
+      "" ]
+    [ "$(gitignore_include "d/**$newl" "$list")" = \
+      "d/e/f" ]
+    [ "$(gitignore_include "**/f$newl" "$list")" = \
+      "d/e/f" ]
+    [ "$(gitignore_include "d/**/f$newl" "$list")" = \
+      "d/e/f" ]
+    [ "$(gitignore_include "d/d/**/f$newl" "$list")" = \
+      "" ]
+    [ "$(gitignore_include "???${newl}!abc${newl}" "$list")" = \
+      "123" ]
 
 }
 
+
 @test "files_stats" {
+    . "$ENVE_HOME/enve/findutils"
 
     rm -rf /tmp/files_stats
     mkdir -p /tmp/files_stats

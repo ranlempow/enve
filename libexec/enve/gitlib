@@ -17,7 +17,7 @@ HAVE_ENVE_GITLIB=1
 
 
 is_branch_exists() {
-    git rev-parse --verify $1 2>/dev/null
+    git rev-parse --verify "$1" 2>/dev/null
     return $?
 }
 
@@ -38,16 +38,25 @@ get_current_confex_branch() {
     #     fi
     # done
     # return 1
+    request_name=
     target=
     br=
     for branch in $(git --no-pager tag); do
         if [ -n "$branch" ] && [ "$branch" != "${branch#confexing/}" ]; then
-            branch=${branch#confexing/}
-            target=${branch##*/}
-            br=${branch%/to/"$target"}
-            return 0
+            # branch=${branch#confexing/}
+            # target=${branch##*/}
+            # br=${branch%/to/"$target"}
+            IFS=/ read request_name br target <<EOF
+${branch#confexing/}
+EOF
+            if [ -n "$request_name" ] && [ -n "$br" ] && [ -n "$target" ]; then
+                return 0
+            fi
         fi
     done
+    request_name=
+    target=
+    br=
     return 1
 }
 
@@ -115,21 +124,22 @@ confex_to() {
     elif is_branch_exists request; then
         echo "request exists. use --abort to exit rebase" >&2
         return 1
-    elif br=$(get_current_confex_branch); then
+    elif get_current_confex_branch; then
         echo "fatch: other branch $br is confexing" >&2
         return 1
     elif [ -z "${1:-}" ]; then
         echo "confex target undefined" >&2
         return 1
-    elif ! is_branch_exists $1; then
+    elif ! is_branch_exists "$1"; then
         echo "confex target '$1' not exists" >&2
         return 1
     fi
 
     target=$1
+    request_name=${2:-request}
+
     br=$(get_current_branch_name)
-    # git switch dev
-    git tag -f confexing/$br/to/$target
+    # git tag --force confexing/$br/to/$target
     git checkout -b __request
     if is_branch_exists tail/$br &&
        ! git merge-base --is-ancestor tail/$br $target; then
@@ -140,16 +150,19 @@ confex_to() {
     fi
 
     # rebase同時也要改變committer，這樣才和merge的操作一樣
-    if git -c rebase.instructionFormat='%s%nexec GIT_COMMITTER_DATE="%cD" GIT_COMMITTER_NAME="%cn" GIT_COMMITTER_EMAIL="%ce" git commit --amend --no-edit' \
+    fmt='%s%nexec GIT_COMMITTER_DATE="%cD" GIT_COMMITTER_NAME="%cn" GIT_COMMITTER_EMAIL="%ce" git commit --amend --no-edit'
+    if git -c rebase.instructionFormat="$fmt" \
                 rebase -i --empty=drop --autosquash --onto $target $tail __request; then
-        _confex_make_request
+        git tag --force confexing/$request_name/$br/to/$target
+        _make_request
     elif is_inside_rebase; then
-        :
+        git tag --force confexing/$request_name/$br/to/$target
     else
         # rebase nothing or other error
-        git switch $br
-        git branch -D __request
-        git tag -d confexing/$br/to/$target
+        _exit_confex
+        # git switch $br
+        # git branch --delete --force __request
+        # git tag --delete confexing/$br/to/$target
     fi
 }
 
@@ -160,32 +173,43 @@ confex_continue() {
     elif ! is_branch_exists __request; then
         echo "nothing to continue" >&2
         return 1
+    elif ! get_current_confex_branch; then
+        echo "nothing to continue, confexing not found" >&2
+        return 1
     fi
-    _confex_make_request
+    _make_request
 }
 
-_confex_make_request() {
+_make_request() {
     if ! git switch __request; then
         return 1
     fi
-    git checkout -b request
-    git branch -D __request
+    git checkout -b $request_name
+    git branch --delete --force __request
+}
+
+_exit_confex() {
+    git switch $br
+    git branch --delete --force __request
+    git branch --delete --force $request_name
+    git tag --delete confexing/$request_name/$br/to/$target
 }
 
 confex_abort() {
     if is_inside_rebase; then
         echo "your engage rebasing, try 'rebase --abort' first" >&2
         return 1
-    elif ! is_branch_exists request; then
-        echo "nothing to abort" >&2
-        return 1
     elif ! get_current_confex_branch; then
         echo "nothing to abort, confexing not found" >&2
         return 1
+    elif ! is_branch_exists $request_name; then
+        echo "nothing to abort" >&2
+        return 1
     fi
-    git switch $br
-    git branch -D request
-    git tag -d confexing/$br/to/$target
+    _exit_confex
+    # git switch $br
+    # git branch --delete --force $request_name
+    # git tag -d confexing/$br/to/$target
 }
 
 confex_finish() {
@@ -195,7 +219,7 @@ confex_finish() {
     # 2. 檢查 $request..$target 的 ancestor 是 remotes/origin/$target
     # 3. 否則 rebase $request 到新的 $target, 並且重新命名$request, 如果衝突則退出
     # 4. 測試 $request, 如果失敗則退出
-    # 5. 進行 bump 作業 (可選)
+    # 5. (X)進行 bump 作業 (可選)
     # 6. 對 $target update-ref to $request
     # 7. git push origin $target, 如果失敗則退出或回到步驟1
     # 8. 刪除 $request
@@ -204,15 +228,28 @@ confex_finish() {
     if is_inside_rebase; then
         echo "your engage rebasing, try 'rebase --abort' first" >&2
         return 1
-    elif ! is_branch_exists request; then
-        echo "request not exists, maybe rebase failed" >&2
-        return 1
     elif ! get_current_confex_branch; then
         echo "nothing to finish, confexing not found" >&2
         return 1
+    elif ! is_branch_exists $request_name; then
+        echo "request not exists, maybe rebase failed" >&2
+        return 1
     fi
+
+    # 首先更新 target
+    # TODO: 這會切換分支
+    # git pull --rebase=merges origin $target
+    # 這不會切換分枝
+    git fetch origin $target:$target
+
+    if [ "$(git rev-parse)" != "$(git rev-parse)" ]; then
+        echo "$target behind remote, this request needs to advance" >&2
+        return 1
+    fi
+
     if [ "${1:-}" = "--check" ]; then
         # TODO: 確定 notes 中有 Tests-Success: 字樣
+        # git notes --ref testlog show
         shift 1
     fi
     if [ "${1:-}" = "--group" ]; then
@@ -225,18 +262,18 @@ confex_finish() {
         esac
         git switch $target
         if [ -n "$message" ]; then
-            git merge --no-ff -m "$message" request
+            git merge --no-ff -m "$message" $request_name
         else
-            git merge --no-ff request
+            git merge --no-ff $request_name
         fi
     else
         echo "**** update-ref"
         git update-ref -m "fast-forwart $target to new rebased branch" \
-            refs/heads/$target request
+            refs/heads/$target $request_name
     fi
-    git switch $br
-    git branch -D request
-    git tag -d confexing/$br/to/$target
+
+    _exit_confex
+
     if [ "${1:-}" = "--update" ]; then
         # merge back to $br
         git merge --no-edit $target

@@ -4,8 +4,8 @@ load common
 
 setup() {
 
-    mkstab ../libexec/enve/pathutils \
-        normalize readlink_posix canonicalize_symlinks
+    # mkstab ../libexec/enve/pathutils \
+    #     normalize readlink_posix canonicalize_symlinks
 
     rm -rf $BATS_TMPDIR/test_readlinkf
     mkdir -p $BATS_TMPDIR/test_readlinkf
@@ -40,6 +40,8 @@ setup() {
 }
 
 @test "symlink content match" {
+    . "$ENVE_HOME/enve/pathutils"
+
     cd $BATS_TMPDIR/test_readlinkf
     [ "$(cat a/1)" = "bingo" ]
     [ "$(cat a/2)" = "bingo" ]
@@ -55,6 +57,8 @@ setup() {
 }
 
 @test "normalize" {
+    . "$ENVE_HOME/enve/pathutils"
+
     [ "$(normalize "")" = "" ]
     [ "$(normalize "/")" = "/" ]
     [ "$(normalize ".")" = "." ]
@@ -81,6 +85,8 @@ setup() {
 
 
 @test "readlink_posix" {
+    . "$ENVE_HOME/enve/pathutils"
+
     cd $BATS_TMPDIR/test_readlinkf
     [ "$(readlink_posix a/1 || true)" = "" ]
     [ "$(readlink_posix a/2 || true)" = "1" ]
@@ -98,6 +104,8 @@ setup() {
 
 
 test_links() {
+    . "$ENVE_HOME/enve/pathutils"
+
     cd $BATS_TMPDIR/test_readlinkf
     target="$(set -P; cd $BATS_TMPDIR; echo $PWD)/test_readlinkf"
     [ "$(eval $READLINK_F_EXEC a/1)" = "$target/a/1" ]
@@ -145,6 +153,8 @@ test_links() {
 }
 
 @test "canonicalize_symlinks" {
+    . "$ENVE_HOME/enve/pathutils"
+
     READLINK_F_EXEC="canonicalize_symlinks"
     cd $BATS_TMPDIR/test_readlinkf
     target="$(set -P; cd $BATS_TMPDIR; echo $PWD)/test_readlinkf"
@@ -161,6 +171,11 @@ test_links() {
     [ "$(eval $READLINK_F_EXEC aa/a/.)" = "$target/a" ]
     [ "$(eval $READLINK_F_EXEC aa/a/..)" = "$target" ]
     [ "$(eval $READLINK_F_EXEC b/../aa/a/..)" = "$target" ]
+
+    # TODO: duplicate slash
+    [ "$(eval $READLINK_F_EXEC a//1)" = "$target/a/1" ]
+    [ "$(eval $READLINK_F_EXEC a//)" = "$target/a" ]
+
     [ "$(eval $READLINK_F_EXEC aaa/aa/a/..)" = "$target" ]
     [ "$(eval $READLINK_F_EXEC aaa/aa/a/../..)" = "$(dirname $target)" ]
     [ "$(eval $READLINK_F_EXEC a/../b/../aaa/aa/a/../..)" = "$(dirname $target)" ]
@@ -195,12 +210,14 @@ test_links() {
 
 
 @test "realpath" {
+
     READLINK_F_EXEC="realpath"
     test_links
 }
 
 
 @test "readlink -f" {
+
     READLINK_F_EXEC="readlink -f"
     test_links
 }

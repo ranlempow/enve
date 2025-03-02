@@ -366,6 +366,7 @@ value_substi() {
     # paramaters
     #   _get_var
     #   _value
+    #   PASSVARS
     # output
     #   _subsited_value
 
@@ -420,7 +421,9 @@ value_substi() {
                 _var=${_center} _refs=$_refs _stay="" _undefined="" \
                 _cur="" _left="" _center="" _right="" _newvalue="" _get_var
                 case $? in
-                    0) ;;
+                    0)
+                            _center=${_val}
+                        ;;
                     1)
                             _undefined=1
                         ;;
@@ -432,7 +435,6 @@ value_substi() {
                             return $?
                         ;;
                 esac
-                _center=${_val}
             else
                 if eval [ \"\${$_center+775689}\" != 775689 ]; then
                     _undefined=1

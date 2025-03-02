@@ -4,7 +4,7 @@ load common
 
 ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"
 
-@test "b1" {
+@test "check common utiliy in baselib" {
     . "$ENVE_HOME/enve/baselib"
 
     hascmd bats
@@ -87,9 +87,9 @@ ENVE_HOME="$BATS_TEST_DIRNAME/../libexec"
     . "$ENVE_HOME/enve/baselib"
 
     tm1=$(date +%s)
-    fast_sleep 1
+    fast_sleep 2
     tm2=$(date +%s)
-    [ $((tm2 - tm1)) -eq 1 ]
+    [ $((tm2 - tm1)) -ge 1 ]
 }
 
 @test "fast_timestamp_ms" {

@@ -201,6 +201,52 @@ fi
 #     :
 # fi
 
+get_system2() {
+
+    read -r KERNEL release MACHINE <<EOF
+$(uname -s -r -m)
+EOF
+    case $MACHINE in
+        amd64) MACHINE=x86_64 ;;
+        arm64) MACHINE=aarch64 ;;
+    esac
+    while true; do
+        case $release in
+            *-WSL2)
+                IFS=. read -r m n x <<EOF
+$release
+EOF
+                KERNEL=Linux_WSL2
+                KERNEL_VERSION=$m${n:+.$n}
+                break
+                ;;
+        esac
+        case $KERNEL in
+            Windows*)           # busybox-win32
+                KERNEL=Windows
+                KERNEL_VERSION=${release%%.*}
+                ;;
+            MINGW*|MSYS*)       # msys
+                KERNEL_VERSION=${KERNEL##*-}
+                KERNEL_VERSION=${KERNEL_VERSION%%.*}
+                KERNEL=Windows
+                ;;
+            Darwin*)
+                KERNEL=Darwin
+                KERNEL_VERSION=${release%%.*}
+                ;;
+            Linux|*BSD)
+                IFS=. read -r m n x <<EOF
+$release
+EOF
+                KERNEL_VERSION=$m${n:+.$n}
+                ;;
+            *)  KERNEL_VERSION=;;
+        esac
+        break
+    done
+}
+
 _os_by_ostype() {
     case $OSTYPE in
         linux*)     ENVE_CACHED_OS=Linux;;
@@ -468,7 +514,7 @@ _fast_sleep() {
         #     mkfifo -m 600 "$pipepath" || true
         # fi
         # read -r -t "$1" <> "$pipepath" || true
-        read -t "$1" -N 0 </dev/zero || true
+        read -t "$1" -N 1 </dev/zero || true
     else
         sleep "$1"
     fi
@@ -1246,7 +1292,8 @@ probe_situation() {
 
 
 any_key_continue() {
-    if [ -n "${PS1:-}" ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
+    # if [ -n "${PS1:-}" ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
+    if [ -t 0 ] && [ -t 2 ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
         printf %s\\n "${1:-Press enter to continue}" >&2
         # shellcheck disable=2034
         read -r X
@@ -1255,9 +1302,10 @@ any_key_continue() {
 }
 
 comfire_yes_or_no() {
-    if [ -n "${PS1:-}" ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
+    # if [ -n "${PS1:-}" ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
+    if [ -t 0 ] && [ -t 2 ] && [ -z "${ENVE_NO_INTERACT:-}" ]; then
         while true; do
-            printf %s\\n "${1:-continue?} (yes/no)" >&2
+            printf "%s " "${1:-continue?} (yes/no)" >&2
             read -r X
             if [ "${X#[Yy]}" != "$X" ]; then
                 break
@@ -1487,7 +1535,8 @@ _format_tail() {
         done
     fi
     fmts="$fmts ${prefix:-}%s"
-    if [ "${ENVE_PROGRESS:-}" = "1" ] && [ "$loglevel" -le 3 ]; then
+    if [ "${ENVE_PROGRESS:-}" = "1" ] && [ "$loglevel" -le 3 ] && \
+       [ "$_logging_title" != error ]; then
         _calc_columns
         _truncat_by_column $((COLUMNS - 15 - ${ENVE_FIRE_DEPTH:-0} * 2))
         fmts="\\r$fmts"
@@ -1671,6 +1720,10 @@ quiet_exit() {
 
 settrace() {
     # trap '[ $? -eq 0 ] || echo err in $FUNCNAME in $BASH_SOURCE >&2' EXIT
+    if [ -n "${BATS_VERSION:-}" ]; then
+        # Under test environment
+        return 0
+    fi
 
     trap '
     retcode=$?
@@ -1714,7 +1767,7 @@ posix_which() {
         -a) all=-a; shift; ;;
         '') return 1; ;;
     esac
-    if command -v which; then
+    if command -v which >/dev/null; then
         which $all "$@" 2>/dev/null
     elif [ -n "${BASH_VERSION:-}" ]; then
         type -p $all "$@" 2>/dev/null

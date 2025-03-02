@@ -256,12 +256,12 @@ resolve_parts() {
                 return 1
             }
             known=$(resolve_parts "/" "$abs/$basepath") || {
-                # echo "XXXX" >&2
                 return 1
             }
         elif [ "$known" = "/" ]; then
             known=
         fi
+        # echo "known: $known" >&2
 
         if [ "$tailpath" = "" ]; then
             # unknown is the only last componment and user indicate that last componment is a directory
@@ -289,6 +289,22 @@ resolve_parts() {
     fi
 }
 
+simple_normalize() {
+    # clear duplicate slash, ex: 'a//b' -> 'a/b'
+    end=
+    if [ ${path#"${path%?}"} = '/' ]; then
+        path=${path%"/"}
+        end=/
+    fi
+    IFS=/ read -r c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 c16 c17 <<EOF
+$path
+EOF
+    path=$c1${c2:+"/$c2"}${c3:+"/$c3"}${c4:+"/$c4"}${c5:+"/$c5"}
+    path=$path${c6:+"/$c6"}${c7:+"/$c7"}${c8:+"/$c8"}${c9:+"/$c9"}
+    path=$path${c10:+"/$c10"}${c11:+"/$c11"}${c12:+"/$c12"}${c13:+"/$c13"}
+    path=$path${c14:+"/$c14"}${c15:+"/$c15"}${c16:+"/$c16"}${c17:+"/$c17"}$end
+}
+
 canonicalize_symlinks() {
 
     # example: /a/b/../c
@@ -305,5 +321,9 @@ canonicalize_symlinks() {
 
     ensure_readlink_command
     infcnt=0
-    resolve_parts "." "$1"
+    path=$1
+    simple_normalize || {
+        return 1
+    }
+    resolve_parts "." "$path"
 }

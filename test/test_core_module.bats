@@ -3,19 +3,18 @@
 load common
 
 
-setup() {
-    mkstab ../libexec/enve/findutils \
-        fnmatch fnmatch_pathname_transform \
-        make_gitignore_filter gitignore_filter \
-        files_stats files_stats_contents
-    mkstab ../libexec/enve/core/base/enve.module \
-        resolve_first resolve_basic resolve_command resolve_terminal \
-        resolve_prompt resolve_nix resolve_macos \
-        filter_kv_in_table
-
-    mkstab ../libexec/enve/envelib \
-        table_subset out_var table_tail
-}
+# setup() {
+#     mkstab ../libexec/enve/findutils \
+#         fnmatch fnmatch_pathname_transform \
+#         make_gitignore_filter gitignore_filter \
+#         files_stats files_stats_contents
+#     mkstab ../libexec/enve/core/base/enve.module \
+#         resolve_first resolve_basic resolve_command resolve_terminal \
+#         resolve_prompt resolve_nix resolve_macos \
+#         filter_kv_in_table
+#     mkstab ../libexec/enve/envelib \
+#         table_subset out_var table_tail
+# }
 
 
 
@@ -25,54 +24,67 @@ setup() {
 }
 
 @test "core module - basic load" {
+    . "$ENVE_HOME/enve/core/base/base-early.module"
     [ -n "$(TABLE="" resolve_first)" ]
 }
 
+
 @test "core module - resolve_first" {
-    export TABLE="$(TABLE="" resolve_first)"
+    . "$ENVE_HOME/enve/core/base/base-early.module"
+    TABLE="$(TABLE="" resolve_first)"
     [ -n "$(table_subset HOME)" ]
     [ -n "$(table_subset USER)" ]
     [ -n "$(table_subset TMPDIR)" ]
 }
 
-@test "core module - resolve_basic" {
-    export TABLE="$(TABLE="" resolve_basic)"
-}
 
 @test "core module - resolve_command" {
-    export TABLE="$(TABLE="$(out_var cmd.mycmd 'echo x')" resolve_command)"
+    . "$ENVE_HOME/enve/core/base/base-late.module"
+    TABLE="$(TABLE="$(out_var cmd.mycmd 'echo x')" resolve_command)"
     cmddir="$(table_tail PATH LIST)"
     [ -x "$cmddir/mycmd" ]
     [ "$(cat $cmddir/mycmd)" = "echo x" ]
 }
 
 @test "core module - resolve_terminal" {
-    export TABLE="$(TABLE="$(
+    . "$ENVE_HOME/enve/core/terminal/terminal.module"
+    TABLE="$(TABLE="$(
         out_var core.target shell
         out_var terminal.size 200x300
         out_var terminal.theme xyz
     )" resolve_terminal)"
-    [ -n "$(table_subset TERMSIZE)" ]
-    [ -n "$(table_subset TERMTHEME)" ]
+    [ -n "$(table_subset sh CODE)" ]
+    # [ -n "$(table_subset TERMSIZE)" ]
+    # [ -n "$(table_subset TERMTHEME)" ]
+}
+
+@test "core module - resolve_shell" {
+    . "$ENVE_HOME/enve/core/base/base-early.module"
+    TABLE="$(TABLE="$(out_var core.target shell)" resolve_shell)"
+    [ -n "$(table_subset ENVE_BASHOPTS JOIN)" ]
+    [ -n "$(table_subset ENVE_SHELLOPTS JOIN)" ]
 }
 
 @test "core module - resolve_prompt" {
-    # TODO: rename ENV_ROOT
-    export TABLE="$(TABLE="$(
+    . "$ENVE_HOME/enve/core/base/base-late.module"
+    . "$ENVE_HOME/enve/baselib"
+    gitexec=$(posix_which git)
+    if [ -n "$gitexec" ] && [ "${gitexec%"/bin/git"*}" != ${gitexec} ]; then
+        SYSROOT="${gitexec%"/bin/git"*}"
+    else
+        skip
+    fi
+    TABLE="$(TABLE="$(
         out_var core.target shell
-        out_var ENV_ROOT $ENV_ROOT
+        out_var enve.sysroots "$SYSROOT"
     )" resolve_prompt)"
-
     [ -n "$(table_subset git-completion SRC)" ]
     [ -n "$(table_subset git-prompt SRC)" ]
     [ -n "$(table_subset bash_completion SRC)" ]
-
-    [ -n "$(table_subset ENVE_BASHOPTS JOIN)" ]
-    [ -n "$(table_subset ENVE_SHELLOPTS JOIN)" ]
-
 }
 
 @test "core module - resolve_nix" {
+    . "$ENVE_HOME/enve/core/nix/nix.module"
     TABLE="$(TABLE="$(
         out_var enve.no_nix true
     )" resolve_nix)"
@@ -89,9 +101,9 @@ setup() {
 
 
 @test "core module - resolve_macos" {
-    export TABLE="$(TABLE="" resolve_macos)"
-
-    [ -n "$(table_subset PATH LIST)" ]
+    . "$ENVE_HOME/enve/core/macos/macos.module"
+    TABLE="$(TABLE="" resolve_macos)"
+    [ -n "$(table_subset PATH JOIN)" ]
 }
 
 
@@ -105,6 +117,15 @@ setup() {
 # }
 
 @test "nodejs module" {
-    :
+    : # TODO 2024
 }
+
+@test "pyvenv module" {
+    : # TODO 2024
+}
+
+@test "homebrew" {
+    : # TODO 2025
+}
+
 

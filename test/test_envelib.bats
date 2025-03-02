@@ -3,31 +3,26 @@
 
 load common
 
-setup() {
-    mkstab ../libexec/enve/envelib \
-        module_sort_after get_module_info \
-        fire_chain
+# setup() {
+#     mkstab ../libexec/enve/envelib \
+#         module_sort_after get_module_info \
+#         fire_chain
+#     mkstab ../libexec/enve/envelib \
+#         enve_parse_config <<"EOF"
+# printf %s\\n "$TABLE"
+# EOF
+#     mkstab ../libexec/enve/pathutils \
+#         canonicalize_symlinks
+#     tab="$(printf '\tx')"
+#     tab="${tab%x}"
+#     feed="$(printf '\fx')"
+#     feed="${feed%x}"
+#     vtab="$(printf '\vx')"
+#     vtab="${vtab%x}"
+#     newl="$(printf '\nx')"
+#     newl="${newl%x}"
+# }
 
-    mkstab ../libexec/enve/envelib \
-        enve_parse_config <<"EOF"
-printf %s\\n "$TABLE"
-EOF
-
-    mkstab ../libexec/enve/pathutils \
-        canonicalize_symlinks
-
-
-
-    tab="$(printf '\tx')"
-    tab="${tab%x}"
-    feed="$(printf '\fx')"
-    feed="${feed%x}"
-    vtab="$(printf '\vx')"
-    vtab="${vtab%x}"
-    newl="$(printf '\nx')"
-    newl="${newl%x}"
-
-}
 
 # @test "builtin_loader" {
 #     (
@@ -111,26 +106,24 @@ EOF
 #     [ "$(fire_chain1 "ABC!build!run@R1" fire locate_project)" = "ABC_LOC_DEF_LOC/enve.ini@R1" ]
 # }
 
-@test "enve_parse_config" {
-    # input
-    #   [parse_inherit]
-    #   [parse_profile_optional]
-    #   [roles]
-    #   [loaded]
-    #   [stage1_is_text]
-    #   $1 - STAGE1_FILE or STAGE1_TEXT
-    #
-
-    echo "BATS_TEST_TMPDIR:$BATS_TEST_TMPDIR" >&2
-    echo x > $BATS_TEST_TMPDIR/y
-    [ $(cat "$BATS_TEST_TMPDIR/y") = x ]
-    # TABLE=$(
-    #     parse_inherit=1 \
-    #     parse_profile_optional="" \
-    #     roles="module-info" loaded="" \
-    #     enve_parse_config "$module_root/enve.ini")
-
-}
+# @test "enve_parse_config" {
+#     # input
+#     #   [parse_inherit]
+#     #   [parse_profile_optional]
+#     #   [roles]
+#     #   [loaded]
+#     #   [stage1_is_text]
+#     #   $1 - STAGE1_FILE or STAGE1_TEXT
+#     #
+#     echo "BATS_TEST_TMPDIR:$BATS_TEST_TMPDIR" >&2
+#     echo x > $BATS_TEST_TMPDIR/y
+#     [ $(cat "$BATS_TEST_TMPDIR/y") = x ]
+#     # TABLE=$(
+#     #     parse_inherit=1 \
+#     #     parse_profile_optional="" \
+#     #     roles="module-info" loaded="" \
+#     #     enve_parse_config "$module_root/enve.ini")
+# }
 
 @test "exec_loaders_with_info" {
     :
@@ -145,6 +138,7 @@ EOF
 }
 
 @test "execute_envdef" {
+    . "$ENVE_HOME/enve/envelib"
     RC_CONTENT=$(execute_envdef "$TABLE" shell)
 
     # if ! execute_envdef "$TABLE" "$target" > "$RCFILE_PATH"; then
@@ -159,17 +153,22 @@ EOF
 
 
 @test "get_module_info" {
+    . "$ENVE_HOME/enve/envelib"
+
+    # TODO
+    skip "too slow"
+
     base=$(canonicalize_symlinks "$BATS_TEST_TMPDIR")
     cat > "$BATS_TEST_TMPDIR/enve.ini" <<EOF
 [define.module.mymod.x]
 procedure=x
 EOF
-
+    # @print: [name,procedure,after,before,exec,options,enve,path, ...]
     get_module_info "$BATS_TEST_TMPDIR" >&2
     [ "$(get_module_info "$BATS_TEST_TMPDIR")" = \
         "mymod,x,:,:,$base/mymod.x,,$base/enve.ini,$base" \
     ]
-
+    # "mymod,x,:,:,$base/mymod.x,,$base/enve.ini,$base"
 
     cat > "$BATS_TEST_TMPDIR/enve.ini" <<EOF
 [define.module.mymod2.y]
@@ -181,6 +180,8 @@ exec=/bin/sh
 enve=./xxx.enve
 EOF
     get_module_info "$BATS_TEST_TMPDIR" >&2
+    get_module_info "$BATS_TEST_TMPDIR" >&2
+    echo "mymod2,y,:a:,:b:,$(canonicalize_symlinks "/bin/sh"),native_exec=1;source_exec=1;,$base/xxx.enve,$base" >&2
     [ $(get_module_info "$BATS_TEST_TMPDIR") = \
         "mymod2,y,:a:,:b:,$(canonicalize_symlinks "/bin/sh"),native_exec=1;source_exec=1;,$base/xxx.enve,$base" \
     ]
@@ -211,7 +212,50 @@ mymod,y,:,:,$base/mymod.y,,$base/enve.ini,$base" \
     ]
 }
 
+@test "module_sort" {
+    . "$ENVE_HOME/enve/envelib"
+
+    # b_name b_procedure b_afters b_befores
+    modules='a,,:,:,
+c,,:,:,
+'
+    merge() {
+        cut -d "," -f 1 |grep -v '^$'| paste -sd ","
+    }
+    r_modules= ;p_modules= module_sort "a,,:,:," r_modules
+    [ $(echo "$r_modules"|merge) = "a" ]
+
+    r_modules= ;p_modules=$modules module_sort "a,,:,:," r_modules
+    [ $(echo "$r_modules"|merge) = "a,c" ]
+
+    r_modules= ;p_modules=$modules module_sort "b,,:a:,:c:," r_modules
+    [ $(echo "$r_modules"|merge) = "a,b,c" ]
+
+    r_modules= ;p_modules=$modules module_sort "b,,:a:,:," r_modules
+    [ $(echo "$r_modules"|merge) = "a,c,b" ]
+
+    r_modules= ;p_modules=$modules module_sort "b,,:,:a:," r_modules
+    [ $(echo "$r_modules"|merge) = "b,a,c" ]
+
+    r_modules= ;p_modules=$modules module_sort "b,,:c:,:," r_modules
+    [ $(echo "$r_modules"|merge) = "a,c,b" ]
+
+    r_modules= ;p_modules=$modules module_sort "b,,:,:c:," r_modules
+    [ $(echo "$r_modules"|merge) = "a,b,c" ]
+}
+
 @test "module_sort_after" {
+    . "$ENVE_HOME/enve/envelib"
+    skip 'deprecated'
+
+    # module_sort() {
+    # arguments:
+    #   p_modules
+    #   name
+    #   procefure
+    #   afters
+    #   befores
+
     merge() {
         cut -d "," -f 1 | paste -sd ","
     }

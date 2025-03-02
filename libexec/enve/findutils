@@ -6,11 +6,186 @@ if [ -n "${HAVE_ENVE_FINDUTILS:-}" ]; then
 fi
 HAVE_ENVE_FINDUTILS=1
 
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/pathutils"
 
 newl="$(printf '\nx')"
 newl="${newl%x}"
 
 
+build_minmax_slashs() {
+    p=$1
+    minp=
+    maxp=
+    while [ "${p}" != "${p%/*}" ]; do
+        minp="${minp}/*"
+        p=${p%/*}
+    done
+    maxp="${minp}/*"
+    # minp=${maxp%"/*"}
+    unset p
+}
+
+build_gitignore_to_find_logic() {
+    root=$1
+    ignores=${2:-}
+    # action=${3:-"-print"}
+    shift 2
+    ARGSTR=
+    for a in "$@"; do
+        fast_append_argument_quote2 "$a"
+    done
+    set --
+    action=${ARGSTR:-'-print'}
+    while read -r pat; do
+        origin_pat=$pat
+
+        trailingspace=${pat##*[![:space:]]}
+        pat=${pat%"$trailingspace"}
+        if [ -z "$pat" ]; then
+            continue
+        fi
+        nagtive=
+        FIND_ACTION=-prune
+        if [ -z "${pat%"!"*}" ]; then
+            nagtive=1
+            FIND_ACTION=$action
+            pat=${pat#"!"}
+        fi
+        if [ -z "${pat%%\#*}" ]; then
+            # skip comment
+            continue
+        fi
+
+        endslash=
+        if [ "${pat%"/"}" != "$pat" ]; then
+            pat=${pat%"/"}
+            endslash=1
+        fi
+        base=${pat##*"/"}
+        pat=${pat%"$base"}
+        pat=${pat%"/"}
+
+        children=
+        case $base in
+            '**'|'*'|'') children=1;;
+        esac
+
+        # echo y${pat}y${base}y${pat##*'*'*}y${pat##*'**'*}y >&2
+
+        if [ -z "$pat" ]; then
+            # 無目錄
+            if [ -n "$children" ]; then
+                set -- "$@" -path "$root/*" -name '*'
+                eval set -- \"\$@\" $FIND_ACTION -o
+            else
+                set -- "$@" -path "$root/*" -name "$base" ${endslash:+-type d}
+                eval set -- \"\$@\" $FIND_ACTION -o
+            fi
+        elif [ -z "${pat##*'**'*}" ] && [ -z "${pat##*'*'*}" ]; then
+            # 混用單星與雙星，而且不是在最尾端的情形
+            _error "unsupported mix-star pattern '$origin_pat'"
+            return 1
+        elif [ -z "${pat##*'*'*}" ]; then
+            # 單星
+            s=$pat
+            if [ -n "$children" ]; then
+                # set -- "$@" \( ! -path "$root/*/*/*/*" -path "$root/*/*/*" \
+                #                  -path "$root/$s" $FIND_ACTION \) -o
+                build_minmax_slashs "$pat/*"
+                set -- "$@" \( ! -path "$root$maxp" -path "$root$minp" \
+                                 -path "$root/$s"
+                eval set -- \"\$@\" $FIND_ACTION \\\) -o
+            else
+                build_minmax_slashs "$pat/*/*"
+                set -- "$@" \( ! -path "$root$maxp" -path "$root$minp" \
+                                 -path "$root/$s/*" -name "$base" ${endslash:+-type d}
+                eval set -- \"\$@\" $FIND_ACTION \\\) -o
+            fi
+        else
+            # 雙星或無星
+            s=$pat
+            replace "**" "*"
+            if [ -n "$children" ]; then
+                set -- "$@" -path "$root/$s" -type d
+                eval set -- \"\$@\" $FIND_ACTION -o
+            else
+                set -- "$@" -path "$root/$s/*" -name "$base" ${endslash:+-type d}
+                eval set -- \"\$@\" $FIND_ACTION -o
+            fi
+        fi
+    done<<EOF
+$ignores
+EOF
+    ARGSTR=
+    for a in "$@"; do
+        fast_append_argument_quote2 "$a"
+    done
+}
+
+gitignore_ls2() {
+    action=-print
+    ignores=
+    root=
+    name=
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --long) action="-exec ls -l {} +"; shift;;
+            --hash) action="-exec md5sum -b {} +"; shift;;
+            --ignore) ignores=$ignores${2:-}${newl}; shift 2;;
+            --file) shift 1; set -- "$@" -type f;;
+            --dir) shift 1; set -- "$@" -type d;;
+            -exec) action=; break;;
+            *)
+                if [ -z "$root" ]; then
+                    root=$(normalize "$1")
+                    shift
+                else
+                    break
+                fi
+        esac
+    done
+    root=${root:-.}
+    # action="$@ ${action}"
+
+    set -- "$@" $action
+    build_gitignore_to_find_logic "$root" "$ignores" "$@"
+    for a in "$@"; do
+        fast_append_argument_quote2 "$a"
+    done
+    _trace Run find "$root" "$ARGSTR"
+    eval find \"\$root\" "$ARGSTR"
+}
+
+
+fnmatch() {
+    patterns=$1
+    filename=$2
+    [ -n "$filename" ] || return 1
+    while read -r pat; do
+        case $filename in ($pat) return 0;; esac
+    done <<EOF
+$patterns
+EOF
+    return 1
+}
+
+fnmatch_exclude() {
+    patterns=$1
+    paths=$2
+    while read -r filename; do
+        fnmatch "$patterns" "$filename" || printf '%s\n' "$filename"
+    done <<EOF
+$paths
+EOF
+}
+
+# gitignore_exclude() {
+#     gitignore_ls2 --file --ignore "$1"
+# }
 
 # fnmatch_pathname_transform() {
 #     pat="$1"
@@ -81,6 +256,7 @@ EOF
     # 4rd line: double ** at beginning
     # 5rd line: questmark ?, represent any character
 
+
     sed -E \
         -e 's#([\[\]\(\)\{\}\.\^\$\+\|\ ])#\\\1#g' \
         -e 's#([^*]|^)\*([^*]|$)#\1[^/][^/]*\2#g' \
@@ -126,24 +302,29 @@ gitignore_exclude() {
     _load_ex_add "$1"
 
     if [ -z "$exclude_pats" ]; then
-        :
+        echo "$2" | grep -v -e "^$"
     elif [ -z "$addbacks_pats" ]; then
         _genre "$exclude_pats"
-        trace "RE:$newl$RE"
-
-        eval grep "$RE" <<EOF
-$2
-EOF
+        _trace "RE:$newl$RE"
+        echo "$2" | grep -v -e "^$" | eval grep -v $RE
+#         eval grep -v $RE <<EOF
+# $2
+# EOF
     else
         _genre "$exclude_pats"
         RE1=$RE
         _genre "$addbacks_pats"
-        eval grep "$RE" <<EOF
-$(eval grep "$RE1" <<EOF2
-$2
-EOF2
-)
-EOF
+        _trace "exclude RE1:$newl$RE1"
+        _trace "addbacks RE:$newl$RE"
+        echo "$2" | grep -v -e "^$" | eval grep -v "$RE1"
+        echo "$2" | grep -v -e "^$" | eval grep "$RE1" | eval grep "$RE"
+
+#         eval grep "$RE" <<EOF
+# $(eval grep "$RE1" <<EOF2
+# $2
+# EOF2
+# )
+# EOF
     fi
 }
 
@@ -154,28 +335,34 @@ gitignore_include() {
     _load_ex_add "$1"
 
     if [ -z "$exclude_pats" ]; then
-        printf %s\n "$2"
+        # printf %s\n "$2"
+        :
     elif [ -z "$addbacks_pats" ]; then
         _genre "$exclude_pats"
         trace "RE:$newl$RE"
-        eval grep -v "$RE" <<EOF
-$2
-EOF
+        echo "$2" | grep -v -e "^$" | eval grep $RE
+#         eval grep -v "$RE" <<EOF
+# $2
+# EOF
 
     else
         _genre "$exclude_pats"
         RE1=$RE
         _genre "$addbacks_pats"
-        eval grep -v "$RE1" <<EOF
-$2
-EOF
-        data2=$(eval grep -P "$RE1" <<EOF
-$2
-EOF
-)
-        eval grep "$RE" <<EOF
-$data2
-EOF
+        _trace "include RE1:$newl$RE1"
+        _trace "excludes RE:$newl$RE"
+        echo "$2" | grep -v -e "^$" | eval grep "$RE1" | eval grep -v "$RE"
+
+#         eval grep -v "$RE1" <<EOF
+# $2
+# EOF
+#         data2=$(eval grep -P "$RE1" <<EOF
+# $2
+# EOF
+# )
+#         eval grep "$RE" <<EOF
+# $data2
+# EOF
     fi
 }
 
@@ -248,6 +435,7 @@ EOF
 }
 
 
+# TODO: 用 gitignore_ls@prjlb 取代
 _files_stats() {
     content="$1"
     shift

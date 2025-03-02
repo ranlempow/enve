@@ -1,0 +1,612 @@
+#!/bin/sh
+
+# shellcheck disable=2016
+true
+
+if [ -n "${HAVE_ENVE_PRJLIB:-}" ]; then
+    return 0
+fi
+HAVE_ENVE_PRJLIB=1
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/tablelib"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/pathutils"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/findutils"
+
+parse_semver() {
+    semver=$1
+    semver=${semver#"v"}
+    semver=${semver%%"+"*}
+    VER_PRERELEASE=${semver#*"-"}
+    semver=${semver%"-$VER_PRERELEASE"}
+    IFS="." read -r VER_MAJOR VER_MINOR VER_HOTFIX <<EOF
+$semver
+EOF
+    if [ -z "${allownull:-}" ]; then
+        VER_MINOR=${VER_MINOR:-0}
+        VER_HOTFIX=${VER_HOTFIX:-0}
+    fi
+    case $VER_MAJOR in
+        [0-9]*);;
+        *) return 1;;
+    esac
+    case $VER_MINOR in
+        [0-9]*|'');;
+        *) return 1;;
+    esac
+    case $VER_HOTFIX in
+        [0-9]*|'');;
+        *) return 1;;
+    esac
+}
+
+sort_semver() {
+    echo "$1" | while read -r v; do
+        if [ -n "$v" ]; then
+            parse_semver "$v" || {
+                _error "unkonwn semver '$v'"
+                return 1
+            }
+            printf "%10d%10d%10d%40s:%s\\n" \
+                "$VER_MAJOR" "$VER_MINOR" "$VER_HOTFIX" "$VER_PRERELEASE" "$v"
+        fi
+    done | sort | while IFS=: read -r cols v; do
+        echo "$v"
+    done
+}
+
+is_left_semver_greater() {
+    # 0: left greater
+    # 1: equal
+    # 2: right greater
+
+    allownull=1 parse_semver "$1" || {
+        _error "unkonwn semver '$1'"
+        return 1
+    }
+    leftmajor=$VER_MAJOR
+    leftminor=$VER_MINOR
+    lefthotfix=$VER_HOTFIX
+    leftpre=$VER_PRERELEASE
+    allownull=1 parse_semver "$2" || {
+        _error "unkonwn semver '$2'"
+        return 1
+    }
+
+    if [ "$leftmajor" -gt "$VER_MAJOR" ] ; then
+        return 0
+    elif [ "$leftmajor" -lt "$VER_MAJOR" ] ; then
+        return 2
+    fi
+
+    if [ -z "$leftminor$VER_MINOR" ]; then
+        return 1
+    elif [ -z "$VER_MINOR" ]; then
+        return 2
+    elif [ -z "$leftminor" ]; then
+        return 0
+    elif [ "$leftminor" -gt "$VER_MINOR" ]; then
+        return 0
+    elif [ "$leftminor" -lt "$VER_MINOR" ]; then
+        return 2
+    fi
+
+    if [ -z "$lefthotfix$VER_HOTFIX" ]; then
+        return 1
+    elif [ -z "$VER_HOTFIX" ]; then
+        return 2
+    elif [ -z "$lefthotfix" ]; then
+        return 0
+    elif [ "$lefthotfix" -gt "$VER_HOTFIX" ]; then
+        return 0
+    elif [ "$lefthotfix" -lt "$VER_HOTFIX" ]; then
+        return 2
+    fi
+
+    if [ "$leftpre" = "$VER_PRERELEASE" ]; then
+        return 1
+    elif [ -z "$leftpre" -a -n "$VER_PRERELEASE" ]; then
+        return 0
+    elif [ -n "$leftpre" -a -z "$VER_PRERELEASE" ]; then
+        return 2
+    else
+        read -r line <<EOF
+$(sort_semver "$1${newl}$2")
+EOF
+        if [ "$line" = "$1" ]; then
+            return 0
+        else
+            return 2
+        fi
+    fi
+}
+
+
+gitignore_walk() {
+    # 完整執行所有的gitignore流程
+
+    targetdir=$(normalize "$1")
+    shift
+    git_basic_info "$targetdir"
+    # return: gitdir absgitdir worktree_prefix
+
+    ARGSTR2="'-name' '.git' -prune -o"
+    # [ -n "$gitdir" ] || {
+    #     _error "'$targetdir' is not a git controlled directory"
+    #     return 1
+    # }
+    if [ -n "$gitdir" ]; then
+        ARGSTR2="${ARGSTR2} '-path' '$absgitdir' -prune -o"
+    fi
+    global="${XDG_CONFIG_HOME:-"$HOME/.config"}/git/ignore"
+    if [ -f "$global" ]; then
+        fast_readtext "$global"
+        ignores=$text
+        build_gitignore_to_find_logic "$targetdir" "$ignores" "$@"
+        ARGSTR2="${ARGSTR2} ${ARGSTR}"
+    fi
+    if [ -n "$gitdir" ] && [ -f "$gitdir/info/exclude" ]; then
+        fast_readtext "$gitdir/info/exclude"
+        ignores=$text
+        build_gitignore_to_find_logic "$targetdir" "$ignores" "$@"
+        ARGSTR2="${ARGSTR2} ${ARGSTR}"
+    fi
+    worktree=${targetdir%"/${worktree_prefix%"/"}"}
+    while read -r ignorefile; do
+        if [ -f "$ignorefile" ]; then
+            fast_readtext "$ignorefile"
+            ignores=$text
+            prefix="${ignorefile%"/.gitignore"}"
+            build_gitignore_to_find_logic "$prefix" "$ignores" "$@"
+            ARGSTR2="${ARGSTR2} ${ARGSTR}"
+        fi
+    done <<EOF
+$(find "$worktree" -name '.gitignore')
+EOF
+
+    ARGSTR=$ARGSTR2
+    for a in "$@"; do
+        fast_append_argument_quote2 "$a"
+    done
+    _trace " Run" find "$targetdir" "$ARGSTR"
+    eval find \"\$targetdir\" "$ARGSTR"
+
+}
+
+
+gitignore_ls() {
+    long_format=
+    ignores=
+    dir=
+    name=
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --long) long_format=1; shift;;
+            --ignore) ignores=${2:-}${newl}; shift 2;;
+            *)
+                if [ -z "$dir" ]; then
+                    dir=$(canonicalize_symlinks "$1")
+                else
+                    name=$1
+                fi
+                shift
+        esac
+    done
+    set --
+    while read -r ig; do
+        if [ -n "$ig" ]; then
+            set -- "$@" -path "$ig" -prune -o
+        fi
+    done<<EOF
+$ignores
+EOF
+    if [ -n "$name" ]; then
+        set -- "$@" -name "$name"
+    else
+        set -- "$@" -type f
+    fi
+    if [ -n "$long_format" ]; then
+        find "$dir" "$@" -exec ls -l {} +
+    else
+        find "$dir" "$@" -print
+    fi
+}
+
+
+
+get_month() {
+    case $m in
+    Jan) m=01;;
+    Feb) m=02;;
+    Mar) m=03;;
+    Apr) m=04;;
+    May) m=05;;
+    Jun) m=06;;
+    Jul) m=07;;
+    Aug) m=08;;
+    Sep) m=09;;
+    Oct) m=10;;
+    Nov) m=11;;
+    Dec) m=12;;
+    esac
+}
+
+get_days() {
+    case $d in
+        [0-9]) d=0$d;;
+    esac
+}
+
+rewrite_hardlink() {
+    while read -r p n u g s m d t f; do
+        if [ -n "$f" ]; then
+            printf '%s - %s %s %s %s %s %s %s\n' \
+                 "$p" "$u" "$g" "$s" "$m" "$d" "$t" "$f"
+        fi
+    done
+}
+
+rewrite_datetime() {
+    nowyear=$(date +%Y)
+    nowmonth=$(date +%m)
+    while read -r p n u g s m d t f; do
+        if [ -n "$f" ]; then
+            get_month
+            get_days
+            if [ -n "${t##*:*}" ]; then
+                y=$t
+                h=0
+                t=0
+            else
+                if [ ${m##0} -gt $((${nowmonth##0} + 1)) ]; then
+                    y=$(($nowyear - 1))
+                else
+                    y=$nowyear
+                fi
+                h=${t%:*}
+                t=${t#"$h":}
+            fi
+            printf '%s %s %s %s %s %s %s\n' \
+                 "$p" "$n" "$u" "$g" "$s" "$y-$m-${d}T${h}:${t}:00" "$f"
+        fi
+    done
+}
+
+get_last_modified() {
+    # gitignore_ls . --long --ignore "*/libexec${newl}*/.git${newl}*/.DS_Store" | \
+    #     rewrite_datetime | sort -r -k 6,6 | head -n 1 | cut -d' ' -f6-6
+    last_datetime=$(echo "$rewrote_files" | sort -r -k 6,6 | head -n 1 | cut -d' ' -f6-6)
+}
+
+get_cloc() {
+    # gitignore_ls . --long --ignore "*/libexec${newl}*/.git${newl}*/.DS_Store" | \
+    # rewrite_datetime | cut -d' ' -f7- | \
+    # cloc --list-file=- --csv --quiet | \
+    while IFS="," read -r files lang blank comment code; do
+        if [ "$files" != "files" ] && [ -n "$code" ]; then
+            top_lang=$lang
+            top_lang_line_count=${code}
+            # echo "$lang: ${code}n"
+            break
+        fi
+    done <<EOF
+$(echo "$rewrote_files" | cut -d' ' -f7- | cloc --list-file=- --csv --quiet)
+EOF
+}
+
+
+read_project_toml() {
+    # 取得 Python: pyproject.toml 的名稱與版本
+    while read -r line; do
+        _value=${line#*\"}
+        _value=${_value%\""${_value#*\"}"}
+        case $line in
+            name\ =\ *) PRJNAME=${_value};;
+            version\ =\ *) PRJVER=${_value};;
+        esac
+    done < "$1"
+    unset line _value
+}
+
+read_project_json() {
+    # 取得 Nodejs: package.json 的名稱與版本
+    while read -r line; do
+        line=${line#*\"}
+        _value=${line#*\"}
+        _value=${_value#*\"}
+        _value=${_value%\""${_value#*\"}"}
+        case $line in
+            name\"\:*) PRJNAME=${_value};;
+            version\"\:*) PRJVER=${_value};;
+        esac
+    done < "$1"
+    unset line _value
+}
+
+read_markdown_section() {
+    # 取得 markdown 文件中其中一個段落，並且回傳下個段落的名稱
+    found=
+    title=
+    content=
+    pattern=$2
+    [ -n "$pattern" ] || return 1
+
+    {
+        while read -r mark title; do
+            if [ -z "$mark" -o -z "$title" ]; then
+                continue
+            fi
+            case $mark in
+                \#) ;;
+                \#\#) ;;
+                *) continue ;;
+            esac
+            if [ -z "${title##"$pattern"*}" ]; then
+                found=1
+                break
+            fi
+        done
+        [ -z "$found" ] && return 1
+        while read -r line; do
+            case $line in
+                \#\ *) breaker=${line#\# } ;;
+                \#\#\ *) breaker=${line#\#\# } ;;
+                *)
+                    content=$content$line$newl
+                    continue;;
+            esac
+            return 0
+        done
+    } < "$1"
+}
+
+get_projects_from_group() {
+    projects=
+    while read -r path; do
+        IFS=/ read -r prj config <<EOF
+${path#"$1"/}
+EOF
+        if [ -n "${prj##_*}" ] && [ "$config" = 'enve.ini' ]; then
+            projects="$projects$1/$prj$newl"
+            # project_info "$1/$prj"
+        fi
+    done <<EOF
+$(gitignore_ls "$1" enve.ini --ignore '*/node_modules')
+EOF
+#     done <<EOF
+# $(find "$1" -path '*/node_modules' -prune -o -name enve.ini -print)
+# EOF
+}
+
+
+get_project_groups() {
+    root=$1
+    groups=
+    while read -r path; do
+        path=${path%/projects.ini}
+        groups=$groups$path$newl
+        # list_all "$path"
+    done<<EOF
+$(gitignore_ls "$root" projects.ini --ignore '*/node_modules')
+EOF
+
+}
+
+
+
+readlines_to_variables() {
+    text=$1
+    shift
+    while read -r var; do
+        if [ -z "${1:-}" ]; then
+            break
+        fi
+        eval "$1=\"\$var\""
+        shift
+    done <<EOF
+$text
+EOF
+}
+
+read_to_variables() {
+    ifs=$1
+    line=$2
+    shift 2
+    IFS="$ifs" read -r "$@" <<EOF
+${line}
+EOF
+}
+
+git_last_version() {
+    vers=
+    while read -r semver; do
+        if parse_semver "$semver"; then
+            vers=$vers${semver#"v"}$newl
+        fi
+    done <<EOF
+$(git -C "$1" tag --list 'v*')
+EOF
+    sorted_vers=$(sort_semver "$vers")
+    read -r SEMVER <<EOF
+$sorted_vers
+EOF
+}
+
+git_basic_info() {
+    readlines_to_variables \
+        "$(git -C "$1" rev-parse --git-dir --absolute-git-dir --show-prefix 2>/dev/null)" \
+        gitdir absgitdir worktree_prefix
+}
+
+git_info() {
+    git_basic_info "$1"
+
+    if [ -n "$gitdir" ]; then
+        if [ -z "$worktree_prefix" ]; then
+            # project on git top-level folder
+            mainline=$(git -C "$1" rev-parse --symbolic-full-name refs/remotes/origin/HEAD || true)
+            mainline=${mainline#refs/remotes/origin/}
+            if [ -n "$mainline" ]; then
+                # parse --left-right line `${left}${tab}${right}${newl}`
+                # left: local, right: remote
+                read_to_variables "$tab" \
+                    "$(git -C "$1" rev-list --count --left-right @{upstream}...$mainline)" \
+                    local_mainline remote_mainline
+            else
+                if [ -e "$gitdir/refs/heads/master" ]; then
+                    mainline=master
+                elif [ -e "$gitdir/refs/heads/main" ]; then
+                    mainline=main
+                fi
+            fi
+            head=$(git -C "$1" symbolic-ref HEAD || true)
+            if [ -n "$head" ]; then
+                read_to_variables "$tab" \
+                    "$(git -C "$1" rev-list --count --left-right @{upstream}...HEAD)" \
+                    local_branch remote_branch
+            else
+                head=$(git -C "$1" describe --tags --exact-match HEAD 2>/dev/null) || \
+                head=$(git -C "$1" rev-parse --short HEAD 2>/dev/null)
+            fi
+            echo "$local_main $remote_main"
+            echo "$local_branch $remote_branch"
+        else
+            # project is subproject
+            :
+        fi
+        baseignore=$(git -C "$1" status --porcelain --ignored -- .)
+        if [ "${baseignore#!!}" != "$baseignore" ] ; then
+            # project is subproject but ignore
+            :
+        else
+            # project is tracked
+            treedirty=
+            git -C "$1" diff --no-ext-diff --quiet --relative || treedirty=1
+            cachedirty=
+            git -C "$1" diff --no-ext-diff --cached --quiet --relative || cachedirty=1
+        fi
+
+        # conflict="" # state indicator for unresolved conflicts
+        # if [ "$(git ls-files --unmerged 2>/dev/null)" ]; then
+        #     conflict="|CONFLICT"
+        # fi
+    fi
+}
+
+git_history() {
+    git -C "$1" log -40 --graph --date-order \
+        --format="%C(auto)%h%d %s (%ar)" \
+        --branches='request/*' ${mainline:-} HEAD
+}
+
+project_detect_type() {
+    # 判斷project的類型並且取得名稱與版本
+    nodejs=
+    python=
+    [ -f "$1/package.json" ] && nodejs=1
+    [ -f "$1/pyproject.toml" ] && python=1
+}
+
+project_info() {
+
+    true '
+
+    判斷project的類型並且取得名稱與版本
+    - Nodejs: package.json
+    - Python: pyproject.toml
+    - other: 從CHANGELOG.md 提取最後version
+
+    取得git管理模式與狀態
+    1. 無git, 包含被上層ignore
+    2. 有git, 無remote
+    3. 有git, 有remote.origin.url
+
+    - remote HEAD branch 名稱
+    - master branch 落後版本數
+    - current branch 落後版本數
+    - worktree dirty status
+    - cache dirty status
+
+    `` 沒有git
+    `(::feature dirty files)` 由上層git管理
+    `(feature dirty files)` 沒有remote
+    `(master behind 2 dirty files)`
+    `(master behind 2, feature ahead 2 dirty files)`
+    `(master behind 2, feature ahead 2 dirty cache/files)`
+
+    顯示前20個歷史提交
+
+    取得說明
+    - README.md##Helps 說明資料夾結構
+    - CHANGELOG.md##[Unreleased] 說明最近更新事項或是打算更新事項
+
+    程式碼行數統計
+    最後更新時間
+
+    '
+    _info "in project '$1'"
+    project_detect_type "$1"
+
+    PRJNAME=
+    PRJVER=
+    if [ -n "$nodejs" ]; then
+        read_project_json "$1/package.json"
+    fi
+    if [ -n "$python" ]; then
+        read_project_toml "$1/pyproject.toml"
+    fi
+
+    # 取得說明
+    if [ -f "$1/CHANGELOG.md" ]; then
+        if read_markdown_section "$1/CHANGELOG.md" "[Unreleased]"; then
+            unreleased=$content
+            if [ -z "$nodejs$python" ] && [ -n "$breaker" ]; then
+                # [1.1.1]
+                PRJVER=${breaker#*\[}
+                PRJVER=${PRJVER%%\]*}
+            fi
+        fi
+    fi
+    if [ -f "$1/README.md" ]; then
+        if read_markdown_section "$1/README.md" "Helps"; then
+            helps=$content
+        fi
+    fi
+
+    # 取得git管理模式與狀態
+    git_info
+    if [ -n "$gitdir" ]; then
+        git_history "$1"
+    #     rewrote_files=$(
+    #         gitignore_walk "$1" -exec ls -l {} +
+    #     )
+    # else
+    #     # 專案內檔案列表
+    #     rewrote_files=$(
+    #         gitignore_ls "$1" --long --ignore "*/libexec${newl}*/.git${newl}*/.DS_Store" |
+    #         rewrite_datetime)
+    fi
+    rewrote_files=$(
+        root="$1" gitignore_walk "$1" -type f -exec ls -l {} + | \
+        rewrite_datetime
+    )
+
+    # echo "$rewrote_files"
+    # return 0
+
+    # 最後更新時間
+    get_last_modified
+    # 程式碼行數統計
+    get_cloc
+
+    types=
+    types=${types}${nodejs:+"${types:+ }"js}
+    types=${types}${python:+"${types:+ }"py}
+
+    path=${1#${root:+"$root"/}}
+    echo "$path [${types}] $gitdir $prefix [${last_datetime}] $top_lang: $top_lang_line_count"
+}

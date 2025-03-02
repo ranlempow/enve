@@ -8,7 +8,12 @@ HAVE_ENVE_TESTLIB=1
 # shellcheck source=libexec/enve/urlutils
 . "$ENVE_HOME/enve/urlutils"
 
+: '
+這個檔案中有在使用的函數只剩下 harness2()
+'
 
+
+# deprecated
 _works_count() {
     cnt=0
     IFS=$t
@@ -21,7 +26,7 @@ _works_count() {
     eval "$2=\$cnt"
 }
 
-
+# deprecated
 parallel() {
     MAX_WORKER=$1
     invoke_func=$2
@@ -110,7 +115,62 @@ parallel() {
     done
 }
 
+harness2() {
+    success_count=0
+    failure_count=0
+    wanted=0
 
+    while [ $# -ge 2 ]; do
+        testname=$1
+        cmd=$2
+        shift 2
+        {
+        while read -r line; do
+            case $line in
+                *..*)
+                    a=${line%%..*}
+                    b=${line##*..}
+                    if [ $a -eq 1 ] 2>/dev/null &&
+                       [ $b -ge 1 ] 2>/dev/null; then
+                        wanted=$((wanted + b))
+                        # printf '# RUN %s: %s (0/%d)\n' "$testname" "$cmd" "$b"
+                    fi
+                    ;;
+                ok\ *)
+                    IFS=' ' read -r a b c <<EOF
+$line
+EOF
+                    if [ "$a" = ok ] && [ $b -ge 1 ] 2>/dev/null; then
+                        success_count=$((success_count + 1))
+                    fi
+                    ;;
+                not\ ok\ *)
+                    IFS=' ' read -r a b c d <<EOF
+$line
+EOF
+                    if [ "$a" = not ] && [ "$b" = ok ] && [ $c -ge 1 ] 2>/dev/null; then
+                        failure_count=$((failure_count + 1))
+                    fi
+                    ;;
+            esac
+            printf %s\\n "$line"
+        done <<EOF
+$(if TEST_TAP=tap $cmd; then printf '
+1..1
+ok 1 - RESULT %s: %s successed
+' "$testname" "$cmd"; else printf '
+1..1
+not ok 1 - RESULT %s: %s failed
+' "$testname" "$cmd"; fi)
+EOF
+        }
+    done
+    unset a b c d line testname cmd
+}
+
+
+
+# deprecated
 harness() {
     true '
 harness TESTNAME1 CMD1 [TESTNAME2 CMD2] ...

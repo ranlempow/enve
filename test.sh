@@ -1,5 +1,7 @@
 #/bin/sh
 
+# REMOVE THIS. 'test.sh' no longer needed
+
 check_shebang() {
     other_shebang=
     for file in $(find . -type f); do
@@ -185,6 +187,9 @@ check_stdio() {
 #     echo "ok 3 dummy 3"
 # }
 
-tap=${tap:-}
-"check_${1:-shell}"
+# tap=${tap:-}
+# "check_${1:-shell}"
+
+bats ${TEST_TAP:+--tap} ./test/test_*
+
 
