@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# 廢棄:
+#  .inputrc 已經內建
+#  .tmux.conf 目前沒有使用
+#  .vimrc  目前沒有使用
 
 # shellcheck source=libexec/enve/baselib
 . "$ENVE_HOME/enve/baselib"
@@ -23,7 +27,6 @@ settrace
 #         _info "create $_path"
 #     fi
 # }
-
 
 install_terminal() {
     # _install_config ~/.tmux.conf "$ZERO/../term/tmux.conf"
