@@ -52,7 +52,7 @@ builtin_loader() {
                 ;;
             *)
                     fast_table_subset "enve\\.pkg-system"
-                    case ${TABLE_SUBSET:-brew} in
+                    case ${TABLE_SUBSET:-} in
                         brew) normalize "$ENVE_HOME/enve/core/brew" ;;
                         pkgsrc) normalize "$ENVE_HOME/enve/core/pkgsrc" ;;
                     esac
