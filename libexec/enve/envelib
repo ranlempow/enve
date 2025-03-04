@@ -1284,9 +1284,6 @@ fire2() {
         fi
     elif [ -n "${EXEC_SUBSHELL:-}" ]; then
         (
-            # if type -t "$EXEC_SUBSHELL" >/dev/null; then
-            #     _exec_func=$EXEC_SUBSHELL
-            # fi
             _exec_func=$EXEC_SUBSHELL
             . "$RCFILE_PATH"
             unset EXEC_SUBSHELL RCFILE_PATH
@@ -1303,7 +1300,8 @@ fire2() {
                     . "$_SOURCE_FILE"
                 fi
             fi
-            if [ -n "${_exec_func:-}" ] && type -t "${_exec_func}" >/dev/null; then
+            # if [ -n "${_exec_func:-}" ] && type -t "${_exec_func}" >/dev/null; then
+            if [ "$(type "${_exec_func:-}")" = "${_exec_func:-} is a shell function" ]; then
                 ${_exec_func}
             fi
         )

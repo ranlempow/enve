@@ -417,7 +417,7 @@ value_substi() {
             _stay=1
         elif [ -n "${_namepart}" ] && [ "${_namepart#*\$}" = "${_namepart}" ] && \
                                     [ "${_recpart#*\$\(}" = "${_recpart}" ]; then
-            if type -t _get_var >/dev/null; then
+            if type _get_var >/dev/null; then
                 _var=${_center} _refs=$_refs _stay="" _undefined="" \
                 _cur="" _left="" _center="" _right="" _newvalue="" _get_var
                 case $? in
