@@ -321,8 +321,14 @@ resolve_prompt() {
             # if [ -f "$ENV_ROOT/share/bash-completion/bash_completion" ]; then
             #     out_source bash_completion "$ENV_ROOT/share/bash-completion/bash_completion"
             # fi
-            out_code sh "BASH_COMPLETION_COMPAT_DIR=@@__NOT_USED@@"
-            out_code sh "BASH_COMPLETION_USER_FILE=@@__NOT_USED@@"
+
+            
+            if [ "$ENVE_CACHED_OS" = Darwin ]; then
+                # 禁用系統預設
+                out_code sh "BASH_COMPLETION_COMPAT_DIR=@@__NOT_USED@@"
+                # 禁用使用者預設
+                out_code sh "BASH_COMPLETION_USER_FILE=@@__NOT_USED@@"
+            fi
             # fast_table_subset "enve\\.sysroots"
             # fast_as_concat "$newl"
             # roots=$TABLE_AS
