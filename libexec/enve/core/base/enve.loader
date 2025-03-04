@@ -42,8 +42,7 @@ builtin_loader() {
     esac
 
     fast_table_tail "enve\\.no_nix"
-    if [ "$TABLE_TAIL" != "true" ] && { [ "$ENVE_CACHED_OS" = 'Darwin' ] ||
-                                        [ "$ENVE_CACHED_OS" = 'Linux' ] ; }; then
+    if [ "$TABLE_TAIL" != "true" ] && { [ "$ENVE_CACHED_OS" = 'Darwin' ]; }; then
         normalize "$ENVE_HOME/enve/core/nix" ;
     else
         case "$ENVE_CACHED_OS" in

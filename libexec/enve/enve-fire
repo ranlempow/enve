@@ -164,6 +164,10 @@ while [ $# -gt 0 ]; do
                 debug_mode=4
                 shift 1
             ;;
+        --debug5)
+                debug_mode=4
+                shift 1
+            ;;
         --help)
                 print_program_help "$ENVE_PROGRAM" >&2
                 quiet_exit 1
