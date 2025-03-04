@@ -820,6 +820,7 @@ get_rcfile_from_profiles_nocache() {
 
     # load procedure
     if !    TABLE="$TABLE" \
+            debug_mode="" \
             p_init_module_info="base,loader,:,:,\
 $ENVE_HOME/enve/core/base/enve.loader,\
 source_exec=1;native_exec=1;,,\
@@ -830,6 +831,7 @@ $ENVE_HOME/enve/core/base" \
     fi
 
     if [ "${debug_mode:-}" = "3" ]; then
+        echo "MODULE_LIST:" >&2
         while IFS=, read -r n t b a m c i f; do
             if [ -n "$n" ]; then
                 echo "$n: $m" >&2
@@ -1299,7 +1301,8 @@ fire2() {
                 fi
             fi
             # if [ -n "${_exec_func:-}" ] && type -t "${_exec_func}" >/dev/null; then
-            if [ "$(type "${_exec_func:-}")" = "${_exec_func:-} is a shell function" ]; then
+            # if [ "$(type "${_exec_func:-}")" = "${_exec_func:-} is a shell function" ]; then
+            if type "${_exec_func:-}" >/dev/null; then
                 ${_exec_func}
             fi
         )

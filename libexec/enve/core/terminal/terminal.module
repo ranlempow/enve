@@ -86,6 +86,7 @@ resolve_terminal() {
     # echo "!!! $ENV_ROOT" >&2
 
     # TODO: depend on sysroots
+    # TODO: remove this <--
     GIT_PROMPT_SH=
     if [ -n "$ENV_ROOT" ]; then
         if [ -f "$ENV_ROOT/share/git/contrib/completion/git-prompt.sh" ]; then
@@ -97,6 +98,9 @@ resolve_terminal() {
          [ -f "$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh" ]; then
         GIT_PROMPT_SH=$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh
     fi
+    # TODO: remove this -->
+
+    
     if [ "$shell" != "zsh" ]; then
         out_code sh "bind -f \"$ZERO/inputrc\""
     fi

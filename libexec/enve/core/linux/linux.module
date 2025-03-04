@@ -376,6 +376,7 @@ resolve_linux() {
     out_list BYPASS "COLORTERM"
 
     out_var ENV_ROOT /usr
+    out_var "enve.sysroots" /usr
 }
 
 
