@@ -87,9 +87,12 @@ resolve_terminal() {
 
     # TODO: depend on sysroots
     GIT_PROMPT_SH=
-    if   [ -n "$ENV_ROOT" ] &&
-         [ -f "$ENV_ROOT/share/git/contrib/completion/git-prompt.sh" ]; then
-        GIT_PROMPT_SH=$ENV_ROOT/share/git/contrib/completion/git-prompt.sh
+    if [ -n "$ENV_ROOT" ]; then
+        if [ -f "$ENV_ROOT/share/git/contrib/completion/git-prompt.sh" ]; then
+            GIT_PROMPT_SH=$ENV_ROOT/share/git/contrib/completion/git-prompt.sh
+        elif [ -f "$ENV_ROOT/lib/git-core/git-sh-prompt" ]; then
+            GIT_PROMPT_SH="$ENV_ROOT/lib/git-core/git-sh-prompt"
+        fi
     elif [ -n "$HOMEBREW_PREFIX" ] &&
          [ -f "$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh" ]; then
         GIT_PROMPT_SH=$HOMEBREW_PREFIX/etc/bash_completion.d/git-prompt.sh

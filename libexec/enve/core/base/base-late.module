@@ -96,15 +96,6 @@ resolve_basic_late() {
         # eval out_alias "$name" "$value"
     done
 
-    # this is for unicode character in console
-    fast_table_tail "LC_ALL"
-    [ -n "$TABLE_TAIL" ] || out_var "LC_ALL" "en_US.UTF-8"
-    fast_table_tail "LANG"
-    [ -n "$TABLE_TAIL" ] || out_var "LANG" "en_US.UTF-8"
-
-    # out_var "LC_ALL" "en_US.UTF-8"
-    # out_var "LANG" "en_US.UTF-8"
-
     fast_table_tail "layout\\.root"
     PRJROOT=$TABLE_TAIL
 
