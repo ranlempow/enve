@@ -165,7 +165,7 @@ while [ $# -gt 0 ]; do
                 shift 1
             ;;
         --debug5)
-                debug_mode=4
+                debug_mode=5
                 shift 1
             ;;
         --help)
