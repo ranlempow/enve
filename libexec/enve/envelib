@@ -1008,10 +1008,8 @@ gen_stab() {
         fi
     done
 
-    # stab_with_shell() {
-
-    # TODO: 使用系統預設，但是macos的bash-3.2的posix mode有問題
-    if [ "$SHELL" = /bin/bash ]; then
+    if [ "$ENVE_CACHED_OS" = Darwin ] && [ "$SHELL" = /bin/bash ]; then
+        # 使用系統預設，但是macos的bash-3.2的posix mode有問題
         SHELL=/bin/sh
     fi
 
