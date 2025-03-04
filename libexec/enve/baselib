@@ -981,6 +981,7 @@ fast_get_cachedir() {
         return 0
     else
         d=$(get_cachedir)
+        ENVE_CACHE_DIR=$d
     fi
 }
 
@@ -1176,6 +1177,7 @@ EOF
                             NFSHomeDirectory:)  eval ${2:-}HOME=\$val;;
                             UserShell:)         eval ${2:-}SHELL=\$val;;
                         esac
+
                     done <<EOF
 $(dscl . -read /Users/$1 NFSHomeDirectory UserShell)
 EOF
@@ -1203,7 +1205,7 @@ _get_group_effective() {
             ;;
     esac
     [ "$ENVE_UID" = "0" ] && _root=1
-
+    return 0
 }
 
 # user exchange situation
@@ -1212,6 +1214,59 @@ _get_group_effective() {
 # 3. enve run with sudo from root shell
 # 4. enve run with normal user with sudo-like availiable
 # 5. enve run with normal user without sudo-like availiable
+
+probe_situation2() {
+    fast_get_system
+    _admin=
+    _root=
+    _user=
+    unset ENVE_OUT_USER ENVE_OUT_HOME ENVE_OUT_SHELL
+    unset ENVE_USER ENVE_USER_HOME ENVE_USER_SHELL
+    unset ENVE_PRIVILEGE
+    if ret=$(id -u; printf "&"; id -G; printf " "); then
+        ENVE_USER=$(id -un)
+        ENVE_UID=${ret%&*}
+        ENVE_GIDS=" ${ret#*&}"
+        _get_group_effective
+        unset ENVE_UID ENVE_GIDS
+    elif [ -n "${USER}" ]; then
+        _warning "'id' command not found, fallback to detect '\${USER}'"
+        ENVE_USER=$USER
+        case $USER in
+            root) _root=1;;
+            *)    _user=1;;
+        esac
+    else
+        _warning "'id' command not found and no '\${USER}', assume user is root"
+        ENVE_USER=root
+        _root=1
+    fi
+
+    # if [ -z "${HOME:-}" ] || [ -z "${SHELL:-}" ]; then
+    #     _get_user_home "$USER" ENVE_USER_
+    # fi
+    _get_user_home "$ENVE_USER" ENVE_USER_
+    [ -n "$PWD" ] || PWD=$(pwd)
+
+    if [ -n "${SUDO_USER:-}${SUDO_UID:-}" ]; then
+        if [ -n "$_root" ]; then
+            ENVE_OUT_USER=$SUDO_USER
+            _get_user_home "$ENVE_OUT_USER" ENVE_OUT_
+        else
+            :
+        fi
+    else
+        :
+    fi
+    if [ -n "$_root" ]; then
+        ENVE_PRIVILEGE=root
+    elif [ -n "$_admin" ]; then
+        ENVE_PRIVILEGE=admin
+    else
+        ENVE_PRIVILEGE=user
+    fi
+}
+
 
 
 probe_situation() {
@@ -1988,41 +2043,47 @@ EOF
 }
 
 
-parse_argument() {
+parse_enve_argument() {
     # ini-path = path | *.ini
     # repo-url = path | git+* | *.git | path#
     # repo-path = repo-url[#[branch][#git-ref]]
     # workspace = ws:remote | :path | [user@]host:[path]
+    # workspace = remote:ws | :path | [user@]host:[path]
+    # project = workspace[@roles] | path[@roles]
 
-    unset ARG_RESULT ARG_REMOTE ARG_WS_PATH
+    unset ARG_RESULT ARG_REMOTE ARG_PATH ARG_ROLES
     _arg=${1%%@*}
+    roles=${1#"$_arg"}
+    ARG_ROLES=${roles#@}
     case $_arg in
         *.ini)              ARG_RESULT=ini; return ;;
         git+*|*.git|*#*)    ARG_RESULT=repo; return ;;
         :*|localhost:*)
                 ARG_RESULT=ws
-                ARG_WS_PATH=${_arg#*:}
+                ARG_REMOTE=
+                ARG_PATH=${_arg#*:}
                 return
             ;;
         *:|*:*)
                 ARG_RESULT=ws
                 ARG_REMOTE=${_arg%%:*}
-                ARG_WS_PATH=${_arg#*:}
+                ARG_PATH=${_arg#*:}
                 return
             ;;
         *ssh://*)
                 ARG_RESULT=ws
-                ARG_WS_PATH=${_arg#*ssh://}
-                if [ "${ARG_WS_PATH#*/}" != ${ARG_WS_PATH} ]; then
-                    ARG_WS_PATH=${_arg#*/}
+                ARG_PATH=${_arg#*ssh://}
+                if [ "${ARG_PATH#*/}" != ${ARG_PATH} ]; then
+                    ARG_PATH=${_arg#*/}
                 else
-                    ARG_WS_PATH=
+                    ARG_PATH=
                 fi
-                ARG_REMOTE=${_arg%"$ARG_WS_PATH"}
+                ARG_REMOTE=${_arg%"$ARG_PATH"}
                 return
             ;;
     esac
 
+    ARG_PATH=${ARG_PATH:-"$_arg"}
     if [ -f "$_arg/enve.ini" ]; then
         ARG_RESULT=ini
     elif [ -d "$_arg/.git" ]; then

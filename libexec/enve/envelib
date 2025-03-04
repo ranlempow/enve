@@ -829,6 +829,17 @@ $ENVE_HOME/enve/core/base" \
         return 1
     fi
 
+    if [ "${debug_mode:-}" = "3" ]; then
+        while IFS=, read -r n t b a m c i f; do
+            if [ -n "$n" ]; then
+                echo "$n: $m" >&2
+            fi
+        done <<EOF
+${module_loaded:-}
+EOF
+        return 1
+    fi
+
 
     # add extra enve bound files
     fileonly=1 recursive="" listdir "${ENVE_HOME}/enve"
@@ -843,13 +854,19 @@ EOF
 
 
     # resolve procedure
-    if ! p_module_loaded="${module_loaded:-}" resolve_with_info; then
+    if ! p_module_loaded="${module_loaded:-}" debug_mode="" \
+         resolve_with_info; then
         return 1
     fi
     unset module_loaded
 
-    LOGLEVEL=DEBUG log "=== resolve ??? ==="
-    LOGLEVEL=DEBUG logtable "$TABLE"
+    if [ "${debug_mode:-}" = "4" ]; then
+        LOGLEVEL=NOTICE logtable "$TABLE"
+        return 1
+    else
+        LOGLEVEL=DEBUG log "=== resolve ??? ==="
+        LOGLEVEL=DEBUG logtable "$TABLE"
+    fi
 
     # generate final rcfile
     if ! execute_envdef "$TABLE" "${target:-}" > "$RCFILE_PATH"; then
@@ -887,6 +904,9 @@ get_rcfile_from_profiles_usecache() {
             printf %s\\n "v2023v5"
             printf %s\\n "$roles"
             printf %s\\n "$ENVE_CONFIG_TEXT"
+            if [ -n "${debug_mode:-}" ]; then
+                date
+            fi
         }
         # echo "p_text: $(p_text)" >&2
         p_valid() {
@@ -918,7 +938,7 @@ get_rcfile_from_profiles_usecache() {
         p_make() {
             mkrcfile "$CACHED/rcfile" || return 1
             cp "$CACHED/rcfile" "$CACHED/.zshrc"
-            echo "$TABLE" >&2
+            # echo "$TABLE" >&2
             fast_table_subset bound
             fast_as_value
             boundfiles=$TABLE_AS
@@ -1046,7 +1066,6 @@ gen_stab() {
     stab_env="${stab_env:+$stab_env }RC_CMD=\"$RC_CMD\""
     stab_envs="$stab_envs RC_CMD"
 }
-
 
 
 ensure_caches() {
@@ -1302,6 +1321,13 @@ fire2() {
 
     if [ -n "${EXEC_SSH_REMOTE:-}" ]; then
         stab_args="ssh -o 'ConnectTimeout 3' -o 'SendEnv $stab_envs' $stab_args"
+    fi
+    if [ "${debug_mode:-}" = "5" ]; then
+        echo "stab_env: $stab_env" >&2
+        echo "stab_envs: $stab_envs" >&2
+        echo "stab_args: $stab_args" >&2
+        echo "cmd: $stab_env ${EXEC_USE_EXEC:+exec} $stab_args" >&2
+        return 0
     fi
     _trace "stab_env: $stab_env"
     _trace "stab_envs: $stab_envs"

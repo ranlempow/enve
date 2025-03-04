@@ -384,32 +384,129 @@ ws_init() {
 
 
 
-fillup_ws() {
-    if [ -z "${ENVE_WORKSPACE:-}" ] ||
-       ! WORKSPACE_ID=$(cat $ENVE_WORKSPACE/config/ws/ws-id); then
-        echo "'${ENVE_WORKSPACE:-}' is not workspace" >&2
+# fillup_ws() {
+#     if [ -z "${ENVE_WORKSPACE:-}" ] ||
+#        ! WORKSPACE_ID=$(cat $ENVE_WORKSPACE/config/ws/ws-id); then
+#         echo "'${ENVE_WORKSPACE:-}' is not workspace" >&2
+#         return 1
+#     fi
+#     ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+#     ENVE_SYSROOT=$ENVE_WORKSPACE/local
+#     XDG_CONFIG_HOME=$ENVE_WORKSPACE/config
+#     XDG_DATA_HOME=$ENVE_WORKSPACE/local/share
+#     XDG_CACHE_HOME=/var/tmp/cache-$ENVE_UID/ws-$WORKSPACE_ID
+#     ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/ws-$WORKSPACE_ID
+#     if [ -d /run ]; then
+#         XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/ws-$WORKSPACE_ID}
+#     elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
+#         XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/ws-$WORKSPACE_ID}
+#     else
+#         XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-ws-$WORKSPACE_ID}
+#     fi
+#     TMPDIR=${TMPDIR:-/tmp}
+# }
+
+fillup_ws2() {
+    if [ -f "${1:-}/workspace.ini" ]; then
+        # _error "'${ENVE_WORKSPACE:-}' is not workspace"
+        WS_CONFIG_DIR="${1:-}"
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$1/config"}
+        ENVE_WORKSPACE=$1
+    elif [ -f "${1:-}/.config/workspace.ini" ]; then
+        WS_CONFIG_DIR="${1:-}/.config"
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$1/.config"}
+        ENVE_WORKSPACE=$1
+    elif [ -f "${1:-}/.config/enve/workspace.ini" ]; then
+        WS_CONFIG_DIR="${1:-}/.config/enve"
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$1/.config"}
+        ENVE_WORKSPACE=$1
+    elif [ -f "${1:-}/config/workspace.ini" ]; then
+        WS_CONFIG_DIR="${1:-}/config"
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$1/config"}
+        ENVE_WORKSPACE=$1
+    elif [ -f "${1:-}/config/enve/workspace.ini" ]; then
+        WS_CONFIG_DIR="${1:-}/config/enve"
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$1/config"}
+        ENVE_WORKSPACE=$1
+    elif [ -n "$ENVE_WORKSPACE" ]; then
+        WS_CONFIG_DIR="$ENVE_WORKSPACE/.config/enve"
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$ENVE_WORKSPACE/.config"}
+    else
         return 1
     fi
-    ENVE_DATA_DIR=$ENVE_WORKSPACE/data
-    ENVE_SYSROOT=$ENVE_WORKSPACE/local
-    XDG_CONFIG_HOME=$ENVE_WORKSPACE/config
-    XDG_DATA_HOME=$ENVE_WORKSPACE/local/share
-    XDG_CACHE_HOME=/var/tmp/cache-$ENVE_UID/ws-$WORKSPACE_ID
-    ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/ws-$WORKSPACE_ID
-    if [ -d /run ]; then
-        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/ws-$WORKSPACE_ID}
-    elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
-        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/ws-$WORKSPACE_ID}
-    else
-        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-ws-$WORKSPACE_ID}
+    
+    if [ -f "$WS_CONFIG_DIR/workspace.ini" ]; then
+        TABLE=$(
+            if ! parse_config_non_recursive_text < "$WS_CONFIG_DIR/workspace.ini"; then
+                _error "parse error at '$WS_CONFIG_DIR/workspace.ini'"
+                return 1
+            fi
+        )
+        fast_table_tail "var"
+        [ -n "$TABLE_TAIL" ] && ENVE_VAR_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
+        # TODO: 或許不需要這個?
+        fast_table_tail "project"
+        [ -n "$TABLE_TAIL" ] && ENVE_PROJECT_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
+        # TODO: 不需要這個
+        fast_table_tail "restore"
+        [ -n "$TABLE_TAIL" ] && ENVE_RESTORE_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
     fi
-    TMPDIR=${TMPDIR:-/tmp}
+
+    ENVE_LOCAL_SYSROOT=$ENVE_WORKSPACE/.local
+    ENVE_VAR_DIR=${ENVE_VAR_DIR:-"$ENVE_WORKSPACE/var"}
+    ENVE_DATA_DIR=${ENVE_VAR_DIR:-"$ENVE_VAR_DIR/data"}
+    ENVE_PROJECT_DIR=${ENVE_PROJECT_DIR:-"$ENVE_WORKSPACE/project"}
+    ENVE_RESTORE_DIR=${ENVE_RESTORE_DIR:-"$ENVE_WORKSPACE/restore"}
+    # ENVE_OUTPUT_DIR=${ENVE_OUTPUT_DIR:-$ENVE_PROJECT_DIR/out}
+    XDG_DATA_HOME=${XDG_DATA_HOME:-"$ENVE_LOCAL_SYSROOT/share"}
+    XDG_CACHE_HOME=${XDG_CACHE_HOME:-"$ENVE_WORKSPACE/.cache"}
+    XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-"$ENVE_VAR_DIR/run"}
 }
+
+find_project_upward() {
+    s=$1
+    replace '~' "$HOME/"
+    d=$(resolve_symlinks "$s")
+    while [ -n "$d" ]; do
+        if [ -f "$d/enve.ini" ]; then
+            PROJECT_DIR=$d
+            return 0
+        fi
+        fast_dirname
+        if [ "$d" = '.' ] || [ "$d" = '/' ]; then
+            return 1
+        fi
+    done
+}
+
+find_ws_upward() {
+    ENVE_WORKSPACE=
+    s=$1
+    replace '~' "$HOME/"
+    d=$(resolve_symlinks "$s")
+    while [ -n "$d" ]; do
+        if fillup_ws2 "$d"; then
+            break
+        fi
+        fast_dirname
+        if [ "$d" = '.' ] || [ "$d" = '/' ]; then
+            break
+        fi
+    done
+    USER="" HOME="" SHELL="" probe_situation2
+    if [ -z "$ENVE_WORKSPACE" ]; then
+        ENVE_WORKSPACE=$ENVE_USER_HOME
+        fillup_ws2
+    fi
+}
+
+
 
 fillup_user_ws2() {
     ENVE_WORKSPACE=~
     ENVE_LOCAL_SYSROOT=$ENVE_WORKSPACE/.local
-    WS_CONFIG=~/.config/enve/ws.enve.ini
+    # WS_CONFIG=~/.config/enve/ws.enve.ini
+    WS_CONFIG=~/.config/enve/workspace.ini
     if [ -f "$WS_CONFIG" ]; then
         XDG_CONFIG_HOME=$ENVE_WORKSPACE/.config
         TABLE=$(
@@ -420,41 +517,60 @@ fillup_user_ws2() {
         )
         fast_table_tail "var"
         [ -n "$TABLE_TAIL" ] && ENVE_VAR_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
+        # TODO: 或許不需要這個?
         fast_table_tail "project"
         [ -n "$TABLE_TAIL" ] && ENVE_PROJECT_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
+        # TODO: 不需要這個
         fast_table_tail "restore"
         [ -n "$TABLE_TAIL" ] && ENVE_RESTORE_DIR=$ENVE_WORKSPACE/$TABLE_TAIL
-    fi
-    XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$ENVE_WORKSPACE/.config}
-    XDG_DATA_HOME=${XDG_DATA_HOME:-$ENVE_LOCAL_SYSROOT/share}
-    XDG_CACHE_HOME=${XDG_CACHE_HOME:-$ENVE_WORKSPACE/.cache}
-    ENVE_VAR_DIR=${ENVE_VAR_DIR:-$ENVE_WORKSPACE/var}
-    ENVE_PROJECT_DIR=${ENVE_PROJECT_DIR:-$ENVE_WORKSPACE/project}
-    ENVE_RESTORE_DIR=${ENVE_RESTORE_DIR:-$ENVE_WORKSPACE/restore}
-
-    XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-$ENVE_VAR_DIR/run}
-    # ENVE_OUTPUT_DIR=${ENVE_OUTPUT_DIR:-$ENVE_VAR_DIR/out}
-}
-
-
-
-fillup_user_ws() {
-    ENVE_WORKSPACE=${OUT_HOME:-$HOME}/workspace
-    ENVE_DATA_DIR=$ENVE_WORKSPACE/data
-    ENVE_SYSROOT=${OUT_HOME:-$HOME}/.local
-    XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-${OUT_HOME:-$HOME}/.config}
-    XDG_DATA_HOME=${XDG_DATA_HOME:-${OUT_HOME:-$HOME}/.local/share}
-    XDG_CACHE_HOME=${XDG_CACHE_HOME:-${OUT_HOME:-$HOME}/.cache}
-    ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/user/
-    if [ -d /run ]; then
-        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user-$ENVE_UID}
-    elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
-        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/user-$ENVE_UID}
     else
-        XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-user-$ENVE_UID}
+        XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$ENVE_WORKSPACE/.config"}
     fi
-    TMPDIR=${TMPDIR:-/tmp}
+    ENVE_VAR_DIR=${ENVE_VAR_DIR:-"$ENVE_LOCAL_SYSROOT/var"}
+    ENVE_DATA_DIR=${ENVE_VAR_DIR:-"$ENVE_VAR_DIR/data"}
+    ENVE_PROJECT_DIR=${ENVE_PROJECT_DIR:-"$ENVE_WORKSPACE/project"}
+    ENVE_RESTORE_DIR=${ENVE_RESTORE_DIR:-"$ENVE_WORKSPACE/restore"}
+
+    XDG_DATA_HOME=${XDG_DATA_HOME:-"$ENVE_LOCAL_SYSROOT/share"}
+    XDG_CACHE_HOME=${XDG_CACHE_HOME:-"$ENVE_WORKSPACE/.cache"}
+    XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-"$ENVE_VAR_DIR/run"}
+    # ENVE_OUTPUT_DIR=${ENVE_OUTPUT_DIR:-$ENVE_VAR_DIR/out}
+    
+    
 }
+
+fillup_host_ws2() {
+    # TODO: 暫時不支援 host workspace
+    ENVE_WORKSPACE=/var/lib/enve/workspace
+    ENVE_LOCAL_SYSROOT=/
+    WS_CONFIG=/etc/enve/workspace.ini
+    
+    ENVE_VAR_DIR=${ENVE_VAR_DIR:-$ENVE_LOCAL_SYSROOT/var}
+    ENVE_DATA_DIR=${ENVE_VAR_DIR:-$ENVE_WORKSPACE/data}
+
+    # XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$ENVE_WORKSPACE/.config}
+    # XDG_DATA_HOME=${XDG_DATA_HOME:-$ENVE_LOCAL_SYSROOT/share}
+    # XDG_CACHE_HOME=${XDG_CACHE_HOME:-$ENVE_WORKSPACE/.cache}
+
+}
+
+# fillup_user_ws() {
+#     ENVE_WORKSPACE=${OUT_HOME:-$HOME}/workspace
+#     ENVE_DATA_DIR=$ENVE_WORKSPACE/data
+#     ENVE_SYSROOT=${OUT_HOME:-$HOME}/.local
+#     XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-${OUT_HOME:-$HOME}/.config}
+#     XDG_DATA_HOME=${XDG_DATA_HOME:-${OUT_HOME:-$HOME}/.local/share}
+#     XDG_CACHE_HOME=${XDG_CACHE_HOME:-${OUT_HOME:-$HOME}/.cache}
+#     ENVE_OUTPUT_DIR=/var/tmp/out-$ENVE_UID/user/
+#     if [ -d /run ]; then
+#         XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user-$ENVE_UID}
+#     elif [ -d /tmp/run ] && [ -x /tmp/run ]; then
+#         XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run/user-$ENVE_UID}
+#     else
+#         XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-user-$ENVE_UID}
+#     fi
+#     TMPDIR=${TMPDIR:-/tmp}
+# }
 
 fillup_host_ws() {
     ENVE_WORKSPACE=/var/lib/enve/workspace

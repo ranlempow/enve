@@ -49,6 +49,9 @@ settrace
 # shellcheck source=libexec/enve/tablelib
 . "$ENVE_HOME/enve/tablelib"
 
+# shellcheck source=libexec/enve/wslib
+. "$ENVE_HOME/enve/wslib"
+
 # shellcheck source=libexec/enve/envelib2
 . "$ENVE_HOME/enve/envelib"
 
@@ -56,6 +59,7 @@ settrace
 
 ENVE_CONFIG_TEXT=${ENVE_PRECONFIG:+${ENVE_PRECONFIG%$newl}$newl}
 cmd=
+arg=
 _main_profile=
 assign_main_profile() {
     if [ -n "$_main_profile" ]; then
@@ -140,6 +144,26 @@ while [ $# -gt 0 ]; do
                 EXEC_RESCURE=1
                 shift 1
             ;;
+        --debug0)
+                debug_mode=0
+                shift 1
+            ;;
+        --debug|--debug1)
+                debug_mode=1
+                shift 1
+            ;;
+        --debug2)
+                debug_mode=2
+                shift 1
+            ;;
+        --debug3)
+                debug_mode=3
+                shift 1
+            ;;
+        --debug4)
+                debug_mode=4
+                shift 1
+            ;;
         --help)
                 print_program_help "$ENVE_PROGRAM" >&2
                 quiet_exit 1
@@ -152,105 +176,104 @@ while [ $# -gt 0 ]; do
         -*)
                 die "unknown option: $1"
             ;;
-
-        # run|test)
-        #         cmd=$1
-        #         shift
-        #     ;;
-        # shell|window)
-        #         cmd=$1
-        #         shift
-        #         if [ -n "${1:-}" ]; then
-        #             assign_main_profile "$1"
-        #             shift
-        #         fi
-        #         break
-        #     ;;
-        # boot)
-        #         shift
-        #         if [ -n "${1:-}" ]; then
-        #             subtype=$1
-        #             shift
-        #         fi
-        #         _profile="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
-        #         assign_main_profile "$_profile"
-        #         unset _profile
-        #         cmd=auto
-        #         break
-        #     ;;
-        # auto)
-        #         cmd=auto
-        #     ;;
-        # '') ;;
         *)
-
-
-            if [ -z "$cmd" ]; then
-                case $1 in
-                    shell|window|run|build|test|pack)
-                            cmd=$1
-                            shift
-                            continue
-                        ;;
-                    boot)
-                            shift
-                            if [ -n "${1:-}" ]; then
-                                subtype=$1
+                if [ -z "$cmd" ]; then
+                    case $1 in
+                        shell|window|run|build|test|pack)
+                                cmd=$1
                                 shift
-                            fi
-                            EXEC_RESCURE=1
-                            _profile="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
-                            assign_main_profile "$_profile"
-                            unset _profile
-                            cmd=auto
-                            break
-                        ;;
-                    *)
-                            cmd=auto
-                            unset ARG_RESULT ARG_REMOTE ARG_WS_PATH
-                            parse_argument "$1"
-                        ;;
-                esac
+                                continue
+                            ;;
+                        boot)
+                                shift
+                                if [ -n "${1:-}" ]; then
+                                    subtype=$1
+                                    shift
+                                fi
+                                EXEC_RESCURE=1
+                                _profile="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
+                                assign_main_profile "$_profile"
+                                unset _profile
+                                cmd=auto
+                                break
+                            ;;
+                    esac
+                fi
+                if [ -z "$_main_profile${arg:-}" ]; then
+                    arg=$1
+                    shift
+                else
+                    # "$1" is ARG1
+                    [ "$cmd" = auto ] && cmd=run
+                    break
+                fi
+            # if [ -z "$cmd" ]; then
+            #     case $1 in
+            #         shell|window|run|build|test|pack)
+            #                 cmd=$1
+            #                 shift
+            #                 continue
+            #             ;;
+            #         boot)
+            #                 shift
+            #                 if [ -n "${1:-}" ]; then
+            #                     subtype=$1
+            #                     shift
+            #                 fi
+            #                 EXEC_RESCURE=1
+            #                 _profile="$ENVE_HOME/enve/preset/boot${subtype:+"-$subtype"}.enve.ini"
+            #                 assign_main_profile "$_profile"
+            #                 unset _profile
+            #                 cmd=auto
+            #                 break
+            #             ;;
+            #         *)
+            #                 cmd=auto
+            #                 unset ARG_RESULT ARG_REMOTE ARG_WS_PATH
+            #                 parse_enve_argument "$1"
+            #             ;;
+            #     esac
 
-            elif [ -z "$_main_profile" ]; then
-                unset ARG_RESULT ARG_REMOTE ARG_WS_PATH
-                parse_argument "$1"
+            # elif [ -z "$_main_profile" ]; then
+            #     unset ARG_RESULT ARG_REMOTE ARG_WS_PATH
+            #     parse_enve_argument "$1"
 
-            else
-                # "$1" is ARG1
-                [ "$cmd" = auto ] && cmd=run
-                break
-            fi
+            # else
+            #     # "$1" is ARG1
+            #     [ "$cmd" = auto ] && cmd=run
+            #     break
+            # fi
 
-            case $ARG_RESULT in
-                ini)
-                        if [ -e "$1/enve.ini" ]; then
-                            assign_main_profile "$1/enve.ini"
-                        else
-                            assign_main_profile "$1"
-                        fi
-                    ;;
-                repo)
-                        # shellcheck source=libexec/enve/urlutils
-                        . "$ENVE_HOME/enve/urlutils"
-                        repo=$(enve_clone_tmp "$1")
-                        assign_main_profile "$repo/enve.ini"
-                    ;;
-                ws)
-                        if [ -n "$ARG_REMOTE" ]; then
-                            ENVE_SSH_REMOTE=$ARG_REMOTE
-                            RCFILE_PATH=$(run_enve enve fire
-                                          --rcfile shell ":$ARG_WS_PATH")
-                        else
-                            get_workspace_config_path "$1"
-                            assign_main_profile "$WS_CONFIG_DIR/enve.ini"
-                        fi
-                    ;;
-                null)
-                        break
-                    ;;
-            esac
-            shift
+            # case $ARG_RESULT in
+            #     ini)
+            #             if [ -e "$1/enve.ini" ]; then
+            #                 assign_main_profile "$1/enve.ini"
+            #             else
+            #                 assign_main_profile "$1"
+            #             fi
+            #         ;;
+            #     repo)
+            #             # shellcheck source=libexec/enve/urlutils
+            #             . "$ENVE_HOME/enve/urlutils"
+            #             repo=$(enve_clone_tmp "$1")
+            #             assign_main_profile "$repo/enve.ini"
+            #         ;;
+            #     ws)
+            #             if [ -n "$ARG_REMOTE" ]; then
+            #                 # TODO: ARG_WS_PATH -> ARG_PATH
+            #                 ENVE_SSH_REMOTE=$ARG_REMOTE
+            #                 RCFILE_PATH=$(run_enve enve fire
+            #                               --rcfile shell ":$ARG_WS_PATH")
+            #             else
+            #                 get_workspace_config_path "$1"
+            #                 assign_main_profile "$WS_CONFIG_DIR/enve.ini"
+            #             fi
+            #         ;;
+            #     null)
+            #             break
+            #         ;;
+            # esac
+            # shift
             # if [ "${1##*/}" != "$1" ] || [ "${1##*.}" != "$1" ]; then
             #     cmd=auto
             #     assign_main_profile "$1"
@@ -265,26 +288,71 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-[ "$cmd" = auto ] && cmd=shell
+[ "${cmd:-auto}" = auto ] && cmd=shell
 
 if [ "$cmd" = shell ] && [ $# -eq 1 ]; then
     EXEC_ARG1_AS_SCRIPT=1
 fi
 
-if [ -z "${_main_profile}" ]; then
-    if [ -e "./enve.ini" ]; then
-        assign_main_profile "./enve.ini"
-    elif [ "$cmd" = shell ]; then
-        EXEC_RESCURE=1
-        assign_main_profile "$ENVE_HOME/enve/preset/boot.enve.ini"
+# if [ -z "${_main_profile}" ]; then
+#     if [ -e "./enve.ini" ]; then
+#         assign_main_profile "./enve.ini"
+#     elif [ "$cmd" = shell ]; then
+#         EXEC_RESCURE=1
+#         assign_main_profile "$ENVE_HOME/enve/preset/boot.enve.ini"
+#     else
+#         error "require config path"
+#         print_program_help fire2 >&2
+#         die
+#     fi
+# fi
+
+
+if [ -z "$_main_profile" ]; then
+    unset ARG_RESULT ARG_REMOTE ARG_PATH ARG_ROLES
+    unset WS_CONFIG_DIR PROJECT_DIR
+    parse_enve_argument "${arg:-"."}"
+    if [ "${ARG_RESULT:-}" = 'repo' ]; then
+        # shellcheck source=libexec/enve/urlutils
+        . "$ENVE_HOME/enve/urlutils"
+        repo=$(enve_clone_tmp "$arg")
+        if [ -f "$repo/enve.ini" ]; then
+            assign_main_profile "$repo/enve.ini"
+        else
+            die "'$repo' has no 'enve.ini' inside"
+        fi
+    elif [ -z "${ARG_REMOTE:-}" ]; then
+        if [ -z "${ARG_PATH:-}" ]; then
+            # default is current directory
+            ARG_PATH=.
+        fi
+        p=$ARG_PATH
+        if find_project_upward "$ARG_PATH"; then
+            assign_main_profile "$PROJECT_DIR/enve.ini"
+        fi
     else
-        error "require config path"
-        print_program_help fire2 >&2
-        die
+        # TODO: remote
+        exec ssh "$ARG_REMOTE" enve config ":$ARG_PATH"
+        return 0
     fi
+else
+    PROJECT_DIR=${_main_profile%"/enve.ini"}
 fi
 
-
+if [ "${ARG_RESULT:-}" != 'repo' ]; then
+    find_ws_upward "${PROJECT_DIR:-$ARG_PATH}"
+    if [ -n "${WS_CONFIG_DIR:-}" ]; then
+        if [ -n "${_main_profile}" ]; then
+            [ -f "$WS_CONFIG_DIR/enve.ini" ] && \
+                ENVE_CONFIG_TEXT="include=$WS_CONFIG_DIR/enve.ini$newl${ENVE_CONFIG_TEXT}"
+        else
+            # default is workspace
+            [ -f "$WS_CONFIG_DIR/enve.ini" ] && \
+                assign_main_profile "$WS_CONFIG_DIR/enve.ini"
+            PROJECT_DIR=$ENVE_WORKSPACE
+        fi
+    fi
+fi
 
 if [ -n "${EXEC_SHIELD:-}" ]; then
     # 這樣shield結束之後，可以直接進到漂亮的命令列。
@@ -295,6 +363,51 @@ else
     ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}core.target=$cmd$newl"
 fi
 
+s=${ENVE_ROLES:-}${ARG_ROLES:+,"$ARG_ROLES"}
+replace '@' ','
+fast_system_roles
+ENVE_ROLES="$s${out_system_roles:+,"$out_system_roles"}"
+
+if [ "${debug_mode:-}" = "0" ]; then
+    get_system2
+    echo "MACHINE: $MACHINE" >&2
+    echo "KERNEL: $KERNEL" >&2
+    echo "KERNEL_VERSION: $KERNEL_VERSION" >&2
+    echo "" >&2
+    echo "ENVE_WORKSPACE: $ENVE_WORKSPACE" >&2
+    echo "ENVE_LOCAL_SYSROOT: $ENVE_LOCAL_SYSROOT" >&2
+    echo "ENVE_VAR_DIR: $ENVE_VAR_DIR" >&2
+    echo "ENVE_DATA_DIR: $ENVE_DATA_DIR" >&2
+
+    ensure_caches
+    echo "" >&2
+    echo "ENVE_HOME: $ENVE_HOME" >&2
+    echo "ENVE_CACHE_DIR: $ENVE_CACHE_DIR" >&2
+    return 0
+elif [ "${debug_mode:-}" = "1" ]; then
+    if ! ENVE_HOSTNAME=$(hostname); then
+        ENVE_HOSTNAME=localhost
+    fi
+    echo "WS  : $ENVE_HOSTNAME:$ENVE_WORKSPACE" >&2
+    echo "ENVE: $PROJECT_DIR@${ENVE_ROLES#,}" >&2
+    echo "CMD : ${cmd:-}" >&2
+    echo "ARGS: $*" >&2
+    echo "ENVE_CONFIG_TEXT:" >&2
+    echo "$ENVE_CONFIG_TEXT" >&2
+    return 0
+elif [ "${debug_mode:-}" = "2" ]; then
+    TABLE=
+    if !    stage1_is_text=1 \
+            roles="$ENVE_ROLES" loaded="" \
+            parse_inherit="" \
+            parse_profile_optional="" \
+            enve_parse_config "$ENVE_CONFIG_TEXT"; then
+        _error "parse_config failed"
+        return 1
+    fi
+    printf %s "${TABLE:-$newl}"
+    return 0
+fi
 
 case $cmd in
     run)
