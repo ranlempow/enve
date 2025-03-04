@@ -1315,6 +1315,10 @@ fire2() {
     stab_args=
     stab_env=
     stab_envs=
+    if [ -z "${_shell:-}" ] && [ "$SHELL" = /bin/sh ]; then
+        # use bash on linux
+        _shell=/bin/bash
+    fi
     SHELL=${_shell:-"$SHELL"} gen_stab "$@"
 
     if [ -n "${EXEC_SSH_REMOTE:-}" ]; then
