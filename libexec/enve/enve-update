@@ -49,7 +49,7 @@ done
 
 (
 
-    if [ ! -x "$$ENVE_HOME/../bin/enve" ]; then
+    if [ ! -x "$ENVE_HOME/../bin/enve" ]; then
         _error "not a vaild installed 'enve'"
         return 1
     elif [ -f "$ENVE_HOME/../.dev" ]; then
