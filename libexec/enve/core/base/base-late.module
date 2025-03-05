@@ -282,24 +282,25 @@ resolve_prompt() {
                 > "$dest/lesspipe.sh"
             chmod 755 "$dest/lesspipe.sh"
             out_var LESSOPEN "|$dest/lesspipe.sh %s"
+            unset dest
         elif lesspipe=$(PATH=$_PATH command -v lesspipe); then
-            out_var LESSOPEN "| $lesspipe %s"
+            out_var LESSOPEN "|$lesspipe %s"
             out_var LESSCLOSE "$lesspipe %s %s"
         fi
 
-        lessbin=$(PATH=$_PATH command -v less)
-        ## lesskey is deprecated. It is no longer necessary to run lesskey,
-        # "${lessbin%/*}/lesskey" -o "$dest/lesskey" "$ENVE_HOME/enve/core/base/lesskey"
-        # out_var LESSKEY "$dest/lesskey"
-        out_var LESSKEY "$ENVE_HOME/enve/core/base/lesskey"
-        # please keep in mind that --quit-if-one-screen also relies on --no-init option to work properly.
-        if LESS="" $lessbin --help | grep "\-\-mouse" >/dev/null; then
-            out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines --mouse"
-        else
-            out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines"
+        if lessbin=$(PATH=$_PATH command -v less); then
+            ## lesskey is deprecated. It is no longer necessary to run lesskey,
+            # "${lessbin%/*}/lesskey" -o "$dest/lesskey" "$ENVE_HOME/enve/core/base/lesskey"
+            # out_var LESSKEY "$dest/lesskey"
+            out_var LESSKEY "$ENVE_HOME/enve/core/base/lesskey"
+            # please keep in mind that --quit-if-one-screen also relies on --no-init option to work properly.
+            if LESS="" $lessbin --help | grep "\-\-mouse" >/dev/null; then
+                out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines --mouse"
+            else
+                out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines"
+            fi
+            out_alias man "man -P less"
         fi
-        out_alias man "man -P less"
-        unset dest
 
         out_alias diff "diff --color=auto"
         out_alias ls "ls --color=auto"

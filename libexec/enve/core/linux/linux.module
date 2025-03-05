@@ -352,17 +352,17 @@ resolve_macos() {
 resolve_linux() {
     out_join PATH ':'
     [ -n "$TABLE" ] && printf %s\\n "$TABLE"
-    # (
-    #     # shellcheck disable=2123
-    #     PATH=
-    #     export PATH
-    #     eval "$(/usr/libexec/path_helper -s)"
-    #     IFS=':'
-    #     for p in $PATH; do
-    #         out_list PATH "$p"
-    #     done
-    # )
-
+    (
+        # shellcheck disable=2123
+        PATH=
+        export PATH
+        . /etc/environment
+        # eval "$(/usr/libexec/path_helper -s)"
+        IFS=':'
+        for p in $PATH; do
+            out_list PATH "$p"
+        done
+    )
 
     # this is for unicode character in console
     fast_table_tail "LC_ALL"
