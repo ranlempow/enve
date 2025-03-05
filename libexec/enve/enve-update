@@ -1,0 +1,83 @@
+#!/bin/sh
+#
+# Usage: enve-update [COMMON_OPTIONS] [<workspace>]
+# Environment encapsulation tool
+#
+# Common Options:
+#     --studio[=URL]          init studio
+#     -i, --include FILE      include config from the file
+#     -c, --config KEY=VALUE  append a key-value pair to config
+#
+#
+#
+# __noexec__=true
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/tablelib"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/pathutils"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/prjlib"
+
+
+mainline=
+while [ "$#" -ge 1 ]; do
+    case $1 in
+        --mainline)
+                mainline=master
+                shift 1
+            ;;
+        --refactor)
+                mainline=refactor
+                shift 1
+            ;;
+        -*)
+                die "unknown option: $1"
+            ;;
+        v*)
+                mainline=$1
+                shift 1
+            ;;
+        *)
+                shift 1
+            ;;
+    esac
+done
+
+
+(
+
+    if [ ! -x "$$ENVE_HOME/../bin/enve" ]; then
+        _error "not a vaild installed 'enve'"
+        return 1
+    elif [ -f "$ENVE_HOME/../.dev" ]; then
+        _error "cannot update 'enve' in dev mode"
+        return 1
+    fi
+
+    cd "$ENVE_HOME/.."
+    current=$(git describe --exact-match --tags 2> /dev/null ||
+              git symbolic-ref HEAD ||
+              git rev-parse --short HEAD)
+    # git fetch origin master
+    git pull origin master
+    if [ "$mainline" = master ]; then
+        target=refs/heads/master
+    elif [ "$mainline" = refactor ]; then
+        target=refs/heads/refactor
+    elif [ -n "$mainline" ]; then
+        target=$mainline
+    else
+        git_last_version .
+        target=v$SEMVER
+    fi
+    if [ "$current" = "$target" ]; then
+        _info "already updated to '$target'"
+        exit 0
+    else
+        git checkout "$target"
+        _info "update to '$target'"
+    fi
+)

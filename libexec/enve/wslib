@@ -502,6 +502,25 @@ find_ws_upward() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 以下都是無用程式碼
+
 fillup_user_ws2() {
     ENVE_WORKSPACE=~
     ENVE_LOCAL_SYSROOT=$ENVE_WORKSPACE/.local
