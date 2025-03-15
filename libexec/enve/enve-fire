@@ -1,9 +1,8 @@
 #!/bin/sh
 #
 # Usage: enve-fire [OPTIONS] [<TARGET>] [PATH] [--] [<command>] [<args...>]
-#        enve-fire [OPTIONS] [shell] [PATH] [SCRIPT]
+#        enve-fire [OPTIONS] shell [PATH] [SCRIPT]
 #        enve-fire [OPTIONS] [PATH] -c string
-#        enve-fire [OPTIONS] window [PATH]
 #        enve-fire [OPTIONS] boot [PRESET] [PATH]
 # Environment encapsulation tool
 #
@@ -18,12 +17,12 @@
 #     -e, --refresh           refresh current shell environment
 #     -c, --script            run as shell script
 #     --rcfile
+#     --window                run in tmux
 #
 # Target:
 #     shell                   enter a interactive shell for the environment
-#     window (*)
 #     run                     run command in the environment
-#     build (*)               run building process
+#     auto                    target is shell if no <command> given, or <command> is a shell script
 #     test (*)                run testing process
 #     pack (*)                run packing up process
 #     pre-commit (*)
@@ -34,7 +33,7 @@
 #     _arguments \
 #         '(-f --file)'{-f,--file}'[main profile]:profile path:_files' \
 #         '*'{-i,--include}'[incloud profile]:profile path:_files' \
-#         '*'{-c,--config}'[config]:set config:->setconfig' \
+#         '*'{-o,--config}'[config]:set config:->setconfig' \
 #         '1:target:(shell run terminal)'
 # }
 #
@@ -56,6 +55,17 @@ settrace
 . "$ENVE_HOME/enve/envelib"
 
 
+true '
+the exit codes follow the chroot(1) standard, see below:
+
+125 if the chroot command itself fails
+126 if COMMAND is found but cannot be invoked (Permission denied)
+127 if COMMAND cannot be found
+-   the exit status of COMMAND otherwise
+
+
+--diagnostic replace --debug
+'
 
 ENVE_CONFIG_TEXT=${ENVE_PRECONFIG:+${ENVE_PRECONFIG%$newl}$newl}
 cmd=
@@ -180,10 +190,14 @@ while [ $# -gt 0 ]; do
         -*)
                 die "unknown option: $1"
             ;;
+        *=*)
+                ENVE_CONFIG_TEXT="${ENVE_CONFIG_TEXT}$1$newl"
+                shift 1
+            ;;
         *)
                 if [ -z "$cmd" ]; then
                     case $1 in
-                        shell|window|run|build|test|pack)
+                        shell|run|test|pack)
                                 cmd=$1
                                 shift
                                 continue
@@ -316,6 +330,9 @@ if [ -z "$_main_profile" ]; then
     unset ARG_RESULT ARG_REMOTE ARG_PATH ARG_ROLES
     unset WS_CONFIG_DIR PROJECT_DIR
     parse_enve_argument "${arg:-"."}"
+    # echo "ARG_RESULT: $ARG_RESULT"
+    # echo "ARG_PATH: $ARG_PATH"
+
     if [ "${ARG_RESULT:-}" = 'repo' ]; then
         # shellcheck source=libexec/enve/urlutils
         . "$ENVE_HOME/enve/urlutils"
@@ -326,6 +343,7 @@ if [ -z "$_main_profile" ]; then
             die "'$repo' has no 'enve.ini' inside"
         fi
     elif [ -z "${ARG_REMOTE:-}" ]; then
+        # TODO: 針對ARG_RESULT=ini, 不採用 PROJECT_DIR ?
         if [ -z "${ARG_PATH:-}" ]; then
             # default is current directory
             ARG_PATH=.
