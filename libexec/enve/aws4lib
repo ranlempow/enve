@@ -9,6 +9,10 @@ fi
 HAVE_ENVE_AWS4LIB=1
 
 
+
+
+
+
 _debug_http_request() {
     _loglevel_form_symbol "${ENVE_VERBOSE:-}"
     if [ "$loglevel" -le 1 ]; then
@@ -258,10 +262,39 @@ aws4_request() {
     unset amz_headers
 }
 
+parse_s3_url() {
+    # https://BUCKET.s3.amazonaws.com/REMOTE
+    case "$1" in
+        https://*.s3.amazonaws.com/*)
+            bucket=${1#"https://"}
+            remote="/${bucket#*/}"
+            bucket="${bucket%%".s3.amazonaws.com/"*}"
+            ;;
+        *) return 1;;
+    esac
+}
+
+aws4_s3_upload() {
+    if ! parse_s3_url "$1"; then
+        return 1
+    fi
+    aws4_request ${bucket}.s3.${AWS_DEFAULT_REGION} PUT "$remote" "$2"
+    unset bucket remote
+}
+
+aws4_s3_download() {
+    if ! parse_s3_url "$1"; then
+        return 1
+    fi
+    aws4_request ${bucket}.s3.${AWS_DEFAULT_REGION} GET "$remote" > "$2"
+    unset bucket remote
+}
+
 
 true '
 AWS_ACCESS_KEY_ID=XXXX
 AWS_SECRET_ACCESS_KEY=YYYY
+AWS_DEFAULT_REGION=ZZZ          # optional
 
 
 body="
