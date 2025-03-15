@@ -15,6 +15,74 @@ HAVE_ENVE_GITLIB=1
 
 # 測試程式放在doc/confex-showcase.sh
 
+: '
+
+1. 不能修改主線歷史，也不能修改發布分支歷史，因為這兩者都有機會被引用。
+   如果在主線中進行修復，再把補丁cherry-pick到發布分支。
+   因此，對於不良的補丁，只能撤回補丁(revert)。
+   如果要再次應用撤回的不良補丁，必須使用`--force-rebase`，因為git會忽略已經應用的補丁。
+   而在開發分支中，則沒有這個限制，直接刪除撤回即可。
+
+2. 發布分支要不要連成一線，取決於要不要強調發布設定的變化。(?)
+   如果決定連成一線，每次發布新版本就把主線merge到發布分支。
+
+
+## 抽象虛化分支
+
+- 抽象介面: 定義輸出輸入以及功能，而不是具體實作。
+- 虛假實作: 並沒有實際具有該功能的實作，而只是符合抽象介面。
+
+例如系統中有A組件與B組件互相依賴，但AB由兩個不同團隊所維護。
+而某個時間點，A組件與B組件都要同時將其實作進行大規模改版。
+我們可以做出A抽象與B抽象，讓B依賴A抽象，讓A依賴B抽象。
+並且調換A與B抽象的背後的實作，為虛假實作。
+
+這時AB可以同時進行改版而不互相影像。
+A改版結束之後只要調換A抽象的實作為新的A`。
+B改版結束之後只要調換A抽象的實作為新的B`。
+於是AB同時完成改版。
+
+無論是「功能開關」還是「抽象分支」，可以放在編譯期配置，也可以放在執行期配置。
+
+然而 Feature Toggle類似於if else機制 一定程度會讓代碼變脆弱
+Feature Toggle建立有良好的代碼架構上 才比較適合使用
+
+
+
+## 模組換配、挑選換配，反轉換配
+
+換配Ａ - 啟用測試模式
+修改１
+換配Ｂ - 將甲模組升級到2.0
+修改２
+換配Ｃ - 將乙模組升級到3.0
+修改３
+修改４
+
+要將上述支線並到主線時，
+利用`checkout master; rebase -i feature --exec "enve test"`
+執行如下過程，rebase 到主線最前端
+
+// 先pick要合併的換配
+pick 換配Ｂ (但由於甲模組在之後的主線已經是2.0，所以這個pick實際上不生效)
+pick 換配Ｃ
+// 再pick要合併的非換配
+pick 修改１，exec測試通過
+pick 修改２，exec測試不通過（因為不通過，下一個pick改成fixup）
+fixup 修改３，exec測試通過
+// 最後pick不合併的提交
+pick 換配Ａ
+pick 修改４
+
+最後的結果是
+換配Ｃ
+修改１
+修改３ (master)
+換配Ａ
+修改４ (feature)
+
+詳細過程可以參考教學 https://git-scm.com/book/en/v2/Git-Tools-Rewriting-History
+'
 
 is_branch_exists() {
     git rev-parse --verify "$1" 2>/dev/null
@@ -96,10 +164,11 @@ clone_to() {
     fi
 
     execute "${USABLE_GIT}" -c init.defaultBranch=master init --quiet
-    execute "${USABLE_GIT}" config remote.origin.url "${GIT_REMOTE_URL}"
-    execute "${USABLE_GIT}" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-    execute "${USABLE_GIT}" config --bool "core.autocrlf" "false"
-    execute "${USABLE_GIT}" config --bool "core.symlinks" "true"
+    execute "${USABLE_GIT}" config set remote.origin.url "${GIT_REMOTE_URL}"
+    execute "${USABLE_GIT}" config set remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    execute "${USABLE_GIT}" config set --bool "core.autocrlf" "false"
+    execute "${USABLE_GIT}" config set "core.eol" "lf"
+    # execute "${USABLE_GIT}" config set --bool "core.symlinks" "true"
     execute "${USABLE_GIT}" fetch --force $quiet_progress origin
     execute "${USABLE_GIT}" fetch --force $quiet_progress --tags origin
     # execute "${USABLE_GIT}" fetch --force $quiet_progress \
@@ -295,7 +364,9 @@ test_list() {
 }
 
 test_show() {
-    git notes --ref testlog show
+    # git pull --set-upstream remote 'refs/notes/*'
+    # git push remote 'refs/notes/*'
+    git notes --ref refs/notes/testlog show
 }
 
 bump() {

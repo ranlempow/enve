@@ -368,6 +368,49 @@ chroot runas other:       chrootspace
 /run,/tmp/run ($XDG_RUNTIME_DIR)
 /etc ($XDG_CONFIG_HOME)
 /tmp ($TMPDIR)
+
+
+
+
+
+
+
+## 2023年最新版架構
+
+- $ENVE_WORKSPACE
+  - config($XDG_CONFIG_HOME) -> .config
+    - ws/{ws-id, ws.config}
+    - studio/.git
+  - local($ENVE_LOCAL_SYSROOT)(.local)
+         (Caskroom bin include opt sbin var Cellar Homebrew etc lib share)
+    - CACHEDIR.TAG
+    - apps
+    - enve/.git
+    - Homebrew/.git
+    - share($XDG_DATA_HOME): static large database or other user data
+  - sync        存放長期一般資料
+    - dump/     (backup-prepare)
+    - bigfile/
+  - project($ENVE_PROJECT_DIR)
+    - .sublime-projects/\*.sublime-project
+    - .profile/\*.enve.ini
+    - P1/.git
+    - P3/.git
+    - sub/P1/P2/.git
+    - sub/P1/sub/P2/P4.git
+  - var($ENVE_VAR_DIR)
+    - pm/
+    - log/
+    - backups/CACHEDIR.TAG  ($ENVE_BACKUP_REPOS)
+    - restores/CACHEDIR.TAG ($ENVE_RESTORE_DIR)
+    - out/CACHEDIR.TAG      ($ENVE_OUTPUT_DIR)
+    - cache/CACHEDIR.TAG    ($XDG_CACHE_HOME)   keeper:keeper 1770
+    - extra/CACHEDIR.TAG
+      - P1/\*.txt
+      - P3
+    - lib: holds state information pertaining to an application or the system
+      - sublime/\*.sublime-project
+
 '
 
 

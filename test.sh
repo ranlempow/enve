@@ -117,7 +117,7 @@ $(find  ./libexec/enve/cilib \
         ! -name '.*' ! -name '*.ini' ! -name '_*' \
         ! -name 'inputrc' ! -name '*.nix' ! -name '*.conf' \
         )
-# $(find ./libexec/enve/script -type f \
+# \$(find ./libexec/enve/script -type f \
 #         ! -name '.*' ! -name '*.ini' ! -name '_*' \
 #         ! -name '*.applescript' ! -name '*.cmd' ! -name '*.bat' \
 #         )

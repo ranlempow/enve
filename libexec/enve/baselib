@@ -533,21 +533,18 @@ write_file_only_nonexist() {
     text=${2:-}
     mask=${3:-0022}
     _need_noclobber=
-    # _old_mask=$(umask)
-    umask $mask
     if [ "${-#*C}" = "$-" ]; then
         # need set `noclobber`
         _need_noclobber=1
     fi
-    if [ -n "$_need_noclobber" ]; then set -o noclobber; fi
-    # if { echo "$text" > $filename; } 2>/dev/null; then
+    umask $mask
+    [ -n "$_need_noclobber" ] && set -o noclobber
     if { printf %s "$text" > $filename; } 2>/dev/null; then
         set -- 0
     else
         set -- 1
     fi
-    if [ -n "$_need_noclobber" ]; then set +o noclobber; fi
-    # umask ${_old_mask}
+    [ -n "$_need_noclobber" ] && set +o noclobber
     umask 0022
     unset _need_noclobber filename text mask
     return $1
@@ -2056,8 +2053,10 @@ parse_enve_argument() {
     roles=${1#"$_arg"}
     ARG_ROLES=${roles#@}
     case $_arg in
-        *.ini)              ARG_RESULT=ini; return ;;
-        git+*|*.git|*#*)    ARG_RESULT=repo; return ;;
+        *.ini)              ARG_RESULT=ini;
+                            ARG_PATH=${ARG_PATH:-"$_arg"}; return ;;
+        git+*|*.git|*#*)    ARG_RESULT=repo;
+                            ARG_PATH=${ARG_PATH:-"$_arg"}; return ;;
         :*|localhost:*)
                 ARG_RESULT=ws
                 ARG_REMOTE=

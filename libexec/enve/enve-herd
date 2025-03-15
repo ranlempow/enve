@@ -1,0 +1,199 @@
+#!/bin/sh
+#
+# __noexec__=true
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+settrace
+
+# shellcheck source=libexec/enve/wslib
+. "$ENVE_HOME/enve/wslib"
+
+: '
+# 2024年(舊)
+herd 指的是一群行程，確保這些行程同時運行，可以同時調整這群行程的狀態。
+
+herd.$session.home 所在資料夾，預設是$WS_VAR/pm
+herd.$session.tmux 是否以tmux當作shield
+herd.$session.process.$name.cmd
+herd.$session.process.$name.state    要求的狀態，預設是run
+herd.$session.process.$name.restart  什麼時候要重新啟動
+herd.$session.process.$name.log      log方式
+
+state=active|deactive|suspend
+'
+
+# func1() { [ "$1" = a ]; }
+# print_multicol 'a|b|cnt
+# def|g|h' --emphasize=func1 n1 n23456 n7
+# exit 0
+
+
+lock_service() {
+    CONTROL_PIDFILE="$PM_HOME/srv/$srvname/control"
+    cnt=0
+    while [ $cnt -lt 5 ]; do
+        if write_file_only_nonexist "$CONTROL_PIDFILE" "$$$newl" 0077; then
+            return 0
+        fi
+        read control_pid < "$CONTROL_PIDFILE"
+        if [ -n "$control_pid" ]; then
+            if [ "$control_pid" = $$ ]l then
+                return 0
+            elif kill -0 "$control_pid"; then
+                sleep 1
+                cnt=$((cnt + 1))
+                continue
+            fi
+        fi
+        if ! rm "$CONTROL_PIDFILE"; then
+            _error "cannot remove lockfile '$CONTROL_PIDFILE'"
+            return 1
+        fi
+        cnt=$((cnt + 1))
+    done
+    _error "timeout on locking '$CONTROL_PIDFILE'"
+    return 1
+}
+
+unlock_service() {
+    if ! rm "$CONTROL_PIDFILE"; then
+        _warning "cannot unlock '$CONTROL_PIDFILE'"
+    fi
+}
+
+check_pidfile() {
+    [ ! -e "$PIDFILE" ] && return 0
+    if [ ! -f "$PIDFILE" ] || [ ! -r "$PIDFILE" ] || [ ! -w "$PIDFILE" ]; then
+        _error "not readable or writable '$PIDFILE'"
+        return 2
+    fi
+    read -r pid < "$PIDFILE"
+    if [ -z "$pid" ]; then
+        rm "$PIDFILE"
+        return 0
+    elif kill -0 "$pid" 2>/dev/null; then
+        return 1
+    else
+        rm "$PIDFILE"
+        return 0
+    fi
+}
+
+detect_shield() {
+    PIDFILE=$SHIELD_PIDFILE check_pidfile
+    case "$?" in
+        0) shield=;;
+        1) shield=$pid;;
+        *) return 1;;
+    esac
+    PIDFILE=$PIDFILE check_pidfile
+    case "$?" in
+        0) target=;;
+        1) target=$pid;;
+        *) return 1;;
+    esac
+    
+    if [ -z "$shield" ] && [ -n "$target" ]; then
+        _error "shield exit unexcepted"
+        return 1
+    elif [ -n "$shield" ] && [ -z "$target" ]; then
+        # _error "service exit but shield alive"
+        # return 1
+        :
+    elif [ -z "$shield" ] && [ -z "$target" ]; then
+        :
+    else
+        :
+    fi
+}
+
+_do_start() {
+    EXIT=1 NOASK=1 EXEC_SHIELD=1 KILL_TIMEOUT=5 \
+    SHIELD_PIDFILE=a PIDFILE=b EXITFILE=c \
+    enve fire --rcfile ...
+}
+
+_do_stop() {
+    kill -TERM "$shield"
+    while kill -0 "$shield" >/dev/null; do
+        wait "$shield"
+    done
+}
+
+restart_serivce() {
+    lock_service || return 1
+    if ! detect_shield; then
+        unlock_service
+        return 1
+    fi
+    if [ -n "$shield" ]; then
+        if [ -z "${restart:-}" ]; then
+            unlock_service
+            return 0
+        elif [ "$restart" = hard ]; then
+            :
+            unlock_service
+            return 0
+        else
+            if ! _do_stop; then
+                unlock_service
+                return 1
+            fi
+        fi
+    fi
+    if _do_start; then
+        unlock_service
+        return 0
+    else
+        unlock_service
+        return 1
+    fi
+    
+}
+
+stop_service() {
+    lock_service || return 1
+    if ! detect_shield; then
+        unlock_service
+        return 1
+    fi
+    if _do_stop; then
+        unlock_service
+    else
+        unlock_service
+        return 1
+    fi
+}
+
+find_ws_upward .
+
+PM_HOME=$XDG_RUNTIME_DIR/pm
+
+echo "PM_HOME: $PM_HOME" >&2
+
+if [ -f "$WS_CONFIG_DIR/workspace.ini" ]; then
+    TABLE=$(
+        if ! parse_config_non_recursive_text < "$WS_CONFIG_DIR/workspace.ini"; then
+            _error "parse error at '$WS_CONFIG_DIR/workspace.ini'"
+            return 1
+        fi
+    )
+else
+    TABLE=
+fi
+
+srvname=$1
+fast_table_subset "service\\.$srvname\\..*"
+fast_as_postfix "service.$srvname"
+if [ -z "$TABLE_AS" ]; then
+    die "service '$srvname' not exists"
+fi
+while read -r k v; do
+
+done<<EOF
+$TABLE_AS
+EOF
+
+

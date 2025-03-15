@@ -106,7 +106,7 @@ resolve_nix() {
     fi
 
     p_text() {
-        printf %s\\n "v2025v1"
+        printf %s\\n "v2025v3"
         printf %s\\n "$nix_root"
         printf %s\\n "$nix_channel_url"
         printf %s\\n "$nix_config"
@@ -151,6 +151,7 @@ resolve_nix() {
               man
               perl lesspipe
               tree
+              bat lsd
               $pkgs
             ];
           }
