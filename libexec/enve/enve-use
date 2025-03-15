@@ -1,0 +1,834 @@
+#!/bin/sh
+#
+# Usage: enve-use [COMMON_OPTIONS] [<workspace>]
+# Environment encapsulation tool
+#
+# Common Options:
+#     --studio[=URL]          init studio
+#     -i, --include FILE      include config from the file
+#     -c, --config KEY=VALUE  append a key-value pair to config
+#
+#
+#
+# __noexec__=true
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/tablelib"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/pathutils"
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/prjlib"
+
+true '
+快速設定開發環境
+
+
+'
+
+create_macos_shortcut() {
+    APP=$1
+    APPdir=~/Applications
+    app_bundle="$APPdir/$APP.app"
+    mkdir -vp "$app_bundle/Contents/Resources" # Create the folders.
+    cp ~/.local/apps/kitty.app/Contents/Resources/kitty.icns \
+        "$app_bundle/Contents/Resources/${APP}.icns"
+
+    mkdir -vp "$app_bundle/Contents/MacOS"
+# printf '#!/bin/sh
+# ENVE_HOME="'${ENVE_HOME}'"
+# ~/.local/apps/kitty.app/Contents/MacOS/kitty \
+#     --config "$ENVE_HOME/enve/core/terminal/kitty-config/kitty2.conf" \
+#     --override "shell=$ENVE_HOME/../bin/enve -VVVV --pause-on-error fire boot" \
+#     --single-instance --instance-group "'$APP'"
+
+# ' > "$app_bundle/Contents/MacOS/${APP}"
+
+#     printf '#!/usr/bin/osascript
+# tell application "Terminal"
+#     activate
+#     do script "top"
+# end tell
+# ' > "${APPdir}/${APP}.app/Contents/MacOS/${APP}"
+
+# tell application "/usr/local/bin/gnumeric"
+#     activate
+# end tell
+
+# set doesExist to false
+# try
+#     do shell script "osascript -e '\'"exists application \"$APP\""\''
+#     set doesExist to true
+# end try
+# return doesExist
+
+    # ID=com.sublimetext.4
+    # -c "add CFBundleIdentifier string ${ID}" \
+
+    chmod +x "$app_bundle/Contents/MacOS/${APP}" # Sets the executable flag.
+    /usr/libexec/PlistBuddy "$app_bundle/Contents/Info.plist" \
+        -c "add CFBundleDisplayName string ${APP}" \
+        -c "add CFBundleIconFile string ${APP}.icns" || true
+
+    # /usr/libexec/PlistBuddy "$app_bundle/Contents/version.plist" \
+    #     -c "add ProjectName string ${APP}"
+
+}
+
+copy_macos_app() {
+
+    APPdir=~/Applications
+    app_bundle="$APPdir/$APP.app"
+    if [ ! -e "$app_bundle" ]; then
+        cp -r "$APPLoc" "$app_bundle"
+        /usr/libexec/PlistBuddy "$app_bundle/Contents/Info.plist" \
+            -c "add CFBundleDisplayName string ${APP}"
+    fi
+}
+
+create_windows_shortcut() {
+    # https://ss64.com/ps/syntax-shortcut.html
+    APP=$1
+    APPLoc=$2
+
+    ARGSTR=
+    for s in "$@"; do
+        replace ' ' '^ '
+        ARGSTR="$ARGSTR $s"
+    done
+
+    winpath=$(wslpath -a -m "$APPLoc")
+
+    script="
+\$strTargetPath = \"$winpath\"
+\$strLinkFile = \"\$env:USERPROFILE\\Desktop\\$APP.lnk\"
+"'
+
+$shell = New-Object -ComObject WScript.Shell
+$Shortcut = $shell.CreateShortcut($strLinkFile)
+$Shortcut.TargetPath = $strTargetPath
+$Shortcut.Arguments = '"$ARGSTR"'
+# Set the window style (3=Maximized 7=Minimized 4=Normal)
+$shortcut.WindowStyle = 4
+# $Shortcut.IconLocation = "%SystemRoot%\SystemResources\shell32.dll.mun, 94"
+$Shortcut.Save()
+'
+    printf %s\\n "$script" >&2
+    printf %s\\n "$script" | \
+        powershell -noprofile -noninteractive -command '$input | iex'
+
+}
+
+
+filter_github_release() {
+    # usage:
+    #   filter_github_release GITHUB_REPO BASE_PATTERN [TAG_PATTERN]
+    #   filter_github_release git-for-windows/git 'PortableGit-*-64-bit.7z.exe' 'v2.*'
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        ghurl="https://api.github.com/repos/$1/releases?page=$i"
+        content=$(curl -Ls "$ghurl")
+        count=$(echo "$content" | wc -c)
+        _info "parse '$ghurl' ($count)"
+        if [ "$count" -lt 20 ]; then
+            break
+        fi
+    while read -r ln; do
+        # "tag_name": "v2.48.0-rc2.windows.1",
+        # "draft": false,
+        # "prerelease": true,
+        # "browser_download_url": "https://github.com/git-for-windows/git/releases/download/v2.48.0-rc2.windows.1/Git-2.48.0-rc2-32-bit.exe"
+        case $ln in
+            *'"tag_name": "'*)
+                is_draft=1
+                if [ -z "${prerelease:-}" ]; then
+                    is_prerelease=1
+                else
+                    is_prerelease=
+                fi
+                tag_name=${ln#*'"tag_name": "'}
+                tag_name=${tag_name%%\"*}
+                ;;
+            *'"draft": false,'*) is_draft=;;
+            *'"prerelease": false,'*) is_prerelease=;;
+            *'"browser_download_url": "'*)
+                [ -z "$is_draft$is_prerelease" ] || continue
+                download_url=${ln#*'"browser_download_url": "'}
+                download_url=${download_url%%\"*}
+                basename=${download_url##*/}
+                matchbase=
+                matchtag=
+                eval "case \$basename in $2) matchbase=1; esac"
+                eval "case \$tag_name in ${3:-"*"}) matchtag=1; esac"
+                if [ "$matchbase$matchtag" = '11' ]; then
+                    echo "$download_url"
+                    return
+                fi
+                ;;
+            *'"zipball_url": "'*)
+                [ -z "$is_draft$is_prerelease" ] || continue
+                [ "$2" = "*.zip" ] || continue
+                download_url=${ln#*'"zipball_url": "'}
+                download_url=${download_url%%\"*}
+                matchtag=
+                eval "case \$tag_name in ${3:-"*"}) matchtag=1; esac"
+                if [ "$matchtag" = '1' ]; then
+                    echo "$download_url"
+                    return
+                fi
+                ;;
+        esac
+    done<<EOF
+$content
+EOF
+    done
+    _error "'$2' ${3:-"*"} not found"
+    return 1
+}
+
+filter_github_release_smart() {
+    get_system2
+    IFS="." read -r m n x <<EOF
+$KERNEL_VERSION
+EOF
+    s=$1
+    replace '-' '_'
+    app=$s
+    basepat=
+    [ -n "$basepat" ] || eval basepat=\${BASE__${app}__${KERNEL}__${MACHINE}:-}
+    [ -n "$basepat" ] || eval basepat=\${BASE__${app}__${KERNEL}:-}
+    [ -n "$basepat" ] || eval basepat=\${BASE__${app}__${MACHINE}:-}
+    [ -n "$basepat" ] || eval basepat=\${BASE__${app}:-}
+    tagpat=
+    [ -n "$tagpat" ] || eval tagpat=\${TAG__${app}__${KERNEL}__${m}__${n}:-}
+    [ -n "$tagpat" ] || eval tagpat=\${TAG__${app}__${KERNEL}__${m}:-}
+    [ -n "$tagpat" ] || eval tagpat=\${TAG__${app}__${KERNEL}:-}
+    [ -n "$tagpat" ] || eval tagpat=\${TAG__${app}:-}
+
+    if [ ${basepat:--} = - ] || [ ${tagpat:--} = - ]; then
+        _error "unsupport system of $1"
+    fi
+    # GITHUB_REPO BASE_PATTERN [TAG_PATTERN]
+    filter_github_release "$2" "$basepat" "$tagpat"
+}
+
+
+parse_github_release_url() {
+    url=$1
+    basename=${url##*/}
+    version=${url%/"$basename"}
+    version=${version##*/}
+    version=${version#v}
+}
+
+unpack_dmg() {
+    while read -r disk uuid path; do
+        if [ -n "$path" ]; then
+            mountpoint=$path
+        fi
+    done <<EOF
+$(hdiutil attach -nobrowse -readonly "$1" 2>/dev/null)
+EOF
+    # echo "mountpoint: $mountpoint"
+    [ -n "$mountpoint" ] || return 1
+    mkdir -p "$2"
+    for p in "$mountpoint"/*; do
+        if [ ${p##*/} != "Applications" ]; then
+            cp -r "$p" "$2"
+        fi
+    done
+    hdiutil detach "$mountpoint"
+}
+
+
+download_app_and_unpack() {
+    if [ -z "${version:-}" ]; then
+        parse_github_release_url "$2"
+    elif [ -z "${basename:-}" ]; then
+        basename=${2##*/}
+    fi
+    # _info "$TMPDIR/$basename"
+    echo "$TMPDIR/$basename"
+    curl -#fLo "$TMPDIR/$basename" "$2"
+    xattr -c "$TMPDIR/$basename"
+    target=$ENVE_APPDIR/$1/$version
+    mkdir -p "$target"
+    case $basename in
+        *.dmg) unpack_dmg "$TMPDIR/$basename" "$target" ;;
+        *.zip) unzip -q "$TMPDIR/$basename" -d "$target" ;;
+        *.tar) tar xf "$TMPDIR/$basename" -C "$target" ;;
+        *.tar.gz|*.tgz) tar xzf "$TMPDIR/$basename" -C "$target" ;;
+        *.tar.xz|*.txz) tar xJf "$TMPDIR/$basename" -C "$target" ;;
+        *.tar.zst) tar xf "$TMPDIR/$basename" --zstd -C "$target" ;;
+        *.7z.exe) : TODO ;;
+    esac
+    _info "'$target' installed"
+}
+
+list_installed_app_version() {
+    vs=
+    for p in "$ENVE_APPDIR/$1"/*; do
+        if [ -n "${p##*"*"}" ]; then
+            vs=$vs${p##*/}$newl
+        fi
+    done
+    sort_semver "$vs"
+}
+
+match_installed_app_version() {
+    use=
+    wanted=${2:-}
+    while read -r v; do
+        if [ -n "$v" ]; then
+            if [ -z "$wanted" ]; then
+                use=$v
+                break
+            elif ! is_left_semver_greater "$v" "$wanted"; then
+                use=$v
+                break
+            fi
+        fi
+    done <<EOF
+$(list_installed_app_version "$1")
+EOF
+}
+
+
+
+
+
+
+
+
+: '
+ensure_kitty()
+ensure_alacritty()
+ensure_vscode()
+ensure_nvim()
+ensure_sublime_text()
+
+ensure_lsd()
+TODO: ensure_bat()
+TODO: ensure_alpine()
+TODO: ensure_gitbash()
+ensure_font()
+'
+
+
+
+
+
+
+
+ensure_kitty() {
+    match_installed_app_version kitty "${1:-}"
+    if [ -z "$use" ]; then
+        # if [ -n "${1:-}" ]; then
+        #     tag="v$1|v$1.*"
+        # else
+        #     # for macos 10.14
+        #     tag="v0.2*"
+        # fi
+        BASE__kitty__Windows=-
+        BASE__kitty__Linux_WSL2=-
+        BASE__kitty__Darwin='kitty-*.dmg'
+        BASE__kitty__x86_64='kitty-*-x86_64.txz'
+        BASE__kitty__aarch64='kitty-*-arm64.txz'
+        TAG__kitty__Darwin__16="v0.2*"
+        TAG__kitty__Darwin__17="v0.2*"
+        TAG__kitty__Darwin__18="v0.2*" # for macos 10.14
+        TAG__kitty=${1:+"v$1|v$1.*"}
+        TAG__kitty=${TAG__kitty:-"*"}
+        # if [ -n "${1:-}" ]; then
+        #     TAG__kitty="v$1|v$1.*"
+        # else
+        #     TAG__kitty="*"
+        # fi
+        url=$(filter_github_release_smart kitty kovidgoyal/kitty)
+        # url=$(filter_github_release kovidgoyal/kitty \
+        #       'kitty-*.dmg' "$tag")
+        download_app_and_unpack kitty "$url"
+        use=$version
+    fi
+    _info "use kitty-$use"
+    get_system2
+    if [ "$KERNEL" = Darwin ]; then
+        BIN="$ENVE_APPDIR/kitty/$use"/kitty.app/Contents/MacOS/kitty
+    fi
+    set --
+    set -- "$@" --config "$ENVE_HOME/enve/core/terminal/kitty-config/kitty.conf"
+    set -- "$@" --override 'shell=/usr/local/bin/enve -VVVV --pause-on-error fire boot'
+    set -- "$@" --override font_family=abc
+    set -- "$@" --single-instance --instance-group abc
+}
+
+ensure_alacritty() {
+    match_installed_app_version alacritty "${1:-}"
+    if [ -z "$use" ]; then
+        # if [ -n "${1:-}" ]; then
+        #     tag="v$1|v$1.*"
+        # else
+        #     tag=""
+        # fi
+        BASE__alacritty__Windows='Alacritty-*-portable.exe'
+        BASE__alacritty__Linux_WSL2=-
+        BASE__alacritty__Darwin='Alacritty-*.dmg'
+        BASE__alacritty__Linux=-
+        TAG__alacritty=${1:+"v$1|v$1.*"}
+        TAG__alacritty=${TAG__alacritty:-"*"}
+
+        # Alacritty-v0.15.0-portable.exe
+        # url=$(filter_github_release alacritty/alacritty \
+        #       'Alacritty-*.dmg' "$tag")
+        url=$(filter_github_release_smart alacritty alacritty/alacritty)
+        download_app_and_unpack alacritty "$url"
+        use=$version
+    fi
+    _info "use alacritty-$use"
+    BIN="$ENVE_APPDIR/alacritty/$use"/Alacritty.app/Contents/MacOS/alacritty
+    set --
+    set -- "$@" --config-file "$ENVE_HOME/enve/core/terminal/alacritty-config/alacritty.conf"
+    set -- "$@" --option 'a="B"'
+    set -- "$@" --command /usr/local/bin/enve -VVVV --pause-on-error fire boot
+
+}
+
+
+ensure_vscode() {
+    match_installed_app_version vscode "${1:-}"
+    if [ -z "$use" ]; then
+        # if [ -n "${1:-}" ]; then
+        #     tag="$1|$1.*"
+        # else
+        #     # for macos 10.14
+        #     tag="1.6*"
+        # fi
+        # # https://update.code.visualstudio.com/{version}/win32-x64-archive/stable
+        # # https://update.code.visualstudio.com/{version}/win32-arm64-archive/stable
+        # # https://update.code.visualstudio.com/{version}/darwin-universal/stable
+        # # https://update.code.visualstudio.com/{version}/linux-x64/stable
+        # # https://update.code.visualstudio.com/{version}/linux-arm64/stable
+        # url=$(filter_github_release microsoft/vscode \
+        #       '*.zip' "$tag")
+
+        BASE__vscode='*.zip'
+        TAG__vscode__Darwin__16="1.6*"
+        TAG__vscode__Darwin__17="1.6*"
+        TAG__vscode__Darwin__18="1.6*" # for macos 10.14
+        TAG__vscode=${1:+"$1|$1.*"}
+        TAG__vscode=${TAG__vscode:-"*"}
+        url=$(filter_github_release_smart vscode microsoft/vscode)
+        version=${url##*/}
+        get_system2
+        case "${KERNEL}__${MACHINE}" in
+            Windows__x86_64)  plat=win32-x64-archive;    basename=VSCode-$plat.zip;;
+            Windows__aarch64) plat=Vwin32-arm64-archive; basename=VSCode-$plat.zip;;
+            Darwin__*)        plat=darwin-universal;     basename=VSCode-$plat.zip;;
+            Linux__x86_64)    plat=linux-x64;            basename=VSCode-$plat.tar.gz;;
+            Linux__aarch64)   plat=linux-arm64;          basename=VSCode-$plat.tar.gz;;
+        esac
+        url="https://update.code.visualstudio.com/${version}/${plat}/stable"
+        version=$version basename=$basename \
+            download_app_and_unpack vscode "$url"
+        use=$version
+    fi
+    _info "use vscode-$use"
+
+
+    # /Users/pengweiqi/Downloads/Visual Studio Code.app/Contents/Resources/app/bin/code
+    # /Users/pengweiqi/Downloads/Visual Studio Code.app/Contents/Resources/Code.icns
+}
+
+ensure_nvim() {
+    match_installed_app_version nvim "${1:-}"
+    if [ -z "$use" ]; then
+        if [ -n "${1:-}" ]; then
+            tag="v$1|v$1.*"
+        else
+            tag=""
+        fi
+        # nvim-linux64.tar.gz
+        # nvim-macos-x86_64.tar.gz
+        # nvim-macos-arm64.tar.gz
+        # nvim-win64.zip
+        # nvim.appimage
+        url=$(filter_github_release neovim/neovim \
+              'nvim-macos-x86_64.tar.gz' "$tag")
+        download_app_and_unpack nvim "$url"
+        use=$version
+    fi
+    _info "use nvim-$use"
+}
+
+ensure_lsd() {
+    # lsd-v1.1.5-aarch64-apple-darwin.tar.gz
+    # lsd-v1.1.5-aarch64-unknown-linux-musl.tar.gz
+    # lsd-v1.1.5-x86_64-apple-darwin.tar.gz
+    # lsd-v1.1.5-x86_64-pc-windows-msvc.zip
+    # lsd-v1.1.5-x86_64-unknown-linux-musl.tar.gz
+
+    match_installed_app_version lsd "${1:-}"
+    if [ -z "$use" ]; then
+        if [ -n "${1:-}" ]; then
+            tag="v$1|v$1.*"
+        else
+            # for macos 10.14
+            tag="v1.0.*"
+        fi
+        url=$(filter_github_release lsd-rs/lsd \
+              'lsd-*-x86_64-apple-darwin.tar.gz' "$tag")
+        download_app_and_unpack lsd "$url"
+        use=$version
+    fi
+    _info "use lsd-$use"
+}
+
+ensure_bat() {
+    match_installed_app_version bat "${1:-}"
+    if [ -z "$use" ]; then
+        BASE__bat__Windows__x86_64='bat-*-x86_64-pc-windows-msvc.zip'
+        BASE__bat__Windows__aarch64='bat-*-aarch64-pc-windows-msvc.zip'
+        BASE__bat__Darwin__x86_64='bat-*-x86_64-apple-darwin.tar.gz'
+        BASE__bat__Darwin__aarch64='bat-*-aarch64-apple-darwin.tar.gz'
+        BASE__bat__Linux__x86_64='bat-*-x86_64-unknown-linux-musl.tar.gz'
+        BASE__bat__Linux__aarch64='bat-*-aarch64-unknown-linux-musl.tar.gz'
+        TAG__bat=${1:+"v$1|v$1.*"}
+        TAG__bat=${TAG__bat:-"*"}
+        url=$(filter_github_release_smart bat sharkdp/bat)
+        download_app_and_unpack bat "$url"
+        use=$version
+    fi
+    _info "use bat-$use"
+
+}
+
+ensure_sublime_text() {
+    match_installed_app_version sublime_text "${1:-}"
+    if [ -z "$use" ]; then
+        while read -r ln; do
+            case $ln in
+                "<h3>Build "*"</h3>")
+                    version=${ln#*"<h3>Build "}
+                    version=${version%"</h3>"*}
+                    # echo "$version"
+                    if [ -z "${1:-}" ] || [ $1 -eq $version ]; then
+                        break
+                    fi
+                ;;
+            esac
+        done<<EOF
+$(curl -Ls "https://www.sublimetext.com/download")
+EOF
+        if [ -z "$version" ]; then
+            _error "sublime_text-${1:-any-version} not found"
+            return 1
+        fi
+        # https://download.sublimetext.com/sublime_text_build_4180_mac.zip
+        # https://download.sublimetext.com/sublime_text_build_4180_x64.zip
+        # https://download.sublimetext.com/sublime_text_build_4180_x64.tar.xz
+        # https://download.sublimetext.com/sublime_text_build_4180_arm64.tar.xz
+        case "${KERNEL}__${MACHINE}" in
+            Windows__x86_64)  basename=sublime_text_build_${version}_x64.zip;;
+            Windows__aarch64) basename=;;
+            Darwin__*)        basename=sublime_text_build_${version}_mac.zip;;
+            Linux__x86_64)    basename=sublime_text_build_${version}_x64.tar.xz;;
+            Linux__aarch64)   basename=sublime_text_build_${version}_arm64.tar.xz;;
+        esac
+        if [ -z "$basename" ]; then
+            return 1
+        fi
+        url=https://download.sublimetext.com/$basename
+        version=$version download_app_and_unpack sublime_text "$url"
+        use=$version
+    fi
+    _info "use sublime_text-$use"
+    get_system2
+    if [ "$KERNEL" = Darwin ]; then
+        installed_bundle="$ENVE_APPDIR/sublime_text/$use/Sublime Text.app"
+        BIN="$installed_bundle/Contents/SharedSupport/bin/subl"
+        DATA="$installed_bundle/Contents/MacOS/Data"
+    fi
+}
+
+
+
+ensure_gitbash() {
+    url=$(filter_github_release git-for-windows/git \
+          'PortableGit-*-64-bit.7z.exe' 'v2.*')
+
+}
+
+ensure_alpine() {
+    :
+}
+ensure_font() {
+    fontname=${1:-CommitMono}
+    url=
+    case $fontname in
+        # 參考 https://www.programmingfonts.org
+        # Hack.tar.xz 字短稀疏，整潔
+        # 0xProto.tar.xz 寬字，風格強烈，ligatures不變形
+        # iA-Writer.tar.xz IBM Plex 改良版，打字機字型，數字好看
+        # FiraCode.tar.xz ，FiraMono是沒有ligatures的版本
+        # CommitMono.tar.xz 正規，稍稀疏，銳利，高分辨度字型
+        # Recursive.tar.xz 通用型，風格稍強，飽滿，適合程式，書寫，介面
+        # JetBrainsMono.tar.xz 程式友善，但比較醜
+        # Maple 圓潤厚重支援中文，變化少
+        [Mm]aple)
+            # NF-CN: Full version, embed with icons,
+            # Chinese and Japanese glyphs (With -NF-CN suffix)
+            url=$(prerelease=1 filter_github_release subframe7536/maple-font \
+                   MapleMono-NF-CN.zip)
+            fontname=maple
+            ;;
+        [Hh]ack) fontname=hack-nerd; packname=Hack ;;
+        0x[Pp]roto) fontname="0xproto-nerd"; packname="0xProto" ;;
+        i[Aa]-[Ww]riter|i[Aa][Ww]riter) fontname=iawriter-nerd; packname=iA-Writer ;;
+        [Ff]ira|[Ff]ira[Cc]ode) fontname=firecode-nerd; packname=FiraCode ;;
+        [Cc]ommit|[Cc]ommit[Mm]ono) fontname=commitmono-nerd; packname=CommitMono ;;
+        [Rr]ecursive) fontname=recursive-nerd; packname=Recursive ;;
+        [Jj]et[Bb]rains|[Jj]et[Bb]rains[Mm]ono) fontname=jetbrainsmono-nerd; packname=JetBrainsMono ;;
+        *)
+            _error "font '$fontname' not found"
+            return 1
+            ;;
+    esac
+    if [ -z "$url" ]; then
+        url=$(filter_github_release ryanoasis/nerd-fonts \
+              "$packname.tar.xz")
+    fi
+    echo "$url"
+    parse_github_release_url "$url"
+    match_installed_app_version font-${fontname} "$version"
+    if [ -z "$use" ]; then
+        download_app_and_unpack font-${fontname} "$url"
+        use=$version
+    fi
+    _info "use font-${fontname}-$use"
+    get_system2
+    case "$KERNEL" in
+        Darwin) font_dir="$HOME/Library/Fonts";;
+        Linux)  font_dir="$HOME/.local/share/fonts";;
+        # TODO:
+        Windows)font_dir="$LOCALAPPDATA/Microsoft/Windows/Fonts";;
+    esac
+
+    mkdir -p $font_dir
+    the_fonts_dir="$ENVE_APPDIR/font-${fontname}/$use"
+}
+
+
+install_font() {
+
+    fonts=$(find "$the_fonts_dir" \( -name '*.[ot]tf' \) -type f)
+    cp $fonts "$font_dir"
+
+    powershell.exe -File "$ENVE_HOME"/enve/core/windows/install-font.ps1 "$font_dir"
+}
+
+uninstall_font() {
+    fonts=$(find "$the_fonts_dir" \( -name '*.[ot]tf' \) -type f)
+    for font in $fonts; do
+        filename=${font##*/}
+        rm "$font_dir/$filename" || true
+    done
+}
+
+
+ENVE_APPDIR=~/.local/apps
+settrace
+# ensure_kitty
+# ensure_lsd
+# ensure_font maple
+# ensure_sublime_text #"4180"
+# exit 0
+
+
+build_kitty() {
+    APP=$1
+    FONT=Recursive
+    FONT=iA-Writer
+    ensure_kitty
+    create_macos_shortcut "$APP"
+    echo "$app_bundle"
+    # font
+    ensure_font "$FONT"
+    install_font
+    # theme
+    cp "$ENVE_HOME/enve/core/terminal/kitty-config/kitty-theme.conf" \
+       "$app_bundle/Contents/kitty-theme.conf"
+    # config
+    cp "$ENVE_HOME/enve/core/terminal/kitty-config/kitty.conf" \
+       "$app_bundle/Contents/kitty.conf"
+
+    printf '#!/bin/sh
+ARG0=$(dirname "$0")
+ENVE_HOME="'${ENVE_HOME}'"
+'$BIN' \
+    --config "$ARG0/../kitty.conf" \
+    --override "shell=$ENVE_HOME/../bin/enve -VVVV --pause-on-error fire boot" \
+    --override "font_family='$FONT' Nerd Font Mono" \
+    --single-instance --instance-group "'$APP'"
+' > "$app_bundle/Contents/MacOS/${APP}"
+
+    # enve_config lsd/bat
+    # workspace = None
+}
+
+
+build_sublime_text() {
+    APP=$1
+    FONT=Recursive
+    ensure_sublime_text
+    copy_macos_app "$APP" "$installed_bundle"
+    # font
+    ensure_font "$FONT"
+    install_font
+
+    # theme
+    # workspace = None
+
+    BIN="$app_bundle/Contents/SharedSupport/bin/subl"
+    DATA="$app_bundle/Contents/MacOS/Data"
+    # create '/Data' to make sublime text portable
+    mkdir -p "$DATA/Packages/User"
+    mkdir -p "$DATA/Installed Packages"
+
+    # install package control
+    PKGCTR_URL="https://packagecontrol.io/Package%20Control.sublime-package"
+    PKGCTR_PATH="$DATA/Installed Packages/Package Control.sublime-package"
+    if [ ! -e "$PKGCTR_PATH" ]; then
+        curl -#fLo "$PKGCTR_PATH" "$PKGCTR_URL"
+    fi
+
+    # install Ancient Theme
+    cp -r "$ENVE_HOME/../share/enve/theme/sublime-text/Ancient" \
+          "$DATA/Packages/Ancient"
+
+    sed -i -e "s/Hack Nerd Font/$FONT Nerd Font/g" \
+        "$DATA/Packages/Ancient/Ancient.sublime-theme"
+
+    echo '
+    {
+        "color_scheme": "Packages/Ancient/Ancient.tmTheme",
+        "theme": "Ancient.sublime-theme",
+        "font_face": "'$FONT' Nerd Font",
+        "font_size": 19,
+        "ignored_packages":
+        [
+            "SyncedSideBar",
+            "Vintage",
+        ],
+        "hot_exit": "disabled",
+        "hot_exit_projects": true,
+        "indent_to_bracket": true,
+        "show_encoding": true,
+        "show_full_path": true,
+        "mde.auto_fold_link.enabled": false,
+        "update_check": false,
+    }
+    ' > "$DATA/Packages/User/Preferences.sublime-settings"
+
+    # echo '
+    # {
+    #     "installed_packages":
+    #     [
+    #         "A File Icon",
+    #         "AdvancedNewFile",
+    #         "AlignTab",
+    #         "All Autocomplete",
+    #         "Ancient (ranlempow)",
+    #         "Bats",
+    #         "BracketHighlighter",
+    #         "Codecs33",
+    #         "ConvertToUTF8",
+    #         "EditorConfig",
+    #         "FileDiffs",
+    #         "HexViewer",
+    #         "INI",
+    #         "MarkdownTOC",
+    #         "Package Control",
+    #         "PlainTasks",
+    #         "SideBarEnhancements",
+    #         "StringEncode",
+    #         "Theme - Monokai Pro",
+    #         "TodoReview",
+    #         "TrailingSpaces",
+    #         "Trimmer",
+    #     ],
+    #     "repositories":
+    #     [
+    #         "https://raw.githubusercontent.com/ranlempow/Sublime-Life/master/repository.json"
+    #     ],
+    # }
+    # ' > "$DATA/Packages/User/Package Control.sublime-settings"
+
+    echo '
+    {
+        "installed_packages":
+        [
+            "A File Icon",
+            "Codecs33",
+            "ConvertToUTF8",
+            "EditorConfig",
+            "Package Control",
+
+            "BracketHighlighter",
+            "SideBarEnhancements",
+        ],
+        "repositories":
+        [
+            "https://raw.githubusercontent.com/ranlempow/Sublime-Life/master/repository.json"
+        ],
+    }
+    ' > "$DATA/Packages/User/Package Control.sublime-settings"
+
+
+
+}
+
+build_sublime_text a123
+exit 0
+
+
+# default workspace is current directory
+ws=.
+standalone=1
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -w|-w=*|--worksapce|--worksapce=*)
+                splitarg "$1" && { ws=$ARG; shift 1; } || {
+                    isarg "${2:-}" && { ws=$2; shift 2; } || {
+                        _error "workspace must assign"
+                        return 1
+                    }
+                }
+            ;;
+        -S|--no-standalone)
+                standalone=
+                shift 1
+            ;;
+        -s|--shortcut)
+                create_shortcut=1
+                shift 1
+            ;;
+        -u|--update)
+                update=1
+                shift 1
+            ;;
+        kitty|kitty=*)
+            splitarg "$1" && { kitty=$ARG; shift 1; } || { kitty=1; shift 1; } ;;
+        zsh|zsh=*)
+            splitarg "$1" && { zsh=$ARG; shift 1; } || { zsh=1; shift 1; } ;;
+        # git-bash
+        # wsl
+        # vscode
+        # alacritty
+        # neovim
+        # font
+        # color
+
+        # '$ws (git-bash/WSL/alpine)-zsh-nvim-tmux' via kitty/alacritty/vscode/st4
+    esac
+done
+

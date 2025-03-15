@@ -1,0 +1,1697 @@
+{
+    "extends": "Default Dark.sublime-theme",
+    "variables": {},
+    "rules": [
+        {
+            "class": "icon_folder",
+            "content_margin": 0
+        },
+        {
+            "class": "close_button",
+            "layer0.tint": "#5B595C",
+            "layer0.opacity": 0,
+            "content_margin": 8
+        },
+        {
+            "class": "close_button",
+            "attributes": [
+                "dirty"
+            ],
+            "layer0.tint": "#5B595C",
+            "layer0.opacity": 0,
+            "content_margin": 8,
+            "layer1.texture": "Ancient/asset/sidebar-dirty.png",
+            "layer1.opacity": 1
+        },
+        {
+            "class": "close_button",
+            "attributes": [
+                "!dirty"
+            ],
+            "parents": [
+                {
+                    "class": "tree_row",
+                    "attributes": [
+                        "hover"
+                    ]
+                }
+            ],
+            "layer0.tint": "#5B595C",
+            "layer0.opacity": 1,
+            "content_margin": 8
+        },
+        {
+            "class": "close_button",
+            "attributes": [
+                "hover"
+            ],
+            "layer0.tint": "#C1C0C0",
+            "layer0.opacity": 1,
+            "content_margin": 8,
+            "layer1.opacity": 0
+        },
+        {
+            "class": "file_system_entry",
+            "content_margin": 5
+        },
+        {
+            "class": "vcs_status_badge",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "untracked"
+                    ]
+                }
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#5B595C"
+        },
+        {
+            "class": "vcs_status_badge",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "modified"
+                    ]
+                }
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#FC7E00"
+        },
+        {
+            "class": "vcs_status_badge",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "missing"
+                    ]
+                }
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#F6CCB3"
+        },
+        {
+            "class": "vcs_status_badge",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "staged"
+                    ]
+                }
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#2A8CB8"
+        },
+        {
+            "class": "vcs_status_badge",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "added"
+                    ]
+                }
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#399BA2"
+        },
+        {
+            "class": "vcs_status_badge",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "deleted"
+                    ]
+                }
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#FF8784"
+        },
+        {
+            "class": "vcs_status_badge",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "unmerged"
+                    ]
+                }
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#A38DB1"
+        },
+        {
+            "class": "label_control",
+            "color": "#827A82",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": false,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "panel_control"
+                }
+            ],
+            "color": "#827A82",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": true,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "button_control"
+                }
+            ],
+            "color": "#C1C0C0",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": false,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "button_control",
+                    "attributes": [
+                        "hover"
+                    ]
+                }
+            ],
+            "color": "#FCFCFA",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": false,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "button_control",
+                    "attributes": [
+                        "pressed",
+                        "hover"
+                    ]
+                }
+            ],
+            "color": "#C1C0C0",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": false,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "button_control",
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1,
+            "content_margin": [
+                16,
+                8
+            ],
+            "min_size": [
+                64,
+                20
+            ]
+        },
+        {
+            "class": "icon_button_control",
+            "layer0.texture": "",
+            "layer0.tint": "#322B29",
+            "layer0.inner_margin": 0,
+            "layer0.opacity": 1,
+            "content_margin": [
+                8,
+                6
+            ]
+        },
+        {
+            "class": "icon_button_control",
+            "attributes": [
+                "selected"
+            ],
+            "layer0.texture": "",
+            "layer0.tint": "#5B595C",
+            "layer0.inner_margin": 0,
+            "layer0.opacity": 1,
+            "content_margin": [
+                8,
+                6
+            ]
+        },
+        {
+            "class": "scroll_area_control",
+            "content_margin": [
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "class": "scroll_bar_control",
+            "layer0.texture": "",
+            "layer0.tint": "#2B2A28",
+            "layer0.opacity": 1,
+            "content_margin": 0,
+            "tint_index": -1
+        },
+        {
+            "class": "scroll_bar_control",
+            "parents": [
+                {
+                    "class": "popup_control auto_complete_popup"
+                }
+            ],
+            "layer0.texture": "",
+            "layer0.tint": "#2B2A28",
+            "layer0.opacity": 1,
+            "content_margin": 0,
+            "tint_index": -1
+        },
+        {
+            "class": "scroll_track_control",
+            "layer0.texture": "",
+            "layer0.inner_margin": 0,
+            "layer0.opacity": 0,
+            "content_margin": 4,
+            "tint_index": -1
+        },
+        {
+            "class": "scroll_corner_control",
+            "layer0.tint": "#2B2A28",
+            "layer0.opacity": 1,
+            "tint_index": -1
+        },
+        {
+            "class": "puck_control",
+            "layer0.texture": "",
+            "layer0.tint": "#5B595C",
+            "layer0.opacity": 1,
+            "content_margin": 0
+        },
+        {
+            "class": "sidebar_container",
+            "layer0.tint": "#241C17",
+            "content_margin": 0
+        },
+        {
+            "class": "sidebar_tree",
+            "layer0.opacity": 0,
+            "row_padding": [
+                12,
+                5,
+                8,
+                2
+            ],
+            "indent": 12,
+            "indent_offset": 2,
+            "indent_top_level": "false"
+        },
+        {
+            "class": "sidebar_heading",
+            "color": "#5B595C",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "sidebar_label",
+            "color": "#827A82",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "sidebar_heading",
+            "color": "#5B595C",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "sidebar_label",
+            "color": "#827A82",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "sidebar_label",
+            "parents": [
+                {
+                    "class": "file_system_entry",
+                    "attributes": [
+                        "ignored"
+                    ]
+                }
+            ],
+            "color": "#5B595C",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "tree_row",
+            "layer0.opacity": 0
+        },
+        {
+            "class": "sidebar_label",
+            "parents": [
+                {
+                    "class": "tree_row",
+                    "attributes": [
+                        "hover"
+                    ]
+                }
+            ],
+            "color": "#FCFCFA",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "sidebar_label",
+            "parents": [
+                {
+                    "class": "tree_row",
+                    "attributes": [
+                        "selected"
+                    ]
+                }
+            ],
+            "color": "#FFD866",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "scroll_tabs_left_button",
+            "content_margin": 0
+        },
+        {
+            "class": "scroll_tabs_right_button",
+            "content_margin": 0
+        },
+        {
+            "class": "tab_control",
+            "layer0.texture": "",
+            "layer0.tint": "#2B2A28",
+            "layer0.opacity": 1,
+            "layer1.texture": "",
+            "layer1.inner_margin": [
+                20,
+                0
+            ],
+            "layer1.opacity": 0,
+            "layer2.texture": "",
+            "layer2.inner_margin": [
+                20,
+                0
+            ],
+            "layer2.opacity": 0,
+            "layer3.texture": "",
+            "layer3.inner_margin": [
+                16,
+                0
+            ],
+            "layer3.opacity": 0,
+            "content_margin": [
+                24,
+                0,
+                12,
+                0
+            ],
+            "max_margin_trim": 0,
+            "hit_test_level": 0
+        },
+        {
+            "class": "tab_control",
+            "attributes": [
+                "selected"
+            ],
+            "layer0.texture": "",
+            "layer0.tint": "#2B2A28",
+            "layer0.opacity": 1,
+            "layer1.texture": "",
+            "layer1.inner_margin": [
+                20,
+                0
+            ],
+            "layer1.opacity": 1,
+            "layer2.texture": "",
+            "layer2.inner_margin": [
+                20,
+                0
+            ],
+            "layer2.opacity": 0,
+            "layer3.texture": "",
+            "layer3.inner_margin": [
+                16,
+                0
+            ],
+            "layer3.opacity": 0,
+            "content_margin": [
+                24,
+                0,
+                12,
+                0
+            ],
+            "max_margin_trim": 0,
+            "hit_test_level": 0
+        },
+        {
+            "class": "tab_control",
+            "attributes": [
+                "!selected",
+                "hover"
+            ],
+            "layer0.texture": "",
+            "layer0.tint": "#2B2A28",
+            "layer0.opacity": 1,
+            "layer1.texture": "",
+            "layer1.inner_margin": [
+                20,
+                0
+            ],
+            "layer1.opacity": 0,
+            "layer2.texture": "",
+            "layer2.inner_margin": [
+                20,
+                0
+            ],
+            "layer2.opacity": 0,
+            "layer3.texture": "",
+            "layer3.inner_margin": [
+                16,
+                0
+            ],
+            "layer3.opacity": 0,
+            "content_margin": [
+                24,
+                0,
+                12,
+                0
+            ],
+            "max_margin_trim": 0,
+            "hit_test_level": 0
+        },
+        {
+            "class": "tabset_control",
+            "layer0.opacity": 1,
+            "layer0.tint": "#2B2A28",
+            "content_margin": [
+                8,
+                0
+            ],
+            "tab_overlap": 0,
+            "tab_width": 64,
+            "tab_min_width": 64,
+            "tab_height": 50
+        },
+        {
+            "class": "tab_label",
+            "fg": "#939293",
+            "shadow_color": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.size": 12,
+            "font.italic": false,
+            "font.bold": false,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "tab_label",
+            "attributes": [
+                "transient"
+            ],
+            "fg": "#939293",
+            "shadow_color": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.size": 12,
+            "font.italic": true,
+            "font.bold": false,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "tab_label",
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "selected"
+                    ]
+                }
+            ],
+            "fg": "#FFD866",
+            "shadow_color": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.size": 12,
+            "font.italic": false,
+            "font.bold": false,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "tab_label",
+            "attributes": [
+                "transient"
+            ],
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "selected"
+                    ]
+                }
+            ],
+            "fg": "#FFD866",
+            "shadow_color": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.size": 12,
+            "font.italic": true,
+            "font.bold": false,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "tab_label",
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "!selected",
+                        "hover"
+                    ]
+                }
+            ],
+            "fg": "#FCFCFA",
+            "shadow_color": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.size": 12,
+            "font.italic": false,
+            "font.bold": false,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "tab_label",
+            "attributes": [
+                "transient"
+            ],
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "!selected",
+                        "hover"
+                    ]
+                }
+            ],
+            "fg": "#FCFCFA",
+            "shadow_color": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.size": 12,
+            "font.italic": true,
+            "font.bold": false,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "tab_close_button",
+            "content_margin": 8,
+            "layer0.texture": "Ancient/asset/tabs-close.png",
+            "layer0.opacity": 0,
+            "layer0.inner_margin": 0,
+            "layer1.texture": "Ancient/asset/tabs-dirty.png",
+            "layer1.opacity": 0,
+            "layer1.inner_margin": 0
+        },
+        {
+            "class": "tab_close_button",
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "hover"
+                    ]
+                }
+            ],
+            "content_margin": 8,
+            "layer0.texture": "Ancient/asset/tabs-close.png",
+            "layer0.opacity": 1,
+            "layer0.inner_margin": 0,
+            "layer1.texture": "Ancient/asset/tabs-dirty.png",
+            "layer1.opacity": 0,
+            "layer1.inner_margin": 0,
+            "layer0.tint": "#BBBBBB"
+        },
+        {
+            "class": "tab_close_button",
+            "attributes": [
+                "hover"
+            ],
+            "content_margin": 8,
+            "layer0.texture": "Ancient/asset/tabs-close.png",
+            "layer0.opacity": 1,
+            "layer0.inner_margin": 0,
+            "layer1.texture": "Ancient/asset/tabs-dirty.png",
+            "layer1.opacity": 0,
+            "layer1.inner_margin": 0,
+            "layer0.tint": "#FFFFFF"
+        },
+        {
+            "class": "tab_close_button",
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "dirty"
+                    ]
+                }
+            ],
+            "content_margin": 8,
+            "layer0.texture": "Ancient/asset/tabs-close.png",
+            "layer0.opacity": 0,
+            "layer0.inner_margin": 0,
+            "layer1.texture": "Ancient/asset/tabs-dirty.png",
+            "layer1.opacity": 1,
+            "layer1.inner_margin": 0
+        },
+        {
+            "class": "tab_close_button",
+            "attributes": [
+                "hover"
+            ],
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "dirty"
+                    ]
+                }
+            ],
+            "content_margin": 8,
+            "layer0.texture": "Ancient/asset/tabs-close.png",
+            "layer0.opacity": 1,
+            "layer0.inner_margin": 0,
+            "layer1.texture": "Ancient/asset/tabs-dirty.png",
+            "layer1.opacity": 0,
+            "layer1.inner_margin": 0,
+            "layer0.tint": "#FFFFFF"
+        },
+        {
+            "class": "tab_close_button",
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "selected",
+                        "dirty"
+                    ]
+                }
+            ],
+            "content_margin": 8,
+            "layer0.texture": "Ancient/asset/tabs-close.png",
+            "layer0.opacity": 0,
+            "layer0.inner_margin": 0,
+            "layer1.texture": "Ancient/asset/tabs-dirty.png",
+            "layer1.opacity": 1,
+            "layer1.inner_margin": 0
+        },
+        {
+            "class": "tab_close_button",
+            "attributes": [
+                "hover"
+            ],
+            "parents": [
+                {
+                    "class": "tab_control",
+                    "attributes": [
+                        "selected",
+                        "dirty"
+                    ]
+                }
+            ],
+            "content_margin": 8,
+            "layer0.texture": "Ancient/asset/tabs-close.png",
+            "layer0.opacity": 1,
+            "layer0.inner_margin": 0,
+            "layer1.texture": "Ancient/asset/tabs-dirty.png",
+            "layer1.opacity": 0,
+            "layer1.inner_margin": 0,
+            "layer0.tint": "#FFFFFF"
+        },
+        {
+            "class": "scroll_tabs_left_button",
+            "content_margin": 0
+        },
+        {
+            "class": "scroll_tabs_right_button",
+            "content_margin": 0
+        },
+        {
+            "class": "new_tab_button",
+            "content_margin": 0
+        },
+        {
+            "class": "show_tabs_dropdown_button",
+            "layer0.tint": "#827A82",
+            "content_margin": [
+                11,
+                10
+            ]
+        },
+        {
+            "class": "show_tabs_dropdown_button",
+            "attributes": [
+                "hover"
+            ],
+            "layer0.tint": "#FCFCFA",
+            "content_margin": [
+                11,
+                10
+            ]
+        },
+        {
+            "class": "status_container",
+            "content_margin": [
+                16,
+                8
+            ]
+        },
+        {
+            "class": "status_bar",
+            "layer0.tint": "#201813",
+            "layer0.opacity": 1,
+            "layer0.inner_margin": 8,
+            "content_margin": [
+                8,
+                0
+            ]
+        },
+        {
+            "class": "status_button",
+            "layer0.opacity": 0,
+            "layer0.draw_center": 0,
+            "layer0.inner_margin": 0,
+            "min_size": [
+                40,
+                0
+            ],
+            "content_margin": [
+                8,
+                0
+            ]
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "status_bar"
+                }
+            ],
+            "color": "#746D59",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": true,
+            "font.italic": false,
+            "font.size": 11,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "status_button",
+                    "attributes": [
+                        "hover"
+                    ]
+                }
+            ],
+            "color": "#FCFCFA",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": false,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "vcs_status",
+            "spacing": 4
+        },
+        {
+            "class": "vcs_changes_annotation",
+            "color": "#827A82",
+            "border_color": "#322B29",
+            "content_margin": [
+                6,
+                2
+            ]
+        },
+        {
+            "class": "text_line_control",
+            "layer0.texture": "Ancient/asset/input_field.png",
+            "layer0.opacity": 1,
+            "layer0.inner_margin": 8,
+            "layer0.tint": "#FFFFFF",
+            "color_scheme_tint": "#322B29",
+            "tint_index": -1,
+            "content_margin": [
+                10,
+                4
+            ]
+        },
+        {
+            "class": "text_area_control",
+            "parents": [
+                {
+                    "class": "text_line_control"
+                }
+            ],
+            "background_modifier": 0
+        },
+        {
+            "class": "text_line_control",
+            "parents": [
+                {
+                    "class": "overlay_control"
+                }
+            ],
+            "layer0.texture": "Ancient/asset/input_field.png",
+            "layer0.opacity": 1,
+            "layer0.inner_margin": 8,
+            "layer0.tint": "#FFFFFF",
+            "color_scheme_tint": "#322B29",
+            "tint_index": -1,
+            "content_margin": [
+                0,
+                4,
+                0,
+                8
+            ]
+        },
+        {
+            "class": "dropdown_button_control",
+            "layer0.tint": "#827A82",
+            "content_margin": [
+                8,
+                7
+            ]
+        },
+        {
+            "class": "dropdown_button_control",
+            "attributes": [
+                "hover"
+            ],
+            "layer0.tint": "#FCFCFA",
+            "content_margin": [
+                8,
+                7
+            ]
+        },
+        {
+            "class": "panel_control",
+            "layer0.texture": "",
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1
+        },
+        {
+            "class": "panel_control switch_project_panel",
+            "layer0.texture": "",
+            "layer0.tint": "#322B29"
+        },
+        {
+            "class": "panel_control find_panel",
+            "content_margin": [
+                4,
+                1
+            ]
+        },
+        {
+            "class": "panel_control replace_panel",
+            "content_margin": [
+                4,
+                1
+            ]
+        },
+        {
+            "class": "panel_control find_in_files_panel",
+            "content_margin": [
+                4,
+                1
+            ]
+        },
+        {
+            "class": "panel_control input_panel",
+            "content_margin": [
+                4,
+                1
+            ]
+        },
+        {
+            "class": "panel_control output_panel",
+            "content_margin": [
+                8,
+                4
+            ]
+        },
+        {
+            "class": "panel_control console_panel",
+            "content_margin": [
+                8,
+                4
+            ]
+        },
+        {
+            "class": "panel_grid_control",
+            "inside_spacing": 2,
+            "outside_hspacing": 2,
+            "outside_vspacing": 8
+        },
+        {
+            "class": "panel_close_button",
+            "content_margin": 0
+        },
+        {
+            "class": "overlay_control",
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1,
+            "layer1.texture": "",
+            "layer1.inner_margin": 0,
+            "layer1.opacity": 0,
+            "content_margin": [
+                8,
+                16,
+                8,
+                6
+            ]
+        },
+        {
+            "class": "quick_panel",
+            "row_padding": [
+                8,
+                4
+            ],
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1
+        },
+        {
+            "class": "switch_project_panel_cancel_container",
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1
+        },
+        {
+            "class": "quick_panel_row",
+            "layer0.opacity": 1,
+            "layer0.tint": "#322B29"
+        },
+        {
+            "class": "quick_panel_row",
+            "attributes": [
+                "selected"
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#5B595C"
+        },
+        {
+            "class": "quick_panel_label",
+            "font.face": "Hack Nerd Font",
+            "font.size": 14,
+            "fg": "#939293",
+            "match_fg": "#C1C0C0",
+            "selected_fg": "#FCFCFA",
+            "selected_match_fg": "#FFD866"
+        },
+        {
+            "class": "quick_panel_path_label",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12,
+            "fg": "#827A82",
+            "match_fg": "#939293",
+            "selected_fg": "#939293",
+            "selected_match_fg": "#C1C0C0"
+        },
+        {
+            "class": "quick_panel_label",
+            "font.face": "Hack Nerd Font",
+            "font.size": 14,
+            "fg": "#939293",
+            "match_fg": "#C1C0C0",
+            "selected_fg": "#FCFCFA",
+            "selected_match_fg": "#FFD866"
+        },
+        {
+            "class": "quick_panel_path_label",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12,
+            "fg": "#827A82",
+            "match_fg": "#939293",
+            "selected_fg": "#939293",
+            "selected_match_fg": "#C1C0C0"
+        },
+        {
+            "class": "quick_panel_label key_binding",
+            "font.face": "Hack Nerd Font",
+            "font.size": 14
+        },
+        {
+            "class": "mini_quick_panel_row",
+            "layer0.opacity": 0
+        },
+        {
+            "class": "mini_quick_panel_row",
+            "attributes": [
+                "selected"
+            ],
+            "layer0.opacity": 1,
+            "layer0.tint": "#5B595C"
+        },
+        {
+            "class": "quick_panel_detail_label",
+            "parents": [
+                {
+                    "class": "quick_panel_row"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": false,
+            "fg": "#827A82",
+            "match_fg": "#939293",
+            "selected_fg": "#939293",
+            "selected_match_fg": "#C1C0C0",
+            "link_color": "#C1C0C0"
+        },
+        {
+            "class": "quick_panel_detail_label",
+            "parents": [
+                {
+                    "class": "quick_panel_row"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": false,
+            "fg": "#827A82",
+            "match_fg": "#939293",
+            "selected_fg": "#939293",
+            "selected_match_fg": "#C1C0C0",
+            "link_color": "#C1C0C0"
+        },
+        {
+            "class": "kind_container",
+            "content_margin": [
+                4,
+                0
+            ],
+            "layer1.tint": "#322B29",
+            "layer0.opacity": 0
+        },
+        {
+            "class": "kind_container",
+            "parents": [
+                {
+                    "class": "mini_quick_panel_row"
+                }
+            ],
+            "content_margin": [
+                0,
+                0,
+                8,
+                0
+            ],
+            "layer1.tint": "#322B29",
+            "layer0.opacity": 0
+        },
+        {
+            "class": "symbol_container",
+            "parents": [
+                {
+                    "class": "mini_quick_panel_row"
+                }
+            ],
+            "content_margin": [
+                0,
+                0,
+                8,
+                0
+            ]
+        },
+        {
+            "class": "kind_label",
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "mini_quick_panel_row"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": 14
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_ambiguous"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#939293"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_keyword"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FF6188"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_type"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#AB9DF2"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_function"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#A9DC76"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_namespace"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#78DCE8"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_navigation"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FFD866"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_markup"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FF6188"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_variable"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FC9867"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_snippet"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#AB9DF2"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_redish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FF6188"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_orangish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FC9867"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_yellowish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FFD866"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_greenish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#A9DC76"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_cyanish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#78DCE8"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_bluish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#78DCE8"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_purplish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#AB9DF2"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_pinkish"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FF6188"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_dark"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#939293"
+        },
+        {
+            "class": "kind_label",
+            "parents": [
+                {
+                    "class": "kind_container kind_color_light"
+                }
+            ],
+            "font.face": "Hack Nerd Font",
+            "font.italic": true,
+            "font.bold": true,
+            "font.size": "1rem",
+            "fg": "#FCFCFA"
+        },
+        {
+            "class": "popup_control",
+            "layer0.texture": "",
+            "layer0.opacity": 1,
+            "layer0.tint": "#322B29",
+            "content_margin": 0
+        },
+        {
+            "class": "popup_control auto_complete_popup",
+            "layer0.texture": "",
+            "layer0.opacity": 1,
+            "layer0.tint": "#322B29",
+            "content_margin": 0
+        },
+        {
+            "class": "table_row",
+            "attributes": [
+                "selected"
+            ],
+            "layer0.tint": "#5B595C"
+        },
+        {
+            "class": "auto_complete",
+            "row_padding": 0,
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1,
+            "tint_index": -1
+        },
+        {
+            "class": "auto_complete_label",
+            "fg": "#939293",
+            "match_fg": "#C1C0C0",
+            "selected_fg": "#FFD866",
+            "selected_match_fg": "#FCFCFA"
+        },
+        {
+            "class": "auto_complete_label",
+            "fg": "#939293",
+            "match_fg": "#C1C0C0",
+            "selected_fg": "#FFD866",
+            "selected_match_fg": "#FCFCFA",
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "auto_complete_label auto_complete_hint",
+            "font.size": "0.85rem"
+        },
+        {
+            "class": "auto_complete_details",
+            "color": "#939293",
+            "link_color": "#FCFCFA",
+            "font.face": "Hack Nerd Font",
+            "font.size": "0.85rem",
+            "monospace_color": "#FFD866"
+        },
+        {
+            "class": "auto_complete_kind_name_label",
+            "color": "#FCFCFA",
+            "font.face": "Hack Nerd Font",
+            "font.size": "0.85rem",
+            "font.italic": false
+        },
+        {
+            "class": "auto_complete_detail_pane",
+            "content_margin": [
+                8,
+                4
+            ],
+            "layer0.tint": "#2B2A28",
+            "tint_index": 1
+        },
+        {
+            "class": "grid_layout_control",
+            "border_size": 1,
+            "border_color": "#0B0806"
+        },
+        {
+            "class": "tool_tip_control",
+            "layer0.inner_margin": 0,
+            "layer0.opacity": 1,
+            "layer0.tint": "#5B595C",
+            "content_margin": 8
+        },
+        {
+            "class": "tool_tip_label_control",
+            "color": "#C1C0C0",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        },
+        {
+            "class": "dialog",
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1
+        },
+        {
+            "class": "progress_bar_control",
+            "layer0.tint": "#939293",
+            "layer0.opacity": 1
+        },
+        {
+            "class": "progress_gauge_control",
+            "layer0.tint": "#FCFCFA",
+            "layer0.opacity": 1,
+            "content_margin": [
+                0,
+                3
+            ]
+        },
+        {
+            "class": "button_control",
+            "parents": [
+                {
+                    "class": "dialog"
+                }
+            ],
+            "layer0.tint": "#322B29",
+            "layer0.opacity": 1,
+            "content_margin": [
+                16,
+                8
+            ],
+            "min_size": [
+                64,
+                20
+            ]
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "dialog"
+                }
+            ],
+            "color": "#C1C0C0",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": false,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "label_control",
+            "parents": [
+                {
+                    "class": "dialog"
+                },
+                {
+                    "class": "button_control"
+                }
+            ],
+            "color": "#FCFCFA",
+            "shadow_color": [
+                0,
+                0,
+                0
+            ],
+            "shadow_offset": [
+                0,
+                0
+            ],
+            "font.bold": false,
+            "font.italic": false,
+            "font.size": 12,
+            "font.face": "Hack Nerd Font"
+        },
+        {
+            "class": "title_label_control",
+            "parents": [
+                {
+                    "class": "dialog"
+                }
+            ],
+            "fg": "#FCFCFA",
+            "font.face": "Hack Nerd Font",
+            "font.size": 12
+        }
+    ]
+}

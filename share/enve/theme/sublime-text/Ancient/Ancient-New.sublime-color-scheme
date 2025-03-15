@@ -1,0 +1,958 @@
+[38;2;246;204;179m[48;2;36;28;23m  entity                                                 [0m
+[38;2;246;204;179m[48;2;36;28;23m  invalid                                                [0m
+[38;2;246;204;179m[48;2;50;33;19m  invalid.illegal                                        [0m
+[38;2;246;204;179m[48;2;50;33;19m  invalid.deprecated                                     [0m
+[38;2;184;163;125m[48;2;36;28;23m  punctuation                                            [0m
+[38;2;216;195;156m[48;2;36;28;23m  punctuation.accessor                                   [0m
+[38;2;184;163;125m[48;2;36;28;23m  punctuation.separator                                  [0m
+[38;2;184;163;125m[48;2;36;28;23m  punctuation.terminator                                 [0m
+[38;2;216;195;156m[48;2;36;28;23m  constant.character.entity                              [0m
+[38;2;216;195;156m[48;2;36;28;23m  punctuation.definition.entity                          [0m
+[38;2;216;195;156m[48;2;36;28;23m  punctuation.definition.constant                        [0m
+[38;2;96;167;204m[48;2;36;28;23m  punctuation.definition.string                          [0m
+[38;2;216;195;156m[48;2;36;28;23m  punctuation.definition.variable                        [0m
+[38;2;58;130;165m[48;2;36;28;23m  string                                                 [0m
+[38;2;58;130;165m[48;2;36;28;23m  string.constant                                        [0m
+[38;2;58;130;165m[48;2;32;24;19m  string.quoted                                          [0m
+[38;2;58;130;165m[48;2;32;24;19m  string.quoted.double.block                             [0m
+[38;2;58;130;165m[48;2;32;24;19m  string.quoted.single.block                             [0m
+[38;2;246;204;179m[48;2;36;28;23m  string.unquoted                                        [0m
+[38;2;101;140;176m[48;2;36;28;23m  string.regexp                                          [0m
+[38;2;101;140;176m[48;2;36;28;23m  source.regexp                                          [0m
+[38;2;246;204;179m[48;2;36;28;23m  meta.template  - (keyword.declaration.template)        [0m
+[38;2;231;143;0m[48;2;36;28;23m  constant.language                                      [0m
+[38;2;57;155;162m[48;2;36;28;23m  constant.numeric                                       [0m
+[38;2;52;163;213m[48;2;36;28;23m  constant.other                                         [0m
+[38;2;52;163;213m[48;2;36;28;23m  constant.other.allcaps                                 [0m
+[38;2;52;163;213m[48;2;36;28;23m  constant.other.enum                                    [0m
+[38;2;52;163;213m[48;2;36;28;23m  constant.character                                     [0m
+[38;2;165;114;172m[48;2;36;28;23m  constant.other.placeholder                             [0m
+[38;2;121;129;197m[48;2;36;28;23m  constant.character.escape                              [0m
+[38;2;116;109;89m[48;2;32;24;19m  comment                                                [0m
+[38;2;58;130;165m[48;2;32;24;19m  comment.block.documentation                            [0m
+[38;2;58;130;165m[48;2;36;28;23m  string.docstring                                       [0m
+[38;2;116;109;89m[48;2;32;24;19m  punctuation.definition.comment                         [0m
+[38;2;116;109;89m[48;2;32;24;19m  punctuation.definition.line-comment                    [0m
+[38;2;252;126;0m[48;2;36;28;23m  support.keyword                                        [0m
+[38;2;0;169;137m[48;2;36;28;23m  support.constant                                       [0m
+[38;2;0;169;137m[48;2;36;28;23m  support.variable                                       [0m
+[38;2;0;191;180m[48;2;36;28;23m  support.function                                       [0m
+[38;2;0;191;180m[48;2;36;28;23m  support.function.builtin                               [0m
+[38;2;0;169;137m[48;2;36;28;23m  support.type                                           [0m
+[38;2;0;169;137m[48;2;36;28;23m  support.class                                          [0m
+[38;2;0;169;137m[48;2;36;28;23m  support.type.exception                                 [0m
+[38;2;163;141;177m[48;2;36;28;23m  support.module                                         [0m
+[38;2;252;126;0m[48;2;36;28;23m  keyword                                                [0m
+[38;2;252;126;0m[48;2;36;28;23m  keyword.control                                        [0m
+[38;2;252;126;0m[48;2;36;28;23m  keyword.control.conditional                            [0m
+[38;2;252;126;0m[48;2;36;28;23m  keyword.control.import                                 [0m
+[38;2;217;112;29m[48;2;36;28;23m  keyword.declaration                                    [0m
+[38;2;225;128;60m[48;2;36;28;23m  keyword.operator.assignment                            [0m
+[38;2;225;128;60m[48;2;36;28;23m  keyword.operator.assignment.augmented                  [0m
+[38;2;200;147;0m[48;2;36;28;23m  keyword.operator.comparison                            [0m
+[38;2;239;119;1m[48;2;36;28;23m  keyword.operator.arithmetic                            [0m
+[38;2;239;119;1m[48;2;36;28;23m  keyword.operator.bitwise                               [0m
+[38;2;189;151;74m[48;2;36;28;23m  keyword.operator.logical                               [0m
+[38;2;246;129;79m[48;2;36;28;23m  keyword.other                                          [0m
+[38;2;246;204;179m[48;2;43;35;30m  meta.expression.generator                              [0m
+[38;2;255;255;0m[48;2;36;28;23m  meta.expression.generator keyword.control.conditional  [0m
+[38;2;0;169;137m[48;2;36;28;23m  storage.type                                           [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.class                                     [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.struct                                    [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.enum                                      [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.union                                     [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.trait                                     [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.interface                                 [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.impl                                      [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.function                                  [0m
+[38;2;217;112;29m[48;2;36;28;23m  storage.type.annotation                                [0m
+[38;2;0;169;137m[48;2;43;35;30m  meta.generic storage.type                              [0m
+[38;2;252;126;0m[48;2;36;28;23m  storage.modifier                                       [0m
+[38;2;0;169;137m[48;2;36;28;23m  meta.function.return-type storage.type                 [0m
+[38;2;252;126;0m[48;2;36;28;23m  meta.at-rule                                           [0m
+[38;2;0;169;137m[48;2;36;28;23m  entity.name.at-rule                                    [0m
+[38;2;252;126;0m[48;2;36;28;23m  keyword.control.directive                              [0m
+[38;2;246;204;179m[48;2;43;35;30m  meta.selector                                          [0m
+[38;2;0;169;137m[48;2;36;28;23m  entity.name.at-rule                                    [0m
+[38;2;0;169;137m[48;2;36;28;23m  entity.name.package                                    [0m
+[38;2;255;238;207m[48;2;36;28;23m  entity.other                                           [0m
+[38;2;0;169;137m[48;2;36;28;23m  entity.other.inherited-class                           [0m
+[38;2;255;238;207m[48;2;36;28;23m  entity.other                                           [0m
+[38;2;246;128;79m[48;2;36;28;23m  entity.name.class                                      [0m
+[38;2;246;128;79m[48;2;36;28;23m  entity variable.other.class                            [0m
+[38;2;245;77;67m[48;2;36;28;23m  entity.name.function                                   [0m
+[38;2;245;77;67m[48;2;36;28;23m  entity.name.tag                                        [0m
+[38;2;246;128;79m[48;2;36;28;23m  entity.name.tag.doctype                                [0m
+[38;2;232;116;66m[48;2;36;28;23m  entity.other.attribute-name                            [0m
+[38;2;232;116;66m[48;2;36;28;23m  entity.other.attribute-name.id                         [0m
+[38;2;232;116;66m[48;2;36;28;23m  entity.other.attribute-name.class                      [0m
+[38;2;217;112;29m[48;2;36;28;23m  meta.annotation                                        [0m
+[38;2;246;204;179m[48;2;36;28;23m  meta.annotation .variable.annotation                   [0m
+[38;2;246;204;179m[48;2;36;28;23m  variable                                               [0m
+[38;2;255;238;207m[48;2;36;28;23m  variable.other                                         [0m
+[38;2;255;253;251m[48;2;36;28;23m  variable.parameter                                     [0m
+[38;2;163;141;177m[48;2;36;28;23m  variable.language                                      [0m
+[38;2;163;141;177m[48;2;36;28;23m  variable.parameter.function.language                   [0m
+[38;2;255;236;225m[48;2;36;28;23m  variable.function                                      [0m
+[38;2;209;163;150m[48;2;43;35;30m  meta.item-access.arguments                             [0m
+[38;2;163;141;177m[48;2;36;28;23m  meta.preprocessor                                      [0m
+[38;2;163;141;177m[48;2;36;28;23m  meta.preprocessor keyword                              [0m
+[38;2;252;126;0m[48;2;36;28;23m  meta.preprocessor keyword.control                      [0m
+[38;2;125;197;249m[48;2;36;28;23m  meta.mapping.value                                     [0m
+[38;2;169;255;152m[48;2;36;28;23m  meta.mapping.key                                       [0m
+[38;2;246;204;179m[48;2;36;28;23m  markup.italic                                          [0m
+[38;2;184;163;125m[48;2;36;28;23m  punctuation.definition.italic                          [0m
+[38;2;58;130;165m[48;2;36;28;23m  markup.bold                                            [0m
+[38;2;58;130;165m[48;2;36;28;23m  punctuation.definition.bold                            [0m
+[38;2;58;130;165m[48;2;36;28;23m  markup.underline                                       [0m
+[38;2;58;130;165m[48;2;36;28;23m  punctuation.definition.underline                       [0m
+[38;2;58;130;165m[48;2;32;24;19m  markup.raw.inline                                      [0m
+[38;2;58;130;165m[48;2;32;24;19m  markup.raw.block                                       [0m
+[38;2;58;130;165m[48;2;32;24;19m  punctuation.definition.raw                             [0m
+[38;2;246;128;79m[48;2;43;35;30m  markup.heading                                         [0m
+[38;2;246;128;79m[48;2;43;35;30m  entity.name.section                                    [0m
+[38;2;255;227;211m[48;2;36;28;23m  markup.list.unnumbered                                 [0m
+[38;2;255;227;211m[48;2;36;28;23m  markup.list.numbered                                   [0m
+[38;2;252;126;0m[48;2;36;28;23m  markup.list.unnumbered.bullet                          [0m
+[38;2;252;126;0m[48;2;36;28;23m  markup.list.numbered.bullet                            [0m
+[38;2;225;128;60m[48;2;36;28;23m  punctuation.definition.list_item                       [0m
+[38;2;246;204;179m[48;2;43;35;30m  markup.quote                                           [0m
+[38;2;116;109;89m[48;2;32;24;19m  punctuation.definition.blockquote                      [0m
+[38;2;58;130;165m[48;2;36;28;23m  string.other.link                                      [0m
+[38;2;58;130;165m[48;2;36;28;23m  markup.underline.link                                  [0m
+[38;2;58;130;165m[48;2;36;28;23m  markup.link.reference                                  [0m
+[38;2;116;109;89m[48;2;36;28;23m  meta.separator.markdown                                [0m
+[38;2;0;169;137m[48;2;36;28;23m  entity.name.filename.find-in-files                     [0m
+[38;2;231;143;0m[48;2;36;28;23m  constant.numeric.line-number.match.find-in-files       [0m
+[38;2;58;130;165m[48;2;36;28;23m  markup.inserted                                        [0m
+[38;2;245;77;67m[48;2;36;28;23m  markup.deleted                                         [0m
+[38;2;252;126;0m[48;2;36;28;23m  markup.changed                                         [0m
+[38;2;0;169;137m[48;2;36;28;23m  meta.diff.header.from-file                             [0m
+[38;2;184;163;125m[48;2;36;28;23m  meta.diff.header.from-file punctuation.definition      [0m
+[38;2;0;191;180m[48;2;36;28;23m  meta.diff.header.to-file                               [0m
+[38;2;184;163;125m[48;2;36;28;23m  meta.diff.header.to-file punctuation.definition        [0m
+[38;2;209;163;150m[48;2;36;28;23m  meta.diff.range                                        [0m
+[38;2;184;163;125m[48;2;36;28;23m  meta.diff.range punctuation.definition                 [0m
+{
+    "name": "Example Color Scheme",
+    "globals": {
+        "foreground": "#F6CCB3",
+        "background": "#241C17",
+        "caret": "#F0F0F0",
+        "line_highlight": "#404040",
+        "selection": "#352D27",
+        "gutter": "#241C17"
+    },
+    "rules": [
+        {
+            "name": "Entity",
+            "scope": "entity",
+            "foreground": "#F6CCB3",
+            "background": "#241C17"
+        },
+        {
+            "name": "Invalid",
+            "scope": "invalid",
+            "foreground": "#F6CCB3",
+            "background": "#241C17"
+        },
+        {
+            "name": "Illegal",
+            "scope": "invalid.illegal",
+            "foreground": "#F6CCB3",
+            "background": "#322113"
+        },
+        {
+            "name": "Deprecated",
+            "scope": "invalid.deprecated",
+            "foreground": "#F6CCB3",
+            "background": "#322113"
+        },
+        {
+            "name": null,
+            "scope": "punctuation",
+            "foreground": "#B8A37D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Accessor",
+            "scope": "punctuation.accessor",
+            "foreground": "#D8C39C",
+            "background": "#241C17"
+        },
+        {
+            "name": "Separator",
+            "scope": "punctuation.separator",
+            "foreground": "#B8A37D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Terminator",
+            "scope": "punctuation.terminator",
+            "foreground": "#B8A37D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Constant definition",
+            "scope": "constant.character.entity",
+            "foreground": "#D8C39C",
+            "background": "#241C17"
+        },
+        {
+            "name": "Constant definition",
+            "scope": "punctuation.definition.entity",
+            "foreground": "#D8C39C",
+            "background": "#241C17"
+        },
+        {
+            "name": "Constant definition",
+            "scope": "punctuation.definition.constant",
+            "foreground": "#D8C39C",
+            "background": "#241C17"
+        },
+        {
+            "name": "String punctuation",
+            "scope": "punctuation.definition.string",
+            "foreground": "#60A7CC",
+            "background": "#241C17"
+        },
+        {
+            "name": "Variable definition",
+            "scope": "punctuation.definition.variable",
+            "foreground": "#D8C39C",
+            "background": "#241C17"
+        },
+        {
+            "name": "String",
+            "scope": "string",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "String",
+            "scope": "string.constant",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "String quoted",
+            "scope": "string.quoted",
+            "foreground": "#3A82A5",
+            "background": "#201813"
+        },
+        {
+            "name": "Block string",
+            "scope": "string.quoted.double.block",
+            "foreground": "#3A82A5",
+            "background": "#201813"
+        },
+        {
+            "name": "Block string",
+            "scope": "string.quoted.single.block",
+            "foreground": "#3A82A5",
+            "background": "#201813"
+        },
+        {
+            "name": "String",
+            "scope": "string.unquoted",
+            "foreground": "#F6CCB3",
+            "background": "#241C17"
+        },
+        {
+            "name": "Regexp",
+            "scope": "string.regexp",
+            "foreground": "#658CB0",
+            "background": "#241C17"
+        },
+        {
+            "name": "Regexp",
+            "scope": "source.regexp",
+            "foreground": "#658CB0",
+            "background": "#241C17"
+        },
+        {
+            "name": null,
+            "scope": "meta.template  - (keyword.declaration.template)",
+            "foreground": "#F6CCB3",
+            "background": "#241C17"
+        },
+        {
+            "name": "Built-in constant",
+            "scope": "constant.language",
+            "foreground": "#E78F00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Numeric",
+            "scope": "constant.numeric",
+            "foreground": "#399BA2",
+            "background": "#241C17"
+        },
+        {
+            "name": "User-defined constant",
+            "scope": "constant.other",
+            "foreground": "#34A3D5",
+            "background": "#241C17"
+        },
+        {
+            "name": "User-defined constant",
+            "scope": "constant.other.allcaps",
+            "foreground": "#34A3D5",
+            "background": "#241C17"
+        },
+        {
+            "name": "User-defined constant",
+            "scope": "constant.other.enum",
+            "foreground": "#34A3D5",
+            "background": "#241C17"
+        },
+        {
+            "name": "User-defined constant",
+            "scope": "constant.character",
+            "foreground": "#34A3D5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Placeholder",
+            "scope": "constant.other.placeholder",
+            "foreground": "#A572AC",
+            "background": "#241C17"
+        },
+        {
+            "name": "Escape",
+            "scope": "constant.character.escape",
+            "foreground": "#7981C5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Comment",
+            "scope": "comment",
+            "foreground": "#746D59",
+            "background": "#201813"
+        },
+        {
+            "name": "Docstring",
+            "scope": "comment.block.documentation",
+            "foreground": "#3A82A5",
+            "background": "#201813"
+        },
+        {
+            "name": "Docstring",
+            "scope": "string.docstring",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Comment punctuation",
+            "scope": "punctuation.definition.comment",
+            "foreground": "#746D59",
+            "background": "#201813"
+        },
+        {
+            "name": "Comment punctuation",
+            "scope": "punctuation.definition.line-comment",
+            "foreground": "#746D59",
+            "background": "#201813"
+        },
+        {
+            "name": "Library keyword",
+            "scope": "support.keyword",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Library constant",
+            "scope": "support.constant",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Library variable",
+            "scope": "support.variable",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Library function",
+            "scope": "support.function",
+            "foreground": "#00BFB4",
+            "background": "#241C17"
+        },
+        {
+            "name": "Library builtin",
+            "scope": "support.function.builtin",
+            "foreground": "#00BFB4",
+            "background": "#241C17"
+        },
+        {
+            "name": "Library type",
+            "scope": "support.type",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Library type",
+            "scope": "support.class",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Exception type",
+            "scope": "support.type.exception",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Library module",
+            "scope": "support.module",
+            "foreground": "#A38DB1",
+            "background": "#241C17"
+        },
+        {
+            "name": "Keyword",
+            "scope": "keyword",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Keyword control",
+            "scope": "keyword.control",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Keyword control",
+            "scope": "keyword.control.conditional",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Keyword control",
+            "scope": "keyword.control.import",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Keyword",
+            "scope": "keyword.declaration",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Assignment",
+            "scope": "keyword.operator.assignment",
+            "foreground": "#E1803C",
+            "background": "#241C17"
+        },
+        {
+            "name": "Augmented assignment",
+            "scope": "keyword.operator.assignment.augmented",
+            "foreground": "#E1803C",
+            "background": "#241C17"
+        },
+        {
+            "name": "Comparison",
+            "scope": "keyword.operator.comparison",
+            "foreground": "#C89300",
+            "background": "#241C17"
+        },
+        {
+            "name": "Arithmetic",
+            "scope": "keyword.operator.arithmetic",
+            "foreground": "#EF7701",
+            "background": "#241C17"
+        },
+        {
+            "name": "Arithmetic",
+            "scope": "keyword.operator.bitwise",
+            "foreground": "#EF7701",
+            "background": "#241C17"
+        },
+        {
+            "name": "Logical",
+            "scope": "keyword.operator.logical",
+            "foreground": "#BD974A",
+            "background": "#241C17"
+        },
+        {
+            "name": "Other keyword",
+            "scope": "keyword.other",
+            "foreground": "#F6814F",
+            "background": "#241C17"
+        },
+        {
+            "name": "Comprehension",
+            "scope": "meta.expression.generator",
+            "foreground": "#F6CCB3",
+            "background": "#2B231E"
+        },
+        {
+            "name": "Keywords in comprehension ",
+            "scope": "meta.expression.generator keyword.control.conditional",
+            "foreground": "#FFFF00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Storage type",
+            "scope": "storage.type",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class keyword",
+            "scope": "storage.type.class",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class keyword",
+            "scope": "storage.type.struct",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class keyword",
+            "scope": "storage.type.enum",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class keyword",
+            "scope": "storage.type.union",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class keyword",
+            "scope": "storage.type.trait",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class keyword",
+            "scope": "storage.type.interface",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class keyword",
+            "scope": "storage.type.impl",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Function keyword",
+            "scope": "storage.type.function",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Annotation",
+            "scope": "storage.type.annotation",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Generic type",
+            "scope": "meta.generic storage.type",
+            "foreground": "#00A989",
+            "background": "#2B231E"
+        },
+        {
+            "name": "Storage modifier",
+            "scope": "storage.modifier",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Return type",
+            "scope": "meta.function.return-type storage.type",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "At-rule",
+            "scope": "meta.at-rule",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "At-rule",
+            "scope": "entity.name.at-rule",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Keyword control",
+            "scope": "keyword.control.directive",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": null,
+            "scope": "meta.selector",
+            "foreground": "#F6CCB3",
+            "background": "#2B231E"
+        },
+        {
+            "name": "At-rule",
+            "scope": "entity.name.at-rule",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Scala Package",
+            "scope": "entity.name.package",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Other entity",
+            "scope": "entity.other",
+            "foreground": "#FFEECF",
+            "background": "#241C17"
+        },
+        {
+            "name": "Inherited class",
+            "scope": "entity.other.inherited-class",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Other entity",
+            "scope": "entity.other",
+            "foreground": "#FFEECF",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class definition",
+            "scope": "entity.name.class",
+            "foreground": "#F6804F",
+            "background": "#241C17"
+        },
+        {
+            "name": "Class definition",
+            "scope": "entity variable.other.class",
+            "foreground": "#F6804F",
+            "background": "#241C17"
+        },
+        {
+            "name": "Function definition",
+            "scope": "entity.name.function",
+            "foreground": "#F54D43",
+            "background": "#241C17"
+        },
+        {
+            "name": "Tag Name",
+            "scope": "entity.name.tag",
+            "foreground": "#F54D43",
+            "background": "#241C17"
+        },
+        {
+            "name": "Doctype",
+            "scope": "entity.name.tag.doctype",
+            "foreground": "#F6804F",
+            "background": "#241C17"
+        },
+        {
+            "name": "Attribute Name",
+            "scope": "entity.other.attribute-name",
+            "foreground": "#E87442",
+            "background": "#241C17"
+        },
+        {
+            "name": "Attribute IDs",
+            "scope": "entity.other.attribute-name.id",
+            "foreground": "#E87442",
+            "background": "#241C17"
+        },
+        {
+            "name": "Attribute IDs",
+            "scope": "entity.other.attribute-name.class",
+            "foreground": "#E87442",
+            "background": "#241C17"
+        },
+        {
+            "name": "Annotation",
+            "scope": "meta.annotation",
+            "foreground": "#D9701D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Annotation",
+            "scope": "meta.annotation .variable.annotation",
+            "foreground": "#F6CCB3",
+            "background": "#241C17"
+        },
+        {
+            "name": null,
+            "scope": "variable",
+            "foreground": "#F6CCB3",
+            "background": "#241C17"
+        },
+        {
+            "name": null,
+            "scope": "variable.other",
+            "foreground": "#FFEECF",
+            "background": "#241C17"
+        },
+        {
+            "name": "Parameter",
+            "scope": "variable.parameter",
+            "foreground": "#FFFDFB",
+            "background": "#241C17"
+        },
+        {
+            "name": "Language literal",
+            "scope": "variable.language",
+            "foreground": "#A38DB1",
+            "background": "#241C17"
+        },
+        {
+            "name": "Language literal",
+            "scope": "variable.parameter.function.language",
+            "foreground": "#A38DB1",
+            "background": "#241C17"
+        },
+        {
+            "name": "Function call",
+            "scope": "variable.function",
+            "foreground": "#FFECE1",
+            "background": "#241C17"
+        },
+        {
+            "name": "Item access",
+            "scope": "meta.item-access.arguments",
+            "foreground": "#D1A396",
+            "background": "#2B231E"
+        },
+        {
+            "name": "C/C++ Preprocessor Line",
+            "scope": "meta.preprocessor",
+            "foreground": "#A38DB1",
+            "background": "#241C17"
+        },
+        {
+            "name": "C/C++ Preprocessor Directive",
+            "scope": "meta.preprocessor keyword",
+            "foreground": "#A38DB1",
+            "background": "#241C17"
+        },
+        {
+            "name": "Keyword control at preprocessor",
+            "scope": "meta.preprocessor keyword.control",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Dict Value",
+            "scope": "meta.mapping.value",
+            "foreground": "#7DC5F9",
+            "background": "#241C17"
+        },
+        {
+            "name": "Dict key",
+            "scope": "meta.mapping.key",
+            "foreground": "#A9FF98",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup italic",
+            "scope": "markup.italic",
+            "foreground": "#F6CCB3",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup italic",
+            "scope": "punctuation.definition.italic",
+            "foreground": "#B8A37D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup bold",
+            "scope": "markup.bold",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup bold",
+            "scope": "punctuation.definition.bold",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup underline",
+            "scope": "markup.underline",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup underline",
+            "scope": "punctuation.definition.underline",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup raw",
+            "scope": "markup.raw.inline",
+            "foreground": "#3A82A5",
+            "background": "#201813"
+        },
+        {
+            "name": "Markup raw",
+            "scope": "markup.raw.block",
+            "foreground": "#3A82A5",
+            "background": "#201813"
+        },
+        {
+            "name": "Markup raw",
+            "scope": "punctuation.definition.raw",
+            "foreground": "#3A82A5",
+            "background": "#201813"
+        },
+        {
+            "name": "Markup heading",
+            "scope": "markup.heading",
+            "foreground": "#F6804F",
+            "background": "#2B231E"
+        },
+        {
+            "name": "Markup heading",
+            "scope": "entity.name.section",
+            "foreground": "#F6804F",
+            "background": "#2B231E"
+        },
+        {
+            "name": "Markup list",
+            "scope": "markup.list.unnumbered",
+            "foreground": "#FFE3D3",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup list",
+            "scope": "markup.list.numbered",
+            "foreground": "#FFE3D3",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup list head",
+            "scope": "markup.list.unnumbered.bullet",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup list head",
+            "scope": "markup.list.numbered.bullet",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup list punctuation",
+            "scope": "punctuation.definition.list_item",
+            "foreground": "#E1803C",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup quote",
+            "scope": "markup.quote",
+            "foreground": "#F6CCB3",
+            "background": "#2B231E"
+        },
+        {
+            "name": "Markup quote punctuation",
+            "scope": "punctuation.definition.blockquote",
+            "foreground": "#746D59",
+            "background": "#201813"
+        },
+        {
+            "name": "Markup link",
+            "scope": "string.other.link",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup link",
+            "scope": "markup.underline.link",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup reference",
+            "scope": "markup.link.reference",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Markup separator",
+            "scope": "meta.separator.markdown",
+            "foreground": "#746D59",
+            "background": "#241C17"
+        },
+        {
+            "name": "Find In Files: filename",
+            "scope": "entity.name.filename.find-in-files",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Find In Files: Line Number - Match",
+            "scope": "constant.numeric.line-number.match.find-in-files",
+            "foreground": "#E78F00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff inserted",
+            "scope": "markup.inserted",
+            "foreground": "#3A82A5",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff deleted",
+            "scope": "markup.deleted",
+            "foreground": "#F54D43",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff changed",
+            "scope": "markup.changed",
+            "foreground": "#FC7E00",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff from file",
+            "scope": "meta.diff.header.from-file",
+            "foreground": "#00A989",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff from file punctuation",
+            "scope": "meta.diff.header.from-file punctuation.definition",
+            "foreground": "#B8A37D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff to file",
+            "scope": "meta.diff.header.to-file",
+            "foreground": "#00BFB4",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff to file punctuation",
+            "scope": "meta.diff.header.to-file punctuation.definition",
+            "foreground": "#B8A37D",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff range",
+            "scope": "meta.diff.range",
+            "foreground": "#D1A396",
+            "background": "#241C17"
+        },
+        {
+            "name": "Diff range punctuation",
+            "scope": "meta.diff.range punctuation.definition",
+            "foreground": "#B8A37D",
+            "background": "#241C17"
+        }
+    ]
+}
