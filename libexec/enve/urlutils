@@ -395,7 +395,9 @@ _http_post2() {
 
 
 unpack1_tar() {
-    printf %s\\n "tar -axf - --keep-newer-files --keep-directory-symlink --backup=existing -C '$1'"
+    # TODO: need make dir ?
+    printf %s\\n "mkdir '$1'
+tar -axf - --keep-newer-files --keep-directory-symlink --backup=existing -C '$1'"
 }
 
 unpack1_zip() {
@@ -532,6 +534,9 @@ _uri_src_protocol() {
     esac
 
 
+    if [ -z "${path##*.git}" ] || [ -z "${path##*.git/}" ]; then
+        isgit=1
+    fi
 
     case $scheme in
         http|https|s3|ftp|sftp|ftps)
@@ -542,18 +547,24 @@ _uri_src_protocol() {
                     _error "source unpack at http/s3/ftp is not supported currnetly"
                     return 1
                 fi
-                src="$scheme://$auth$path"
-                dl=_common_dl1
-                dl2=_common_dl2
-                # stype=file
-                # unpack_src_path "$path" || true
+
+                if [ -n "$isgit" ]; then
+                    # TODO: unpack git clone
+                    src="${uri#"git+"}"
+                    dl=_git_dl
+                    dl2='git clone'
+                else
+                    src="$scheme://$auth$path"
+                    dl=_common_dl1
+                    dl2=_common_dl2
+                    # stype=file
+                    # unpack_src_path "$path" || true
+                fi
             ;;
         file|rsync|ssh|git+*)
                 isgit=
                 if [ "${scheme#"git+"}" != "$scheme" ]; then
                     scheme=${scheme#"git+"}
-                    isgit=1
-                elif [ -z "${path##*.git}" ] || [ -z "${path##*.git/}" ]; then
                     isgit=1
                 fi
                 if [ -z "$path" ]; then
@@ -563,6 +574,7 @@ _uri_src_protocol() {
                     sinto=1
                     if [ -n "$isgit" ]; then
                         # TODO: unpack git clone
+                        src="${uri#"git+"}"
                         dl=_git_dl
                         dl2='git clone'
                         # git_src_path
@@ -578,6 +590,7 @@ _uri_src_protocol() {
                     fi
                 else
                     if [ -n "$isgit" ]; then
+                        src="${uri#"git+"}"
                         dl=_git_dl
                         dl2='git clone'
                         # git_src_path
@@ -717,7 +730,7 @@ make_multiple_action() {
         return 1
     fi
 
-    if [ -z "${up:-}${dforce:-}" ] && [ -e "$dst" ]; then
+    if [ -z "${up:-}${dforce:-}${dinto:-}" ] && [ -e "$dst" ]; then
         _error "destination already exist"
         return 1
     fi
@@ -732,33 +745,54 @@ make_multiple_action() {
             fast_append_argument_quote2 "$out"
             po=1
         fi
+        # echo "${dinto:-}" >&2
+        # echo "${sinto:-}" >&2
         dname=${path##*/}
-        out="$src;$dl;${dl2:-};${unpack:-};${unpack2:-};${sinto:-};$dname"
+        # out="$src;$dl;${dl2:-};${unpack:-};${unpack:-};${sinto:-};$dname"
+        # out="$src;$dl;${dl2:-};${unpack:-};${unpack2:-};${sinto:-};$dname"
+        out="$src;$dl;${dl2:-};${unpack:-};${unpack2:-};${dinto:-};$dname"
         printf %s\\n "$out"
         fast_append_argument_quote2 "$out"
     done
 }
 
 
-
+_read_src_target() {
+    IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+$1
+EOF
+    dname_no_suffix=${dname}
+    dname_no_suffix=${dname_no_suffix%".git"}
+    dname_no_suffix=${dname_no_suffix%".tar"}
+    dname_no_suffix=${dname_no_suffix%".zip"}
+    dname_no_suffix=${dname_no_suffix%".tar."*}
+}
 
 perfect_compile() {
     localcpn='rsync -a'
-
+    localcpn='cp'
     IFS=';' read dst up up2 upn tar1 tar2 multisrc suffix_change <<EOF
 $1
 EOF
     shift
-    dstend=${dstend%%*/}
+    dstend=${dst%%*/}
+    # echo "multisrc: $multisrc" >&2
+    # echo "dstend: $dstend" >&2
+
 
     # multisrc=1時且有unpack時，into決定要不要把dname附加到dst
     # multisrc=1時且有dl時，dname強制附加到dst
     # 沒有dl也沒有unpack時，不需要考慮dname
 
     if [ -z "$multisrc" ]; then
-        IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
-$1
-EOF
+#         IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+# $1
+# EOF
+#         dname_no_suffix=${dname}
+#         dname_no_suffix=${dname_no_suffix%".tar"}
+#         dname_no_suffix=${dname_no_suffix%".zip"}
+#         dname_no_suffix=${dname_no_suffix%".tar."*}
+        _read_src_target "$1"
         if [ -n "${suffix_change:-}" ]; then
             if [ -z "$dl$up" ]; then
                 printf %s\\n "$suffix_change < '$src' > '$dst'"
@@ -774,23 +808,33 @@ EOF
         elif [ -z "$dl" ]; then
             printf %s\\n "$up2 '$src' '$dst'"
         elif [ -z "$up" ]; then
-            printf %s\\n "$dl2 '$src' '$dst'"
+            # printf %s\\n "$dl2 '$src' '$dst'"
+            printf %s\\n "$dl2 '$src' '$dst${into:+${dstend:+/}$dname_no_suffix}'"
         else
             printf %s\\n "$dl '$src' | $up '$dst'"
         fi
     elif [ -z "${up:-}${tar1:-}" ]; then
         # srclist=
+
         ARGSTR=
         for spec; do
-            IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
-$spec
-EOF
+#             IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+# $spec
+# EOF
+
+#             dname_no_suffix=${dname}
+#             dname_no_suffix=${dname_no_suffix%".tar"}
+#             dname_no_suffix=${dname_no_suffix%".zip"}
+#             dname_no_suffix=${dname_no_suffix%".tar."*}
+            _read_src_target "$spec"
             if [ -n "${dl:-}" ] && [ -n "${unpack:-}" ]; then
-                printf %s\\n "$dl '$src' | $unpack '$dst${dstend:+/}${into:+$dname}'"
+                printf %s\\n "$dl '$src' | $unpack '$dst${dstend:+/}${into:+$dname_no_suffix}'"
             elif [ -n "${unpack:-}" ]; then
-                printf %s\\n "$unpack2 '$src' '$dst${dstend:+/}${into:+$dname}'"
+                printf %s\\n "$unpack '$dst${dstend:+/}${into:+$dname_no_suffix}' < '$src'"
+            elif [ -n "${unpack2:-}" ]; then
+                printf %s\\n "$unpack2 '$src' '$dst${dstend:+/}${into:+$dname_no_suffix}'"
             elif [ -n "${dl:-}" ]; then
-                printf %s\\n "$dl2 '$src' '$dst${dstend:+/}$dname'"
+                printf %s\\n "$dl2 '$src' '$dst${dstend:+/}${into:+$dname_no_suffix}'"
             else
                 fast_append_argument_quote2 "$src"
             fi
@@ -803,9 +847,10 @@ EOF
         tmpindex=0
         ARGSTR=
         for spec; do
-            IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
-$spec
-EOF
+#             IFS=';' read src dl dl2 unpack unpack2 into dname <<EOF
+# $spec
+# EOF
+            _read_src_target "$spec"
             if [ -n "${dl:-}${unpack:-}" ]; then
                 if [ -z "$tmpbase" ]; then
                     tmpbase=$(mkdtemp $TMPDIR/urlutils.XXXXXX)
@@ -845,7 +890,7 @@ EOF
         else
             printf %s\\n "$localcpn $ARGSTR '$dst'"
         fi
-        printf %s\\n "rm -rf '$tmpbase'"
+        [ -n "$tmpbase" ] && printf %s\\n "rm -rf '$tmpbase'"
     fi
 }
 

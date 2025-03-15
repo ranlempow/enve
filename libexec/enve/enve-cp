@@ -1,0 +1,150 @@
+#!/bin/sh
+#
+# Usage: enve-clone [OPTIONS] <repo>[#VERSION] [PATH]
+#        enve-clone [OPTIONS] <repo>[#VERSION] tmp|prjtmp
+#        enve-clone [OPTIONS] --studio <repo> [PATH]
+#        enve-clone [OPTIONS] <BACKUP> [PATH]
+#        enve-clone [OPTIONS] default
+# Environment encapsulation tool
+#
+# Common Options:
+#     -f, --fire         enter the enve shell
+#
+#
+# __noexec__=true
+
+
+# shellcheck source=libexec/enve/baselib
+. "$ENVE_HOME/enve/baselib"
+
+# shellcheck source=libexec/enve/findutils
+. "$ENVE_HOME/enve/findutils"
+
+# shellcheck source=libexec/enve/urlutils
+. "$ENVE_HOME/enve/urlutils"
+
+: '
+enve-cp [OPTIONS] [-T] SOURCE DEST
+enve-cp [OPTIONS] SOURCE... DEST
+enve-cp [OPTIONS] -t DEST SOURCE...
+
+Target maybe follow:
+    [user@]host:[path]
+    scp://[user@]host[:port][/path]
+    http://host[/path]
+    s3://host/path
+    *.tar
+    *.zip
+    *.tar/
+    *.zip/
+
+Source maybe follow:
+    *.git
+    git+http://host[/path]
+    %backup[/name][#time]
+
+Destination maybe follow:
+    %tmp - copy into temporary directory
+    %cache - copy into cache
+    %backup[/name]
+
+Options:
+    --refresh[=PERIOD]      refresh cache when destination is "%cache"
+    --update[=UPDATE]
+              control which existing files are updated;
+              UPDATE={all,none,none-fail,older(default)}
+    -R, -r, --recursive     copy directories recursively, same as all sources ends with "/"
+    -L, --dereference       always follow symbolic links in SOURCE
+    -p                      same as --preserve=mode,ownership,timestamps
+    -l, -d                  same as --no-dereference --preserve=links
+    -f, --force             if an existing destination file cannot be opened, remove it and try again
+    --remove-destination    remove each existing destination file before attempting to open it
+    -n, --dry-run           show what would have been transferred
+    --progress              show progress during transfer
+'
+
+
+
+true '
+這個對btrfs很有用
+cp --reflink[=always]
+
+TODO:
+
+1. 需要大量的測試還有使用範例
+2. 與enve-backup整合功能
+   %backup通常用於單次
+   enve-backup透過工作區設定可以同時管理多種備份
+3. 跨機器複製不要使用scp，而是使用ssh+tar
+
+'
+
+
+
+
+
+ARGSTR=
+while [ $# -gt 0 ]; do
+    case $1 in
+        -R|-r|--recursive)      shift 1;;
+        -p)                     preserve=1; shift 1;;
+        -L|--dereference)       link=follow; shift 1;;
+        -l|-d|--no-dereference) link=no-follow; shift 1;;
+        -f)                     all_force=1; shift 1;;
+        --remove-destination)   all_force=remove; shift 1;;
+        -n|--dry-run)           dryrun=1; shift 1;;
+        --progress)             progress=1; shift 1;;
+        --debug)                debug=1; shift 1;;
+        -v)                     verbose=1; shift 1;;
+        -T)                     directory=0; shift 1;;
+        -t|--target-directory|--target-directory=*)
+            case $1 in
+                --target-directory==*) directory=1; shift 1; dest=${1#"--target-directory="};;
+                *)
+                    case ${2:-} in -*|'')
+                            die "you must supply a DEST after $1" ;; esac
+                    directory=1; dest=$2 shift 2;;
+            esac
+            ;;
+        --help)
+                print_program_help "$ENVE_PROGRAM" >&2
+                quiet_exit 1
+            ;;
+        -*)
+                die "unknown option: $1"
+            ;;
+        *)
+                fast_append_argument_quote2 "$1"
+                shift 1
+            ;;
+    esac
+done
+
+eval set -- "$ARGSTR"
+if [ "${directory:-0}" -eq 0 ] && [ $# -ge 2 ]; then
+    ARGSTR=
+    while [ $# -gt 1 ]; do
+        fast_append_argument_quote2 "$1"
+        shift 1
+    done
+    dest="$1"
+    eval set -- "$ARGSTR"
+fi
+
+if ! dst_uri="$dest" make_multiple_action "$@" >/dev/null; then
+    return 1
+fi
+eval set -- "$ARGSTR"
+if [ -n "${debug:-}" ]; then
+    for arg in "$@"; do
+        echo "$arg"
+    done
+fi
+script=$(perfect_compile "$@")
+
+if [ -n "${dryrun:-}" ]; then
+    echo "$script"
+else
+    echo "$script"
+fi
+

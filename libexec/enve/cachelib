@@ -8,6 +8,36 @@ HAVE_ENVE_CACHELIB=1
 # shellcheck source=libexec/enve/baselib
 . "$ENVE_HOME/enve/baselib"
 
+true '
+
+## enve store (2020以前概念，不確定是否符合程式碼)
+
+這個store是install的預設目標路徑
+主要是提供cache性質般的儲存方式
+
+使用者必須提供 1.需求文本(作為快取用) 2.確認過期(不是必須的)
+            3.重現方法(不是必須的) 4.catalog=any
+            5.user=$USER 6.title=none 7.保密性private=
+
+
+有時候1與3是相同的東西
+
+首先根據文版算出快取$hash
+接下來搜尋路徑 $STORE/($user|root)[-private]-$catalog[-{0,1,2,3}]/$hash-$title
+如果有找到則回傳, 否則
+找到持有寫入權限的資料夾 $STORE/[$user-]$catalog[-{0,1,2,3}]
+沒有的話根據$private建立一個自己的快取資料夾, 再來
+建立目的資料夾, 執行製作方法並把環境變數OUT設定為該目的資料夾
+
+比起nix-store有以下不同的特性
+1.ownership不限於root(因此非root用戶也可以進行安裝)
+2.可以內含setuid的執行檔
+3.檔案預設是readonly, 但是資料夾預設不是readonly
+4.不一定使用固定的檔案時間戳記
+5.不一定採用資料夾內容的hash來作為項目的名稱, 也可能採用其他內文的hash
+6.盡量不使用symlink, 如果要有dependency的概念, 使用文字檔取代symlink
+7.不一定是immutable的
+'
 
 path_rebuild() {
     f_path=${1:-}
