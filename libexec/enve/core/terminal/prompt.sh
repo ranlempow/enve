@@ -160,9 +160,52 @@ prompt_command() {
     unset LAST_DURATION LAST_RET_VAULE LAST_COMMAND
 
     # detect $PWD
+    p=$PWD
+    autocd=
+    while [ -n "$p" ]; do
+        if [ "$p" = "$PRJROOT" ]; then
+            autocd="$p/enve.ini"
+            break
+        elif [ -f "$p/enve.ini" ]; then
+            autocd="$p/enve.ini"
+            break
+        fi
+        if [ "${p%/*}" != "$p" ]; then
+            p=${p%/*}
+        else
+            p=
+        fi
+    done
+    unset p
+    if [ -n "${ENVE_AUTOCD:-}" ] && [ -n "${ENVE_CONTENT_HASH:-}" ]; then
+        change=
+        # echo "PWD:$PWD" >&2
+        # echo "autocd: $autocd" >&2
+        # echo "$ENVE_CONTENT_HASH" >&2
+        if [ -n "$autocd" ]; then
+            _cont="${autocd}N"
+            while read -r line; do
+                _cont="${_cont}${line}N"
+            done < "$autocd"
+            if [ "$_cont" != "$ENVE_CONTENT_HASH" ]; then
+                change=1
+            fi
+        elif [ "$ENVE_CONTENT_HASH" != boot ]; then
+            change=boot
+        fi
+        if [ "$change" = 1 ]; then
+            if RCFILE=$(enve fire --rcfile -f "$autocd" shell); then
+                exec enve fire -f "$autocd" shell
+            fi
+        elif [ "$change" = boot ]; then
+            if RCFILE=$(enve fire --rcfile boot); then
+                exec enve fire boot
+            fi
+        fi
+        unset change RCFILE _cont
+    fi
     _PREEXEC_READY=1
 }
-
 _PREEXEC_READY=1
 
 # install prompt on posix shell

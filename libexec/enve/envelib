@@ -1192,6 +1192,9 @@ fire2() {
     #   }
     #   [ENVE_EXEC_TABLE]
     #
+    # optional
+    #   [PROJECT_DIR]
+    #
     # ENVE_EXEC_TABLE_N
     #   [RCFILE_STARTUP]
     #   [EXEC_SUBSHELL]
@@ -1213,7 +1216,13 @@ fire2() {
     ensure_caches
 
     ENVE_FIRE_DEPTH=${ENVE_FIRE_DEPTH:-0}
-    LOGTYPE=fire _info "level $ENVE_CACHED_OS $ENVE_FIRE_DEPTH $*"
+    # LOGTYPE=fire _info "level $ENVE_FIRE_DEPTH $ENVE_ROLES"
+    if [ -n "${PROJECT_DIR:-}" ]; then
+        LOGTYPE=fire _info "level $ENVE_FIRE_DEPTH ${PROJECT_DIR:-}@${ENVE_ROLES#,}"
+    else
+        LOGTYPE=fire _trace "level $ENVE_FIRE_DEPTH @${ENVE_ROLES#,}"
+    fi
+
 
 
     if [ -z "${RCFILE_PATH:-}" ] && [ -n "${ENVE_CONFIG_TEXT:-}" ]; then
@@ -1224,6 +1233,7 @@ fire2() {
         ENVE_ROLES="${ENVE_ROLES:+,${ENVE_ROLES}},${out_system_roles}" \
         RCFILE_STARTUP="" \
         EXEC_SHIELD="" \
+        PROJECT_DIR="" \
         get_rcfile_from_profiles_usecache
         if [ -z "$RCFILE_PATH" ]; then
             return 1
@@ -1336,6 +1346,11 @@ fire2() {
     _trace "stab_envs: $stab_envs"
     _trace "stab_args: $stab_args"
     _trace "cmd: $stab_env ${EXEC_USE_EXEC:+exec} $stab_args"
+    if [ -n "${PROJECT_DIR:-}" ]; then
+        LOGTYPE=fire _notice "enter ${PROJECT_DIR:-}@${ENVE_ROLES#,}${newl}"
+    else
+        LOGTYPE=fire _trace "enter @${ENVE_ROLES#,}"
+    fi
     eval $stab_env "${EXEC_USE_EXEC:+exec}" $stab_args
 
 

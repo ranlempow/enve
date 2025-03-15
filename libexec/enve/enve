@@ -414,14 +414,20 @@ else
             prog=${_path##*/enve-}
             if [ "${1:-}" = "--escape" ]; then
                 printf "'%s:%s'\\n" "$prog" "${summary:-}"
+            elif [ "${1:-}" = "--word" ]; then
+                printf "%s " "$prog"
             else
                 printf "    %-12s-- %s\\n" "$prog" "${summary:-}"
             fi
         done
+        if [ "${1:-}" = "--word" ]; then
+            printf \\n
+        fi
         # IFS=:
         # for prog in ${haved_programs#:}; do
         #     echo "$prog"
         # done
+        quiet_exit 1
     elif [ "$ENVE_PROGRAM" = "help" ]; then
         if [ -n "${1:-}" ]; then
             if print_program_help "$1" >&2; then
@@ -436,12 +442,12 @@ else
         print_enve_help >&2
         quiet_exit 1
     elif [ "$ENVE_PROGRAM" = "completions" ]; then
-        if [ -n "${2:-}" ]; then
+        if [ -n "${1:-}" ]; then
             list_enve_program
             IFS="$newl"
             for path in $enve_programs; do
                 prog=${path##*/enve-}
-                if [ "$prog" = "$2" ]; then
+                if [ "$prog" = "$1" ]; then
                     parse_enve_program "$path"
                     if [ -n "${completions:-}" ]; then
                         printf %s\\n "$completions"
@@ -456,7 +462,7 @@ else
                 fi
             done
         fi
-        exit 1
+        quiet_exit 1
     # elif [ "$ENVE_PROGRAM" = "boot" ]; then
     #     ENVE_PROGRAM=fire
     #     ARGZERO=$(search_enve_program "enve-$ENVE_PROGRAM")

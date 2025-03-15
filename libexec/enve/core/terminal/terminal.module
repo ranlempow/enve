@@ -120,12 +120,39 @@ resolve_terminal() {
     # fi
 }
 
+resolve_enve_content_hash() {
+    [ -n "$TABLE" ] && printf %s\\n "$TABLE"
+
+    fast_table_tail "enve\\.configs"
+    config_file=$TABLE_TAIL
+    if [ -n "$config_file" ]; then
+        if [ -z "${config_file##*/boot.enve.ini}" ]; then
+            out_var ENVE_CONTENT_HASH boot
+        else
+            _cont="${config_file}N"
+            while read -r line; do
+                _cont="${_cont}${line}N"
+            done < "$config_file"
+            # out_var ENVE_CONTENT_HASH "$_cont"
+            s=$_cont
+            replace "'" "'\\''"
+            out_code sh "ENVE_CONTENT_HASH='$s'"
+        fi
+    fi
+
+    fast_table_tail "core\\.target"
+    target=$TABLE_TAIL
+    if [ "$target" = "shell" ]; then
+        out_var ENVE_AUTOCD 1
+    fi
+}
+
 main() {
     info "IN $(basename $ZERO)/enve.module"
     TABLE=$(cat "${configfile:--}")
 
     # shellcheck disable=2043
-    for proc in tmux terminal; do
+    for proc in tmux terminal enve_content_hash; do
         info "IN resolve_$proc"
         if ! TABLE=$(TABLE=$TABLE resolve_$proc); then
             _error "error at resolve_$proc"
