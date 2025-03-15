@@ -21,6 +21,11 @@
 # shellcheck source=libexec/enve/baselib
 . "$ENVE_HOME/enve/prjlib"
 
+: '
+## 2023年(舊)
+
+(T)enve update [studio|syncdir|git]
+'
 
 mainline=
 while [ "$#" -ge 1 ]; do

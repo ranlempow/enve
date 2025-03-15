@@ -295,9 +295,9 @@ resolve_prompt() {
             out_var LESSKEY "$ENVE_HOME/enve/core/base/lesskey"
             # please keep in mind that --quit-if-one-screen also relies on --no-init option to work properly.
             if LESS="" $lessbin --help | grep "\-\-mouse" >/dev/null; then
-                out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines --mouse"
+                out_var LESS "-R -F --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines --mouse"
             else
-                out_var LESS "-R --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines"
+                out_var LESS "-R -F --window=-8 --shift=16 --status-column --tabs=4 --LONG-PROMPT --quiet --chop-long-lines"
             fi
             out_alias man "man -P less"
         fi
@@ -334,9 +334,6 @@ resolve_prompt() {
                 # 禁用使用者預設
                 out_code sh "BASH_COMPLETION_USER_FILE=@@__NOT_USED@@"
             fi
-            # fast_table_subset "enve\\.sysroots"
-            # fast_as_concat "$newl"
-            # roots=$TABLE_AS
 
             bash_completion_sourced=
             for rt in $roots; do
@@ -357,7 +354,7 @@ resolve_prompt() {
             if [ -f "$HOME/.bash_completion" ] && [ -r "$HOME/.bash_completion" ]; then
                 out_source user_bash_completion "$HOME/.bash_completion"
             fi
-
+            out_source enve_completion "$ENVE_HOME/../share/enve/completions/enve2.bash"
             out_list ENVE_BASHOPTS checkwinsize
         elif [ "$enveshell" = "zsh" ]; then
 

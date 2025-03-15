@@ -1,8 +1,9 @@
 #!/bin/sh
 #
 #
-# codebase.base(layout.root)
-# codebase.out
+# PRJ_NAME
+# codebase.base(layout.root)/PRJ_ROOT
+# codebase.out/PRJ_OUT
 # TODO: codebase.tmp
 # TODO: codebase.cache
 # TODO: codebase.data
@@ -13,6 +14,19 @@
 # -> CB_BASE(PRJROOT)
 # -> CB_OUT(PRJ_OUT)
 
+true '
+TODO:
+
+XDG_DATA_HOME: user-specific data files
+  application data
+XDG_CONFIG_HOME: user-specific configuration files
+XDG_STATE_HOME: user-specific state data
+  persist between (application) restarts
+  actions history (logs, history, recently used files, …)
+XDG_CACHE_HOME: user-specific non-essential (cached) data
+XDG_RUNTIME_DIR: user-specific runtime files and other file objects
+  ex. pipe, socket
+'
 
 # shellcheck source=libexec/enve/baselib
 . "$ENVE_HOME/enve/baselib"
@@ -44,14 +58,23 @@ resolve_basic_early() {
     if [ -n "$TABLE_TAIL" ]; then
         PRJROOT=$TABLE_TAIL
         out_var PRJROOT "$TABLE_TAIL"
+        out_var PRJ_ROOT "$TABLE_TAIL"
     else
         PRJROOT=
     fi
 
-    if [ -d "$PRJROOT/.git" ]; then
-        PRJ_VERSION=$(cd $PRJROOT; git rev-parse --short HEAD)
-        out_var "PRJ_VERSION" "$PRJ_VERSION"
-    fi
+    # if [ -d "$PRJROOT/.git" ]; then
+    #     PRJ_VERSION=$(cd $PRJROOT; git rev-parse --short HEAD)
+    #     out_var "PRJ_VERSION" "$PRJ_VERSION"
+    # fi
+    PRJSROOT=$PRJROOT
+    search_path=${PRJROOT%/*}
+    while [ -n "$search_path" ]; do
+        if [ -f "$search_path/projects.ini" ]; then
+            PRJSROOT=$search_path
+        fi
+        search_path=${search_path%/*}
+    done
 
     { table_subset "variable\\..*" || true; } | as_postfix "variable." | \
     while read -r name value; do
@@ -93,11 +116,13 @@ resolve_basic_early() {
     s=$TABLE_TAIL
 
     out=
-    if [ "$s" = "true" ]; then
-        d=../out
-        fast_resolve_path
-        normalize "$d"
-        out=$ret
+    # if [ "$s" = "true" ]; then
+    #     d=../out
+    #     fast_resolve_path
+    #     normalize "$d"
+    #     out=$ret
+    if  [ "$s" = "true" ]; then
+        out="$PRJSROOT/out/${PRJ_NAME}-out"
     elif [ -n "$s" ]; then
         out=$s
     fi

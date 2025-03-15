@@ -252,7 +252,7 @@ fast_as_uniquekey() {
     done <<EOF
 $TABLE_SUBSET
 EOF
-    TABLE_AS="${TABLE_AS#$newl}"
+    TABLE_AS="${TABLE_AS#"$newl"}"
     # TABLE_AS="${TABLE_AS%$newl}"
     unset name value
 }
@@ -462,7 +462,7 @@ value_substi() {
     _newvalue="${_newvalue}${_cur}"
     _subsited_value=${_newvalue}
 
-    echo "_subsited_value: (${_refs:-}) $_value=$_subsited_value" >&2
+    _debug "_subsited_value: (${_refs:-}) $_value=$_subsited_value"
 
 }
 
@@ -533,7 +533,7 @@ EOF
                         _origin_value="$_value"
                         _value=$_value _origin_value="" _refs=']' value_substi || return $?
                         _value=${_subsited_value}
-                        echo "SUB $_vk=$_origin_value -> $_vk=$_value" >&2
+                        _debug "SUB $_vk=$_origin_value -> $_vk=$_value"
                     ;;
                 esac
             fi
@@ -983,5 +983,152 @@ parse_config_non_recursive_text() {
 }
 
 
+_count_chars() {
+    c=0
+    while [ -n "$s" ]; do
+        s=${s%?}
+        c=$((c+1))
+    done
+}
 
 
+# echo -e "\033[30ma\033[31mb\033[32mc\033[33md\033[34me\033[35mf\033[36mg\033[37mh\033[38mi\033[0m" 
+C0="\033[0m"
+CR="\033[31m"
+CY="\033[33m"
+CP="\033[35m"
+CBB="\033[44m"
+CBP="\033[45m"
+
+
+
+ident() { :; }
+
+print_multicol() {
+    unset c1 c2 c3 c4 c5 c6 c7 c8
+    unset cc1 cc2 cc3 cc4 cc5 cc6 cc7 cc8
+    unset cb1 cb2 cb3 cb4 cb5 cb6 cb7 cb8
+    unset ce1 ce2 ce3 ce4 ce5 ce6 ce7 ce8
+    unset pat1 pat2 pat3 pat4 pat5 pat6 pat7 pat8
+
+    data=$1
+    shift
+    colcnt=1
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --yellow|--emphasize)
+                eval cc$colcnt=\$CY
+                eval cb$colcnt=\$CBP
+                eval ce$colcnt=ident
+                shift
+                ;;
+            --yellow=*|--emphasize=*)
+                func=${1#*=}
+                eval cc$colcnt=\$CY
+                eval cb$colcnt=\$CBP
+                eval ce$colcnt=\$func
+                shift
+                ;;
+            --red|--error)
+                eval cc$colcnt=\$CR
+                eval cb$colcnt=\$CBB
+                eval ce$colcnt=ident
+                shift
+                ;;
+            --red=*|--error=*)
+                func=${1#*=}
+                eval cc$colcnt=\$CR
+                eval cb$colcnt=\$CBB
+                eval ce$colcnt=\$func
+                shift
+                ;;
+            *)
+                eval c$colcnt=\$1
+                shift
+                colcnt=$((colcnt+1))
+                ;;
+        esac
+    done
+    len1=0; len2=0; len3=0; len4=0;
+    len5=0; len6=0; len7=0; len8=0;
+    while IFS='|' read -r v1 v2 v3 v4 v5 v6 v7 v8; do
+        for i in 1 2 3 4 5 6 7 8; do
+            eval s=\${v$i} _count_chars
+            eval [ \$c -gt \${len$i} ] \&\& len$i=\$c \|\| true
+            
+        done
+    done <<EOF
+$data
+EOF
+    for i in 1 2 3 4 5 6 7 8; do
+        eval s=\${c$i:-} _count_chars
+        eval [ \$c -gt \${len$i} ] \&\& len$i=\$c \|\| true
+    done
+    for i in 8 7 6 5 4 3 2 1; do
+        eval len=\${len$i}
+        if [ "$len" -eq 0 ]; then
+            eval len$i=
+        else
+            break
+        fi
+    done
+    if [ "${len1:-0}" = 0 ]; then
+        return 0
+    fi
+
+    
+    for i in 1 2 3 4 5 6 7 8; do
+        eval len=\${len$i}
+        if [ -z "$len" ]; then
+            # continue
+            eval pat$i=
+        elif [ "$i" = 1 ]; then
+            eval pat$i=\"\%-'$((len + 1))'s\"
+        else
+            eval pat$i=\"\%'$((len + 1))'s\"
+        fi
+    done
+    if [ -n "${c1:-}" ]; then
+        unset p1 p2 p3 p4 p5 p6 p7 p8
+        for i in 1 2 3 4 5 6 7 8; do
+            if eval [ -z \"\${pat$i:-}\" ]; then
+                eval p$i=\%0s
+            else
+                eval p$i=\' \'\$CP\$pat$i\$C0
+            fi
+        done
+        headpat="${p1#?}$p2$p3$p4$p5$p6$p7$p8"
+        printf "${headpat}\\n" "${c1:-}" "${c2:-}" "${c3:-}" "${c4:-}" \
+                               "${c5:-}" "${c6:-}" "${c7:-}" "${c8:-}"
+        unset headpat
+    fi
+    while IFS='|' read -r v1 v2 v3 v4 v5 v6 v7 v8; do
+        unset p1 p2 p3 p4 p5 p6 p7 p8
+        for i in 1 2 3 4 5 6 7 8; do
+            if eval [ -z \"\${pat$i:-}\" ]; then
+                eval p$i=\%0s
+                continue
+            fi
+            eval [ -n \"\${ce$i:-}\" ] \&\& \$ce$i \"\$v$i\" \|\| d=\$\?
+            case ${d:-0} in
+                0) eval p$i=\' \'\${cc$i}\$pat$i\$C0 ;;
+                1) eval p$i=\' \'\$pat$i ;;
+                2) eval p$i=\' \'\${cb$i}\$pat$i\$C0 ;;
+                3) eval p$i=\' \'\${cc$i}\${cb$i}\$pat$i\$C0 ;;
+            esac
+            unset d
+        done
+        pat="${p1#?}$p2$p3$p4$p5$p6$p7$p8"
+        printf "$pat\\n" "$v1" "$v2" "$v3" "$v4" \
+                         "$v5" "$v6" "$v7" "$v8" 
+        unset pat
+    done <<EOF
+$data
+EOF
+    unset c1 c2 c3 c4 c5 c6 c7 c8
+    unset cc1 cc2 cc3 cc4 cc5 cc6 cc7 cc8
+    unset cb1 cb2 cb3 cb4 cb5 cb6 cb7 cb8
+    unset ce1 ce2 ce3 ce4 ce5 ce6 ce7 ce8
+    unset pat1 pat2 pat3 pat4 pat5 pat6 pat7 pat8
+    
+}

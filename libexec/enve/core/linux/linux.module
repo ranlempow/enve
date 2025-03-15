@@ -365,6 +365,8 @@ resolve_linux() {
     )
 
     # this is for unicode character in console
+    # LANG (only if absence of the LC_ALL and other LC_*)
+    # LC_ALL (precedence over any of the other LC_*)
     fast_table_tail "LC_ALL"
     [ -n "$TABLE_TAIL" ] || out_var "LC_ALL" "C.UTF-8"
     fast_table_tail "LANG"
